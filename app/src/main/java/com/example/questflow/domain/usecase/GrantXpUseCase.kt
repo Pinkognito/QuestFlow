@@ -20,6 +20,9 @@ class GrantXpUseCase @Inject constructor(
         val multiplier = skillRepository.getActiveXpMultiplier()
         val amount = (amountRaw * multiplier).toInt().coerceAtLeast(1)
 
+        // Debug logging
+        android.util.Log.d("GrantXpUseCase", "Raw XP: $amountRaw, Multiplier: $multiplier, Final XP: $amount")
+
         // Record transaction
         xpTransactionRepository.recordTransaction(source, amount, referenceId)
 

@@ -24,18 +24,20 @@ class CalculateXpRewardUseCase @Inject constructor() {
     }
 
     /**
-     * Calculate XP reward based on percentage of level requirement
+     * Calculate XP reward based on percentage of TOTAL level requirement
+     * This creates exponentially growing XP rewards for motivation
      *
      * @param percentage The percentage of level XP requirement (20, 40, 60, 80, 100)
      * @param currentLevel The player's current level
      * @return The actual XP amount to award
      */
     operator fun invoke(percentage: Int, currentLevel: Int): Int {
-        val xpRequiredForNext = getXpRequiredForNextLevel(currentLevel)
-        val xpReward = (xpRequiredForNext * percentage / 100.0).roundToInt()
+        // Use TOTAL XP for next level, not just the difference
+        val nextLevelTotal = (currentLevel + 1) * (currentLevel + 1) * 100
+        val xpReward = (nextLevelTotal * percentage / 100.0).roundToInt()
 
-        // Round to nearest 5 for clean numbers
-        return ((xpReward + 2) / 5) * 5
+        // Round to nearest 10 for clean numbers (bigger numbers need bigger rounding)
+        return ((xpReward + 5) / 10) * 10
     }
 
     /**

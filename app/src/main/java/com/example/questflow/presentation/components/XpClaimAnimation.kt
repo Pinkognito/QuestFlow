@@ -11,10 +11,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlin.math.min
 
 @Composable
 fun XpClaimAnimation(
@@ -113,6 +116,33 @@ fun XpBurstAnimation(
     var isVisible by remember { mutableStateOf(true) }
     var showLevelUp by remember { mutableStateOf(false) }
 
+    // Get screen width to calculate dynamic font size
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+
+    // Format large numbers with thousand separators for readability
+    val xpText = "+${"%,d".format(xpAmount)}"
+
+    // Calculate dynamic font size based on number of digits
+    val digitCount = xpAmount.toString().length
+    val baseFontSize = when {
+        digitCount <= 3 -> 90.sp   // 999 or less
+        digitCount == 4 -> 80.sp   // 9,999
+        digitCount == 5 -> 70.sp   // 99,999
+        digitCount == 6 -> 60.sp   // 999,999
+        digitCount == 7 -> 50.sp   // 9,999,999
+        digitCount == 8 -> 40.sp   // 99,999,999
+        digitCount == 9 -> 35.sp   // 999,999,999
+        else -> 30.sp               // Billions+
+    }
+
+    // Adjust based on screen width
+    val screenFactor = min(1f, screenWidthDp / 360f)
+    val dynamicFontSize = (baseFontSize.value * screenFactor).sp
+
+    // Check if we need multi-line display for very large numbers
+    val useMultiLine = digitCount > 7
+
     // Main XP animation
     val scale by animateFloatAsState(
         targetValue = when {
@@ -175,15 +205,39 @@ fun XpBurstAnimation(
                     rotationZ = if (leveledUp) rotation else 0f
                 )
         ) {
-            // XP Amount
-            Text(
-                text = "+$xpAmount",
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 80.sp,
-                    fontWeight = FontWeight.Black
-                ),
-                color = if (leveledUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
-            )
+            // XP Amount with dynamic sizing and multi-line support
+            if (useMultiLine && digitCount > 7) {
+                // For very large numbers, split into multiple lines
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = "+${"%,d".format(xpAmount)}",
+                        style = MaterialTheme.typography.displayLarge.copy(
+                            fontSize = dynamicFontSize,
+                            fontWeight = FontWeight.Black,
+                            lineHeight = dynamicFontSize * 0.9f
+                        ),
+                        color = if (leveledUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 2
+                    )
+                }
+            } else {
+                // Normal single-line display
+                Text(
+                    text = xpText,
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontSize = dynamicFontSize,
+                        fontWeight = FontWeight.Black
+                    ),
+                    color = if (leveledUp) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
             Text(
                 text = "XP ERHALTEN!",
