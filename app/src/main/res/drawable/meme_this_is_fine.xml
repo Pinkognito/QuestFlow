@@ -1,0 +1,43 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Background Fire -->
+    <path
+        android:fillColor="#FF6600"
+        android:pathData="M0,150 l20,-30 l15,40 l25,-50 l20,35 l30,-40 l25,45 l30,-35 l20,40 l15,-30 v50 h-200 z"/>
+
+    <!-- Dog shape -->
+    <path
+        android:fillColor="#8B4513"
+        android:pathData="M100,80 c20,0 35,15 35,35 v30 h-70 v-30 c0,-20 15,-35 35,-35"/>
+
+    <!-- Dog ears -->
+    <path
+        android:fillColor="#8B4513"
+        android:pathData="M70,75 l10,-15 l10,15 z
+                         M110,75 l10,-15 l10,15 z"/>
+
+    <!-- Eyes -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M85,95 a3,3 0 1,1 0,6 a3,3 0 1,1 0,-6
+                         M115,95 a3,3 0 1,1 0,6 a3,3 0 1,1 0,-6"/>
+
+    <!-- Smile -->
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M85,110 Q100,120 115,110"/>
+
+    <!-- Coffee cup -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M90,120 h20 v15 h-20 z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M110,125 c5,0 8,3 8,7 s-3,7 -8,7"/>
+</vector>

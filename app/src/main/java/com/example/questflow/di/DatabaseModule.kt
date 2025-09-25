@@ -1,0 +1,66 @@
+package com.example.questflow.di
+
+import android.content.Context
+import androidx.room.Room
+import com.example.questflow.data.database.QuestFlowDatabase
+import com.example.questflow.data.database.TaskDao
+import com.example.questflow.data.database.dao.*
+import com.example.questflow.data.database.migration.MIGRATION_1_2
+import com.example.questflow.data.database.migration.MIGRATION_2_3
+import com.example.questflow.data.database.migration.MIGRATION_3_4
+import com.example.questflow.data.database.migration.MIGRATION_4_5
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DatabaseModule {
+
+    @Provides
+    @Singleton
+    fun provideQuestFlowDatabase(
+        @ApplicationContext context: Context
+    ): QuestFlowDatabase {
+        return Room.databaseBuilder(
+            context,
+            QuestFlowDatabase::class.java,
+            QuestFlowDatabase.DATABASE_NAME
+        )
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .build()
+    }
+
+    @Provides
+    fun provideTaskDao(database: QuestFlowDatabase): TaskDao {
+        return database.taskDao()
+    }
+
+    @Provides
+    fun provideUserStatsDao(database: QuestFlowDatabase): UserStatsDao {
+        return database.userStatsDao()
+    }
+
+    @Provides
+    fun provideXpTransactionDao(database: QuestFlowDatabase): XpTransactionDao {
+        return database.xpTransactionDao()
+    }
+
+    @Provides
+    fun provideCalendarEventLinkDao(database: QuestFlowDatabase): CalendarEventLinkDao {
+        return database.calendarEventLinkDao()
+    }
+
+    @Provides
+    fun provideMemeDao(database: QuestFlowDatabase): MemeDao {
+        return database.memeDao()
+    }
+
+    @Provides
+    fun provideSkillDao(database: QuestFlowDatabase): SkillDao {
+        return database.skillDao()
+    }
+}

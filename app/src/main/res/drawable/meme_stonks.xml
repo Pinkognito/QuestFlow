@@ -1,0 +1,45 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Background -->
+    <path
+        android:fillColor="#222222"
+        android:pathData="M0,0 h200 v200 h-200 z"/>
+
+    <!-- Stonks Graph going up -->
+    <path
+        android:strokeColor="#00FF00"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M20,160 L50,140 L80,150 L110,100 L140,80 L170,40"/>
+
+    <!-- Arrow pointing up -->
+    <path
+        android:fillColor="#00FF00"
+        android:pathData="M170,40 l-10,10 l5,0 l5,-10 l5,10 l5,0 z"/>
+
+    <!-- Meme man head (simplified) -->
+    <path
+        android:fillColor="#E0C9A6"
+        android:pathData="M50,100 c0,-15 12,-27 27,-27 s27,12 27,27 s-12,27 -27,27 s-27,-12 -27,-27"/>
+
+    <!-- Suit -->
+    <path
+        android:fillColor="#333333"
+        android:pathData="M50,127 l27,10 l27,-10 v40 h-54 z"/>
+
+    <!-- Tie -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M74,127 h6 l2,20 h-10 z"/>
+
+    <!-- "STONKS" text outline -->
+    <path
+        android:strokeColor="#00FF00"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M120,160 h60 v20 h-60 z"/>
+</vector>

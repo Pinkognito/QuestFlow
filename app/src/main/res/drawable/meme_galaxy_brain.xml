@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Background gradient -->
+    <path
+        android:fillColor="#1a1a2e"
+        android:pathData="M0,0 h200 v200 h-200 z"/>
+
+    <!-- Brain outline -->
+    <path
+        android:fillColor="#FF00FF"
+        android:pathData="M100,50 c30,0 50,20 50,50 c0,20 -10,40 -30,50 c-10,5 -30,5 -40,0 c-20,-10 -30,-30 -30,-50 c0,-30 20,-50 50,-50"/>
+
+    <!-- Glowing effect rings -->
+    <path
+        android:strokeColor="#00FFFF"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M100,100 m-60,0 a60,60 0 1,1 120,0 a60,60 0 1,1 -120,0"/>
+
+    <path
+        android:strokeColor="#00FF00"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M100,100 m-70,0 a70,70 0 1,1 140,0 a70,70 0 1,1 -140,0"/>
+
+    <!-- Stars -->
+    <path
+        android:fillColor="#FFFF00"
+        android:pathData="M30,30 l5,10 l10,0 l-8,7 l3,10 l-10,-7 l-10,7 l3,-10 l-8,-7 l10,0 z
+                         M170,40 l3,6 l6,0 l-5,4 l2,6 l-6,-4 l-6,4 l2,-6 l-5,-4 l6,0 z
+                         M160,160 l4,8 l8,0 l-6,5 l2,8 l-8,-5 l-8,5 l2,-8 l-6,-5 l8,0 z"/>
+</vector>
