@@ -30,6 +30,7 @@ import androidx.compose.foundation.horizontalScroll
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoriesScreen(
+    appViewModel: com.example.questflow.presentation.AppViewModel,
     viewModel: CategoriesViewModel = hiltViewModel(),
     onBackClick: () -> Unit
 ) {

@@ -28,6 +28,8 @@ fun CategoryDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
+    android.util.Log.d("CategoryDropdown", "Rendering with ${categories.size} categories, selected: ${selectedCategory?.name}")
+
     Box(modifier = modifier) {
         // Selected category display
         Surface(

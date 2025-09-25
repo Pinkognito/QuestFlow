@@ -39,15 +39,49 @@ private val LightColorScheme = lightColorScheme(
 fun QuestFlowTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    categoryColor: Color? = null,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
+    val baseColorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }
+
+    // Apply category color if provided
+    val colorScheme = if (categoryColor != null) {
+        if (darkTheme) {
+            darkColorScheme(
+                primary = categoryColor,
+                primaryContainer = categoryColor.copy(alpha = 0.3f),
+                secondary = categoryColor.copy(alpha = 0.8f),
+                tertiary = categoryColor.copy(alpha = 0.6f),
+                background = Color(0xFF121212),
+                surface = Color(0xFF1E1E1E),
+                onPrimary = Color.White,
+                onSecondary = Color.White,
+                onBackground = Color.White,
+                onSurface = Color.White
+            )
+        } else {
+            lightColorScheme(
+                primary = categoryColor,
+                primaryContainer = categoryColor.copy(alpha = 0.2f),
+                secondary = categoryColor.copy(alpha = 0.8f),
+                tertiary = categoryColor.copy(alpha = 0.6f),
+                background = Color(0xFFF5F5F5),
+                surface = Color.White,
+                onPrimary = Color.White,
+                onSecondary = Color.Black,
+                onBackground = Color.Black,
+                onSurface = Color.Black
+            )
+        }
+    } else {
+        baseColorScheme
     }
     val view = LocalView.current
     if (!view.isInEditMode) {

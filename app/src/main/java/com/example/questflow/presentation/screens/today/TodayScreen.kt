@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -28,59 +29,44 @@ import androidx.navigation.NavController
 import com.example.questflow.presentation.components.XpLevelBadge
 import com.example.questflow.presentation.components.XpBurstAnimation
 import com.example.questflow.presentation.components.CategoryDropdown
+import com.example.questflow.presentation.components.QuestFlowTopBar
+import com.example.questflow.presentation.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(
     navController: NavController,
+    appViewModel: AppViewModel,
     viewModel: TodayViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val categories by viewModel.categories.collectAsState()
+    val selectedCategory by appViewModel.selectedCategory.collectAsState()
+    val categories by appViewModel.categories.collectAsState()
+    val globalStats by appViewModel.globalStats.collectAsState()
+
+    // Sync selected category with TodayViewModel
+    LaunchedEffect(selectedCategory) {
+        viewModel.syncSelectedCategory(selectedCategory)
+    }
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var taskToComplete by remember { mutableStateOf<com.example.questflow.domain.model.Task?>(null) }
     val currentLevel by remember { derivedStateOf {
-        selectedCategory?.currentLevel ?: uiState.level
+        selectedCategory?.currentLevel ?: (globalStats?.level ?: 1)
     } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        CategoryDropdown(
-                            selectedCategory = selectedCategory,
-                            categories = categories,
-                            onCategorySelected = viewModel::selectCategory,
-                            onManageCategoriesClick = {
-                                navController.navigate("categories")
-                            },
-                            modifier = Modifier.weight(0.4f)
-                        )
-                        XpLevelBadge(
-                            level = selectedCategory?.currentLevel ?: uiState.level,
-                            xp = selectedCategory?.totalXp?.toLong() ?: uiState.totalXp,
-                            modifier = Modifier.weight(0.6f),
-                            isCategory = selectedCategory != null
-                        )
-                    }
+            QuestFlowTopBar(
+                title = "Today",
+                selectedCategory = selectedCategory,
+                categories = categories,
+                onCategorySelected = appViewModel::selectCategory,
+                onManageCategoriesClick = {
+                    navController.navigate("categories")
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = selectedCategory?.let { category ->
-                        try {
-                            Color(android.graphics.Color.parseColor(category.color)).copy(alpha = 0.2f)
-                        } catch (e: Exception) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        }
-                    } ?: MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                level = globalStats?.level ?: 1,
+                totalXp = globalStats?.xp ?: 0
             )
         },
         floatingActionButton = {

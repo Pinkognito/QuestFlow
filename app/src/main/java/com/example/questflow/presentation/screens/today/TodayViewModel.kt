@@ -76,7 +76,7 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    fun selectCategory(category: CategoryEntity?) {
+    fun syncSelectedCategory(category: CategoryEntity?) {
         _selectedCategory.value = category
         // Reload tasks for this category if needed
         loadTasks()
@@ -84,9 +84,21 @@ class TodayViewModel @Inject constructor(
 
     private fun loadTasks() {
         viewModelScope.launch {
-            taskRepository.getActiveTasks().collect { tasks ->
+            taskRepository.getActiveTasks().collect { allTasks ->
+                // Filter tasks by selected category
+                val filteredTasks = if (_selectedCategory.value != null) {
+                    allTasks.filter { task ->
+                        task.categoryId == _selectedCategory.value?.id
+                    }
+                } else {
+                    // Show tasks without category when "Allgemein" is selected
+                    allTasks.filter { task ->
+                        task.categoryId == null
+                    }
+                }
+
                 _uiState.value = _uiState.value.copy(
-                    tasks = tasks,
+                    tasks = filteredTasks,
                     isLoading = false
                 )
             }

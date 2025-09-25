@@ -20,27 +20,32 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.questflow.presentation.components.XpLevelBadge
+import com.example.questflow.presentation.components.QuestFlowTopBar
+import com.example.questflow.presentation.AppViewModel
+import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MemeCollectionScreen(
+    appViewModel: AppViewModel,
+    navController: NavController,
     viewModel: MemeCollectionViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedCategory by appViewModel.selectedCategory.collectAsState()
+    val categories by appViewModel.categories.collectAsState()
+    val globalStats by appViewModel.globalStats.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    XpLevelBadge(
-                        level = uiState.level,
-                        currentXp = uiState.totalXp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+            QuestFlowTopBar(
+                title = "Meme Collection",
+                selectedCategory = selectedCategory,
+                categories = categories,
+                onCategorySelected = appViewModel::selectCategory,
+                onManageCategoriesClick = { navController.navigate("categories") },
+                level = globalStats?.level ?: 1,
+                totalXp = globalStats?.xp ?: 0
             )
         }
     ) { paddingValues ->

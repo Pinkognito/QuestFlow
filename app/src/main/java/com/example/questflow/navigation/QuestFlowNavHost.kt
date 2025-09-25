@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.screens.today.TodayScreen
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
 import com.example.questflow.presentation.screens.collection.MemeCollectionScreen
@@ -12,26 +13,40 @@ import com.example.questflow.presentation.screens.categories.CategoriesScreen
 
 @Composable
 fun QuestFlowNavHost(
-    navController: NavHostController
+    navController: NavHostController,
+    appViewModel: AppViewModel
 ) {
     NavHost(
         navController = navController,
         startDestination = "today"
     ) {
         composable("today") {
-            TodayScreen(navController = navController)
+            TodayScreen(
+                navController = navController,
+                appViewModel = appViewModel
+            )
         }
         composable("calendar_xp") {
-            CalendarXpScreen()
+            CalendarXpScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
         }
         composable("collection") {
-            MemeCollectionScreen()
+            MemeCollectionScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
         }
         composable("skill_tree") {
-            SkillTreeScreen()
+            SkillTreeScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
         }
         composable("categories") {
             CategoriesScreen(
+                appViewModel = appViewModel,
                 onBackClick = { navController.navigateUp() }
             )
         }

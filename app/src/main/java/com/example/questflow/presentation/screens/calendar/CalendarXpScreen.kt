@@ -3,42 +3,81 @@ package com.example.questflow.presentation.screens.calendar
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.questflow.data.preferences.CalendarFilterSettings
+import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.presentation.components.XpBurstAnimation
 import com.example.questflow.presentation.components.XpLevelBadge
+import com.example.questflow.presentation.components.QuestFlowTopBar
+import com.example.questflow.presentation.AppViewModel
+import androidx.navigation.NavController
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarXpScreen(
+    appViewModel: AppViewModel,
+    navController: NavController,
     viewModel: CalendarXpViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedCategory by appViewModel.selectedCategory.collectAsState()
+    val categories by appViewModel.categories.collectAsState()
+    val globalStats by appViewModel.globalStats.collectAsState()
+    val showFilterDialog by viewModel.showFilterDialog.collectAsState()
+    val filterSettings by viewModel.filterSettings.collectAsState()
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
+
+    // Sync category with viewmodel
+    LaunchedEffect(selectedCategory) {
+        viewModel.updateSelectedCategory(selectedCategory?.id)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        XpLevelBadge(
-                            level = uiState.level,
-                            currentXp = uiState.totalXp,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                QuestFlowTopBar(
+                    title = "Calendar XP",
+                    selectedCategory = selectedCategory,
+                    categories = categories,
+                    onCategorySelected = appViewModel::selectCategory,
+                    onManageCategoriesClick = {
+                        navController.navigate("categories")
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    level = globalStats?.level ?: 1,
+                    totalXp = globalStats?.xp ?: 0,
+                    actions = {
+                        IconButton(onClick = { viewModel.toggleFilterDialog() }) {
+                            Badge(
+                                containerColor = if (filterSettings.isActive())
+                                    MaterialTheme.colorScheme.tertiary
+                                else
+                                    MaterialTheme.colorScheme.surface
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Filter",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = if (filterSettings.isActive())
+                                        MaterialTheme.colorScheme.onTertiary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
                 )
             }
         ) { paddingValues ->
@@ -134,5 +173,151 @@ fun CalendarXpScreen(
         uiState.notification?.let { message ->
             // In production, you'd show a Snackbar here
         }
+
+        // Filter Dialog
+        if (showFilterDialog) {
+            CalendarFilterDialog(
+                filterSettings = filterSettings,
+                onDismiss = { viewModel.toggleFilterDialog() },
+                onApply = { settings ->
+                    viewModel.updateFilterSettings(settings)
+                    viewModel.toggleFilterDialog()
+                }
+            )
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CalendarFilterDialog(
+    filterSettings: CalendarFilterSettings,
+    onDismiss: () -> Unit,
+    onApply: (CalendarFilterSettings) -> Unit
+) {
+    var showCompleted by remember { mutableStateOf(filterSettings.showCompleted) }
+    var showOpen by remember { mutableStateOf(filterSettings.showOpen) }
+    var filterByCategory by remember { mutableStateOf(filterSettings.filterByCategory) }
+    var dateFilterType by remember { mutableStateOf(filterSettings.dateFilterType) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter Calendar Events") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Status Filter Section
+                Text(
+                    "Status",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = showCompleted,
+                        onClick = { showCompleted = !showCompleted },
+                        label = { Text("Claimed") },
+                        leadingIcon = if (showCompleted) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null
+                    )
+                    FilterChip(
+                        selected = showOpen,
+                        onClick = { showOpen = !showOpen },
+                        label = { Text("Unclaimed") },
+                        leadingIcon = if (showOpen) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null
+                    )
+                }
+
+                Divider()
+
+                // Category Filter Section
+                Text(
+                    "Category",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = filterByCategory,
+                        onCheckedChange = { filterByCategory = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (filterByCategory) "Show only selected category" else "Show all categories",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                Divider()
+
+                // Date Filter Section
+                Text(
+                    "Date Range",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    DateFilterType.values().forEach { type ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { dateFilterType = type }
+                                .padding(8.dp)
+                        ) {
+                            RadioButton(
+                                selected = dateFilterType == type,
+                                onClick = { dateFilterType = type }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                when (type) {
+                                    DateFilterType.ALL -> "All dates"
+                                    DateFilterType.TODAY -> "Today"
+                                    DateFilterType.THIS_WEEK -> "This week"
+                                    DateFilterType.THIS_MONTH -> "This month"
+                                    DateFilterType.CUSTOM_RANGE -> "Custom range"
+                                },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onApply(
+                        filterSettings.copy(
+                            showCompleted = showCompleted,
+                            showOpen = showOpen,
+                            filterByCategory = filterByCategory,
+                            dateFilterType = dateFilterType
+                        )
+                    )
+                }
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

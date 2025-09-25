@@ -15,28 +15,38 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.questflow.data.database.entity.SkillType
 import com.example.questflow.presentation.components.XpLevelBadge
+import com.example.questflow.presentation.components.QuestFlowTopBar
+import com.example.questflow.presentation.AppViewModel
+import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SkillTreeScreen(
+    appViewModel: AppViewModel,
+    navController: NavController,
     viewModel: SkillTreeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedCategory by appViewModel.selectedCategory.collectAsState()
+    val categories by appViewModel.categories.collectAsState()
+    val globalStats by appViewModel.globalStats.collectAsState()
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
+
+    // Sync category with viewmodel
+    LaunchedEffect(selectedCategory) {
+        viewModel.updateSelectedCategory(selectedCategory?.id)
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    XpLevelBadge(
-                        level = uiState.level,
-                        currentXp = uiState.totalXp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+            QuestFlowTopBar(
+                title = "Skill Tree",
+                selectedCategory = selectedCategory,
+                categories = categories,
+                onCategorySelected = appViewModel::selectCategory,
+                onManageCategoriesClick = { navController.navigate("categories") },
+                level = globalStats?.level ?: 1,
+                totalXp = globalStats?.xp ?: 0
             )
         }
     ) { paddingValues ->

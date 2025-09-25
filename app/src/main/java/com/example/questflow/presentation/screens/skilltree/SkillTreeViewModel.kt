@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.questflow.data.repository.SkillNodeWithStatus
 import com.example.questflow.data.repository.SkillRepository
 import com.example.questflow.data.repository.StatsRepository
+import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.domain.usecase.UnlockSkillNodeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -15,14 +16,22 @@ import javax.inject.Inject
 class SkillTreeViewModel @Inject constructor(
     private val skillRepository: SkillRepository,
     private val statsRepository: StatsRepository,
+    private val categoryRepository: CategoryRepository,
     private val unlockSkillNodeUseCase: UnlockSkillNodeUseCase
 ) : ViewModel() {
+
+    private var selectedCategoryId: Long? = null
 
     private val _uiState = MutableStateFlow(SkillTreeUiState())
     val uiState: StateFlow<SkillTreeUiState> = _uiState.asStateFlow()
 
     init {
         loadSkills()
+        loadStats()
+    }
+
+    fun updateSelectedCategory(categoryId: Long?) {
+        selectedCategoryId = categoryId
         loadStats()
     }
 
@@ -36,12 +45,25 @@ class SkillTreeViewModel @Inject constructor(
 
     private fun loadStats() {
         viewModelScope.launch {
-            statsRepository.getStatsFlow().collect { stats ->
-                _uiState.value = _uiState.value.copy(
-                    availablePoints = stats.points,
-                    totalXp = stats.xp,
-                    level = stats.level
-                )
+            if (selectedCategoryId != null) {
+                // Load category-specific stats
+                val category = categoryRepository.getCategoryById(selectedCategoryId!!)
+                if (category != null) {
+                    _uiState.value = _uiState.value.copy(
+                        availablePoints = category.skillPoints,
+                        totalXp = category.totalXp.toLong(),
+                        level = category.currentLevel
+                    )
+                }
+            } else {
+                // Load general stats
+                statsRepository.getStatsFlow().collect { stats ->
+                    _uiState.value = _uiState.value.copy(
+                        availablePoints = stats.points,
+                        totalXp = stats.xp,
+                        level = stats.level
+                    )
+                }
             }
         }
     }

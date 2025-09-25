@@ -19,6 +19,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.questflow.data.AppInitializer
 import com.example.questflow.navigation.QuestFlowNavHost
+import androidx.activity.viewModels
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.collectAsState
+import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.ui.theme.QuestFlowTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -45,7 +49,19 @@ class MainActivity : ComponentActivity() {
         // Request calendar permissions if not already granted
         requestCalendarPermissionsIfNeeded()
         setContent {
-            QuestFlowTheme {
+            val appViewModel: AppViewModel = hiltViewModel()
+            val selectedCategory by appViewModel.selectedCategory.collectAsState()
+
+            // Create dynamic color scheme based on selected category
+            val categoryColor = selectedCategory?.color?.let { colorHex ->
+                try {
+                    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(colorHex))
+                } catch (e: Exception) {
+                    null
+                }
+            }
+
+            QuestFlowTheme(categoryColor = categoryColor) {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -102,7 +118,10 @@ class MainActivity : ComponentActivity() {
                             .padding(paddingValues),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        QuestFlowNavHost(navController = navController)
+                        QuestFlowNavHost(
+                            navController = navController,
+                            appViewModel = appViewModel
+                        )
                     }
                 }
             }
