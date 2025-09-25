@@ -14,5 +14,6 @@ data class CalendarEventLinkEntity(
     val endsAt: LocalDateTime,
     val xp: Int,
     val xpPercentage: Int = 60, // Default to medium difficulty
+    val categoryId: Long? = null, // Associated category
     val rewarded: Boolean = false
 )

@@ -17,6 +17,7 @@ data class TaskEntity(
     val xpOverride: Int? = null,
     val xpReward: Int = 10,
     val xpPercentage: Int = 40, // Store XP as percentage of level requirement (20, 40, 60, 80, 100)
+    val categoryId: Long? = null, // Associated category
     val calendarEventId: Long? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val completedAt: LocalDateTime? = null

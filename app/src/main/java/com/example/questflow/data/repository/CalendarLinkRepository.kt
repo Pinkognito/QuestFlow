@@ -15,7 +15,8 @@ class CalendarLinkRepository @Inject constructor(
         startsAt: LocalDateTime,
         endsAt: LocalDateTime,
         xp: Int,
-        xpPercentage: Int = 60
+        xpPercentage: Int = 60,
+        categoryId: Long? = null
     ): Long {
         return calendarEventLinkDao.insert(
             CalendarEventLinkEntity(
@@ -25,6 +26,7 @@ class CalendarLinkRepository @Inject constructor(
                 endsAt = endsAt,
                 xp = xp,
                 xpPercentage = xpPercentage,
+                categoryId = categoryId,
                 rewarded = false
             )
         )

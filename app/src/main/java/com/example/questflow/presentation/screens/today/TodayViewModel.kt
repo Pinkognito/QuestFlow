@@ -6,6 +6,8 @@ import com.example.questflow.data.calendar.CalendarManager
 import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CalendarLinkRepository
+import com.example.questflow.data.repository.CategoryRepository
+import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.domain.model.Priority
 import com.example.questflow.domain.model.Task
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
@@ -21,6 +23,7 @@ import javax.inject.Inject
 class TodayViewModel @Inject constructor(
     private val taskRepository: TaskRepository,
     private val statsRepository: StatsRepository,
+    private val categoryRepository: CategoryRepository,
     private val calendarManager: CalendarManager,
     private val calendarLinkRepository: CalendarLinkRepository,
     private val createCalendarLinkUseCase: CreateCalendarLinkUseCase,
@@ -34,10 +37,21 @@ class TodayViewModel @Inject constructor(
     private val _hasCalendarPermission = MutableStateFlow(false)
     val hasCalendarPermission: StateFlow<Boolean> = _hasCalendarPermission.asStateFlow()
 
+    private val _selectedCategory = MutableStateFlow<CategoryEntity?>(null)
+    val selectedCategory: StateFlow<CategoryEntity?> = _selectedCategory.asStateFlow()
+
+    val categories = categoryRepository.getActiveCategories()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     init {
         loadTasks()
         loadStats()
         checkCalendarPermission()
+        loadSelectedCategory()
     }
 
     private fun checkCalendarPermission() {
@@ -47,9 +61,25 @@ class TodayViewModel @Inject constructor(
     }
 
     fun getXpForPercentage(percentage: Int): String {
-        val currentLevel = _uiState.value.level
+        // Use category level if selected, otherwise general level
+        val currentLevel = _selectedCategory.value?.currentLevel ?: _uiState.value.level
         val xp = calculateXpRewardUseCase(percentage, currentLevel)
         return "$xp XP"
+    }
+
+    private fun loadSelectedCategory() {
+        viewModelScope.launch {
+            // Observe selected category from shared preferences or default
+            categoryRepository.getOrCreateDefaultCategory().let { defaultCategory ->
+                _selectedCategory.value = defaultCategory
+            }
+        }
+    }
+
+    fun selectCategory(category: CategoryEntity?) {
+        _selectedCategory.value = category
+        // Reload tasks for this category if needed
+        loadTasks()
     }
 
     private fun loadTasks() {
@@ -81,7 +111,8 @@ class TodayViewModel @Inject constructor(
             val task = Task(
                 title = title,
                 priority = Priority.MEDIUM,
-                xpReward = 10
+                xpReward = 10,
+                categoryId = _selectedCategory.value?.id
             )
             taskRepository.insertTask(task)
         }
@@ -92,7 +123,8 @@ class TodayViewModel @Inject constructor(
         description: String,
         xpPercentage: Int,
         dateTime: LocalDateTime,
-        addToCalendar: Boolean
+        addToCalendar: Boolean,
+        categoryId: Long? = null
     ) {
         if (title.isBlank()) return
 
@@ -100,20 +132,33 @@ class TodayViewModel @Inject constructor(
             // Check permission again before creating
             checkCalendarPermission()
 
-            // Get current level for XP calculation
-            val currentLevel = _uiState.value.level
+            // Get current level for XP calculation (from category or general)
+            val effectiveCategoryId = categoryId ?: _selectedCategory.value?.id
+            val currentLevel = if (effectiveCategoryId != null) {
+                categoryRepository.getCategoryById(effectiveCategoryId)?.currentLevel ?: 1
+            } else {
+                _uiState.value.level
+            }
             val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
 
             // Create calendar event if requested
             var calendarEventId: Long? = null
             if (addToCalendar && calendarManager.hasCalendarPermission()) {
+                val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
+                val eventTitle = if (category != null) {
+                    "${category.emoji} $title"
+                } else {
+                    "🎯 $title"
+                }
+
                 calendarEventId = calendarManager.createTaskEvent(
-                    taskTitle = title,
+                    taskTitle = eventTitle,
                     taskDescription = description,
                     startTime = dateTime,
                     endTime = dateTime.plusHours(1),
                     xpReward = xpReward,
-                    xpPercentage = xpPercentage
+                    xpPercentage = xpPercentage,
+                    categoryColor = category?.color
                 )
 
                 // Also create calendar link for XP tracking
@@ -124,7 +169,8 @@ class TodayViewModel @Inject constructor(
                         startsAt = dateTime,
                         endsAt = dateTime.plusHours(1),
                         xp = xpReward,
-                        xpPercentage = xpPercentage
+                        xpPercentage = xpPercentage,
+                        categoryId = effectiveCategoryId
                     )
                 }
             }
@@ -147,6 +193,7 @@ class TodayViewModel @Inject constructor(
                 dueDate = dateTime,
                 xpReward = xpReward,
                 xpPercentage = xpPercentage,
+                categoryId = effectiveCategoryId,
                 calendarEventId = calendarEventId
             )
 
@@ -165,7 +212,8 @@ class TodayViewModel @Inject constructor(
                         xpAmount = result.xpGranted ?: 0,
                         leveledUp = result.leveledUp,
                         newLevel = result.newLevel ?: 0,
-                        unlockedMemes = result.unlockedMemes
+                        unlockedMemes = result.unlockedMemes,
+                        categoryName = result.categoryName
                     )
                 )
             } else {
@@ -193,5 +241,6 @@ data class XpAnimationData(
     val xpAmount: Int,
     val leveledUp: Boolean,
     val newLevel: Int,
-    val unlockedMemes: List<String> = emptyList()
+    val unlockedMemes: List<String> = emptyList(),
+    val categoryName: String? = null
 )

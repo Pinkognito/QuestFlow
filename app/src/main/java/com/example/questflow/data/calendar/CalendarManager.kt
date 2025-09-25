@@ -100,7 +100,8 @@ class CalendarManager @Inject constructor(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
         xpReward: Int,
-        xpPercentage: Int = 60
+        xpPercentage: Int = 60,
+        categoryColor: String? = null
     ): Long? = withContext(Dispatchers.IO) {
         if (!hasCalendarPermission()) return@withContext null
 
@@ -109,11 +110,20 @@ class CalendarManager @Inject constructor(
         val values = ContentValues().apply {
             put(CalendarContract.Events.DTSTART, startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             put(CalendarContract.Events.DTEND, endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
-            put(CalendarContract.Events.TITLE, "🎯 $taskTitle")
+            put(CalendarContract.Events.TITLE, taskTitle) // Title already includes emoji from ViewModel
             put(CalendarContract.Events.DESCRIPTION, "$taskDescription\n\n🎮 XP Reward: $xpReward")
             put(CalendarContract.Events.CALENDAR_ID, calendarId)
             put(CalendarContract.Events.EVENT_TIMEZONE, ZoneId.systemDefault().id)
             put(CalendarContract.Events.HAS_ALARM, 1)
+            // Set event color if category color is provided
+            categoryColor?.let {
+                try {
+                    val color = android.graphics.Color.parseColor(it)
+                    put(CalendarContract.Events.EVENT_COLOR, color)
+                } catch (e: Exception) {
+                    // Invalid color format, ignore
+                }
+            }
         }
 
         val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
@@ -168,7 +178,7 @@ class CalendarManager @Inject constructor(
                 events.add(
                     CalendarEvent(
                         id = id,
-                        title = title.removePrefix("🎯 "),
+                        title = title, // Keep emoji prefix from category
                         description = description,
                         startTime = LocalDateTime.ofInstant(
                             java.time.Instant.ofEpochMilli(startMillis),

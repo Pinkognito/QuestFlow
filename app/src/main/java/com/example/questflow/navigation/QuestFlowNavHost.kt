@@ -8,6 +8,7 @@ import com.example.questflow.presentation.screens.today.TodayScreen
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
 import com.example.questflow.presentation.screens.collection.MemeCollectionScreen
 import com.example.questflow.presentation.screens.skilltree.SkillTreeScreen
+import com.example.questflow.presentation.screens.categories.CategoriesScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -28,6 +29,11 @@ fun QuestFlowNavHost(
         }
         composable("skill_tree") {
             SkillTreeScreen()
+        }
+        composable("categories") {
+            CategoriesScreen(
+                onBackClick = { navController.navigateUp() }
+            )
         }
     }
 }

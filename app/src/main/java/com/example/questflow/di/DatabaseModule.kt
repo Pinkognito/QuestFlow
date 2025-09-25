@@ -9,6 +9,7 @@ import com.example.questflow.data.database.migration.MIGRATION_1_2
 import com.example.questflow.data.database.migration.MIGRATION_2_3
 import com.example.questflow.data.database.migration.MIGRATION_3_4
 import com.example.questflow.data.database.migration.MIGRATION_4_5
+import com.example.questflow.data.database.migration.MIGRATION_5_6
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,7 +31,7 @@ object DatabaseModule {
             QuestFlowDatabase::class.java,
             QuestFlowDatabase.DATABASE_NAME
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .build()
     }
 
@@ -62,5 +63,10 @@ object DatabaseModule {
     @Provides
     fun provideSkillDao(database: QuestFlowDatabase): SkillDao {
         return database.skillDao()
+    }
+
+    @Provides
+    fun provideCategoryDao(database: QuestFlowDatabase): CategoryDao {
+        return database.categoryDao()
     }
 }

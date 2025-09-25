@@ -4,13 +4,17 @@ import com.example.questflow.data.database.entity.XpSource
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
+import com.example.questflow.data.repository.CategoryRepository
+import com.example.questflow.domain.usecase.category.GrantCategoryXpUseCase
 import javax.inject.Inject
 
 class RecordCalendarXpUseCase @Inject constructor(
     private val calendarLinkRepository: CalendarLinkRepository,
     private val taskRepository: TaskRepository,
     private val statsRepository: StatsRepository,
+    private val categoryRepository: CategoryRepository,
     private val grantXpUseCase: GrantXpUseCase,
+    private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase
 ) {
     suspend operator fun invoke(linkId: Long): RecordCalendarXpResult {
@@ -24,9 +28,15 @@ class RecordCalendarXpUseCase @Inject constructor(
         // Mark as rewarded
         calendarLinkRepository.markAsRewarded(linkId)
 
-        // Get current level for XP calculation
-        val currentStats = statsRepository.getOrCreateStats()
-        val currentLevel = currentStats.level
+        // Determine which level to use for XP calculation
+        val (currentLevel, categoryName) = if (link.categoryId != null) {
+            val category = categoryRepository.getCategoryById(link.categoryId)
+                ?: categoryRepository.getOrCreateDefaultCategory()
+            category.currentLevel to category.name
+        } else {
+            val currentStats = statsRepository.getOrCreateStats()
+            currentStats.level to null
+        }
 
         // Calculate XP amount based on percentage and current level
         val xpAmount = calculateXpRewardUseCase(link.xpPercentage, currentLevel)
@@ -34,8 +44,21 @@ class RecordCalendarXpUseCase @Inject constructor(
         // Debug logging
         android.util.Log.d("RecordCalendarXp", "Link XP: ${link.xp}, Percentage: ${link.xpPercentage}%, Level: $currentLevel, Calculated XP: $xpAmount")
 
-        // Grant XP
-        val xpResult = grantXpUseCase(xpAmount, XpSource.CALENDAR, link.calendarEventId)
+        // Grant XP to category or general stats
+        val (xpResult, categoryXpResult) = if (link.categoryId != null) {
+            // Grant to category
+            val catResult = grantCategoryXpUseCase(
+                categoryId = link.categoryId,
+                baseXpAmount = xpAmount,
+                source = "CALENDAR",
+                sourceId = link.calendarEventId
+            )
+            null to catResult
+        } else {
+            // Grant to general stats
+            val genResult = grantXpUseCase(xpAmount, XpSource.CALENDAR, link.calendarEventId)
+            genResult to null
+        }
 
         // Also complete any task associated with this calendar event
         val taskWithCalendarEvent = taskRepository.getTaskByCalendarEventId(link.calendarEventId)
@@ -47,10 +70,11 @@ class RecordCalendarXpUseCase @Inject constructor(
 
         return RecordCalendarXpResult(
             success = true,
-            xpGranted = xpResult.xpGranted,
-            leveledUp = xpResult.levelsGained > 0,
-            newLevel = xpResult.newLevel,
-            unlockedMemes = xpResult.unlockedMemes
+            xpGranted = xpResult?.xpGranted ?: categoryXpResult?.xpGranted,
+            leveledUp = (xpResult?.levelsGained ?: categoryXpResult?.levelsGained ?: 0) > 0,
+            newLevel = xpResult?.newLevel ?: categoryXpResult?.newLevel,
+            unlockedMemes = xpResult?.unlockedMemes ?: emptyList(),
+            categoryName = categoryName
         )
     }
 }
@@ -61,5 +85,6 @@ data class RecordCalendarXpResult(
     val xpGranted: Int? = null,
     val leveledUp: Boolean = false,
     val newLevel: Int? = null,
-    val unlockedMemes: List<String> = emptyList()
+    val unlockedMemes: List<String> = emptyList(),
+    val categoryName: String? = null
 )

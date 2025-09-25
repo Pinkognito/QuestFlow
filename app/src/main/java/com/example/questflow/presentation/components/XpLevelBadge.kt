@@ -15,11 +15,25 @@ import com.example.questflow.domain.usecase.LevelCurve
 @Composable
 fun XpLevelBadge(
     level: Int,
-    currentXp: Long,
-    modifier: Modifier = Modifier
+    xp: Long = 0,
+    currentXp: Long = 0,
+    modifier: Modifier = Modifier,
+    isCategory: Boolean = false
 ) {
-    val nextLevelXp = LevelCurve.requiredXp(level + 1)
-    val progress = LevelCurve.getProgressToNextLevel(currentXp, level)
+    val actualXp = if (xp > 0) xp else currentXp
+    val nextLevelXp = if (isCategory) {
+        ((level + 1) * (level + 1) * 100).toLong()
+    } else {
+        LevelCurve.requiredXp(level + 1)
+    }
+    val progress = if (isCategory) {
+        val currentLevelXp = (level * level * 100).toLong()
+        val xpInCurrentLevel = actualXp - currentLevelXp
+        val xpNeededForLevel = nextLevelXp - currentLevelXp
+        (xpInCurrentLevel.toFloat() / xpNeededForLevel.toFloat()).coerceIn(0f, 1f)
+    } else {
+        LevelCurve.getProgressToNextLevel(actualXp, level)
+    }
 
     Card(
         modifier = modifier,
@@ -47,7 +61,7 @@ fun XpLevelBadge(
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
                 )
                 Text(
-                    text = "$currentXp/${nextLevelXp} XP",
+                    text = "$actualXp/${nextLevelXp} XP",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )

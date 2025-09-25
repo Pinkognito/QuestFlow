@@ -3,12 +3,16 @@ package com.example.questflow.presentation.screens.today
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.clip
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.ui.platform.LocalContext
@@ -18,10 +22,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.questflow.presentation.components.XpLevelBadge
 import com.example.questflow.presentation.components.XpBurstAnimation
+import com.example.questflow.presentation.components.CategoryDropdown
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,23 +36,49 @@ fun TodayScreen(
     viewModel: TodayViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var taskToComplete by remember { mutableStateOf<com.example.questflow.domain.model.Task?>(null) }
-    val currentLevel by remember { derivedStateOf { uiState.level } }
+    val currentLevel by remember { derivedStateOf {
+        selectedCategory?.currentLevel ?: uiState.level
+    } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    XpLevelBadge(
-                        level = uiState.level,
-                        currentXp = uiState.totalXp,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        CategoryDropdown(
+                            selectedCategory = selectedCategory,
+                            categories = categories,
+                            onCategorySelected = viewModel::selectCategory,
+                            onManageCategoriesClick = {
+                                navController.navigate("categories")
+                            },
+                            modifier = Modifier.weight(0.4f)
+                        )
+                        XpLevelBadge(
+                            level = selectedCategory?.currentLevel ?: uiState.level,
+                            xp = selectedCategory?.totalXp?.toLong() ?: uiState.totalXp,
+                            modifier = Modifier.weight(0.6f),
+                            isCategory = selectedCategory != null
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    containerColor = selectedCategory?.let { category ->
+                        try {
+                            Color(android.graphics.Color.parseColor(category.color)).copy(alpha = 0.2f)
+                        } catch (e: Exception) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        }
+                    } ?: MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
@@ -248,6 +280,9 @@ fun AddTaskDialog(
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
     var addToCalendar by remember { mutableStateOf(true) } // Default to true
     val hasCalendarPermission by viewModel.hasCalendarPermission.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    var taskCategory by remember(selectedCategory) { mutableStateOf(selectedCategory) }
 
     // Date and time state
     val currentDateTime = remember { java.time.LocalDateTime.now() }
@@ -290,6 +325,84 @@ fun AddTaskDialog(
                             maxLines = 3,
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+
+                    // Category Selection
+                    item {
+                        Text("Kategorie:", style = MaterialTheme.typography.labelMedium)
+                    }
+
+                    item {
+                        var categoryExpanded by remember { mutableStateOf(false) }
+
+                        OutlinedTextField(
+                            value = taskCategory?.name ?: "Allgemein",
+                            onValueChange = { },
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { categoryExpanded = !categoryExpanded }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = {
+                                taskCategory?.let { cat ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                try {
+                                                    Color(android.graphics.Color.parseColor(cat.color))
+                                                } catch (e: Exception) {
+                                                    MaterialTheme.colorScheme.primary
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = cat.emoji,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        )
+
+                        DropdownMenu(
+                            expanded = categoryExpanded,
+                            onDismissRequest = { categoryExpanded = false }
+                        ) {
+                            categories.forEach { category ->
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    try {
+                                                        Color(android.graphics.Color.parseColor(category.color))
+                                                    } catch (e: Exception) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = category.emoji,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    },
+                                    text = { Text(category.name) },
+                                    onClick = {
+                                        taskCategory = category
+                                        categoryExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     // Difficulty Selection with 5 levels
@@ -483,7 +596,8 @@ fun AddTaskDialog(
                             description = taskDescription,
                             xpPercentage = selectedPercentage,
                             dateTime = dateTime,
-                            addToCalendar = addToCalendar
+                            addToCalendar = addToCalendar,
+                            categoryId = taskCategory?.id
                         )
                         onDismiss()
                     }
