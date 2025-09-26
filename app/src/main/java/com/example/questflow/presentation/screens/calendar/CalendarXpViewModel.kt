@@ -156,7 +156,7 @@ class CalendarXpViewModel @Inject constructor(
         loadCalendarEvents()
     }
 
-    fun claimXp(linkId: Long) {
+    fun claimXp(linkId: Long, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
             val result = recordCalendarXpUseCase(linkId)
             if (result.success) {
@@ -168,6 +168,8 @@ class CalendarXpViewModel @Inject constructor(
                         newLevel = result.newLevel ?: 0
                     )
                 )
+                // Trigger refresh callback
+                onSuccess?.invoke()
             } else {
                 _uiState.value = _uiState.value.copy(notification = result.message)
             }

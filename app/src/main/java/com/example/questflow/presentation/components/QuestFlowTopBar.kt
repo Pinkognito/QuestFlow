@@ -7,6 +7,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.example.questflow.data.database.entity.CategoryEntity
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,7 +21,9 @@ fun QuestFlowTopBar(
     totalXp: Long,
     modifier: Modifier = Modifier,
     navigationIcon: @Composable (() -> Unit)? = null,
-    actions: @Composable (RowScope.() -> Unit) = {}
+    actions: @Composable (RowScope.() -> Unit) = {},
+    previousXp: Long = totalXp,
+    onLevelUp: ((Int) -> Unit)? = null
 ) {
     TopAppBar(
         modifier = modifier,
@@ -39,12 +42,19 @@ fun QuestFlowTopBar(
                     modifier = Modifier.weight(0.4f)
                 )
 
-                // XP Badge on the right
-                XpLevelBadge(
+                // Animated XP Badge on the right
+                AnimatedXpLevelBadge(
                     level = selectedCategory?.currentLevel ?: level,
                     xp = selectedCategory?.totalXp?.toLong() ?: totalXp,
+                    previousXp = if (selectedCategory != null) {
+                        selectedCategory.totalXp.toLong()
+                    } else {
+                        previousXp
+                    },
                     modifier = Modifier.weight(0.6f),
-                    isCategory = selectedCategory != null
+                    isCategory = selectedCategory != null,
+                    onLevelUp = onLevelUp,
+                    categoryId = selectedCategory?.id
                 )
             }
         },

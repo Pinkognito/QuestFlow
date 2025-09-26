@@ -20,6 +20,9 @@ class CategoryRepository @Inject constructor(
     fun observeCategoryById(categoryId: Long): Flow<CategoryEntity?> =
         categoryDao.observeCategoryById(categoryId)
 
+    fun getCategoryFlow(categoryId: Long): Flow<CategoryEntity?> =
+        categoryDao.observeCategoryById(categoryId)
+
     suspend fun getCategoryById(categoryId: Long): CategoryEntity? =
         categoryDao.getCategoryById(categoryId)
 

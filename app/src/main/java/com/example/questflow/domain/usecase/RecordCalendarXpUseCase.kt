@@ -41,8 +41,9 @@ class RecordCalendarXpUseCase @Inject constructor(
         // Calculate XP amount based on percentage and current level
         val xpAmount = calculateXpRewardUseCase(link.xpPercentage, currentLevel)
 
-        // Debug logging
-        android.util.Log.d("RecordCalendarXp", "Link XP: ${link.xp}, Percentage: ${link.xpPercentage}%, Level: $currentLevel, Calculated XP: $xpAmount")
+        // Debug logging with more details
+        val xpNeeded = ((currentLevel + 1) * (currentLevel + 1) * 100) - (currentLevel * currentLevel * 100)
+        android.util.Log.d("RecordCalendarXp", "Level: $currentLevel, XP for next level: $xpNeeded, Percentage: ${link.xpPercentage}%, Calculated XP: $xpAmount")
 
         // Grant XP to category or general stats
         val (xpResult, categoryXpResult) = if (link.categoryId != null) {

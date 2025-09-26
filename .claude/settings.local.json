@@ -4,7 +4,8 @@
       "Bash(adb logcat:*)",
       "Bash(cd:*)",
       "Bash(./gradlew.bat:*)",
-      "Bash(adb install:*)"
+      "Bash(adb install:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

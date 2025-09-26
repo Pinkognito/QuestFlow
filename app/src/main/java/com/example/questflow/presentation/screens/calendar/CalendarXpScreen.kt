@@ -40,6 +40,16 @@ fun CalendarXpScreen(
     val filterSettings by viewModel.filterSettings.collectAsState()
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
 
+    // Track previous XP for animation
+    var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
+    LaunchedEffect(globalStats?.xp) {
+        globalStats?.xp?.let { currentXp ->
+            if (currentXp != previousXp) {
+                previousXp = currentXp
+            }
+        }
+    }
+
     // Sync category with viewmodel
     LaunchedEffect(selectedCategory) {
         viewModel.updateSelectedCategory(selectedCategory?.id)
@@ -58,6 +68,7 @@ fun CalendarXpScreen(
                     },
                     level = globalStats?.level ?: 1,
                     totalXp = globalStats?.xp ?: 0,
+                    previousXp = previousXp,
                     actions = {
                         IconButton(onClick = { viewModel.toggleFilterDialog() }) {
                             Badge(
@@ -135,7 +146,12 @@ fun CalendarXpScreen(
                             },
                             trailingContent = {
                                 Button(
-                                    onClick = { viewModel.claimXp(link.id) },
+                                    onClick = {
+                                        viewModel.claimXp(link.id) {
+                                            // Refresh stats after claiming
+                                            appViewModel.refreshStats()
+                                        }
+                                    },
                                     enabled = !link.rewarded
                                 ) {
                                     Text(

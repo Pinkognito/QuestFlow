@@ -21,18 +21,29 @@ fun XpLevelBadge(
     isCategory: Boolean = false
 ) {
     val actualXp = if (xp > 0) xp else currentXp
+
+    // Calculate XP thresholds for current and next level
+    val currentLevelXp = if (isCategory) {
+        (level * level * 100).toLong()
+    } else {
+        LevelCurve.requiredXp(level)
+    }
+
     val nextLevelXp = if (isCategory) {
         ((level + 1) * (level + 1) * 100).toLong()
     } else {
         LevelCurve.requiredXp(level + 1)
     }
-    val progress = if (isCategory) {
-        val currentLevelXp = (level * level * 100).toLong()
-        val xpInCurrentLevel = actualXp - currentLevelXp
-        val xpNeededForLevel = nextLevelXp - currentLevelXp
+
+    // Calculate XP within current level (classic RPG style)
+    val xpInCurrentLevel = actualXp - currentLevelXp
+    val xpNeededForLevel = nextLevelXp - currentLevelXp
+
+    // Progress within current level
+    val progress = if (xpNeededForLevel > 0) {
         (xpInCurrentLevel.toFloat() / xpNeededForLevel.toFloat()).coerceIn(0f, 1f)
     } else {
-        LevelCurve.getProgressToNextLevel(actualXp, level)
+        0f
     }
 
     Card(
@@ -61,7 +72,7 @@ fun XpLevelBadge(
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
                 )
                 Text(
-                    text = "$actualXp/${nextLevelXp} XP",
+                    text = "${xpInCurrentLevel}/${xpNeededForLevel} XP",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
