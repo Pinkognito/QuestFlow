@@ -24,14 +24,25 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.ui.theme.QuestFlowTheme
+import com.example.questflow.domain.manager.SyncManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var appInitializer: AppInitializer
+
+    @Inject
+    lateinit var syncManager: SyncManager
 
     private val calendarPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -45,6 +56,14 @@ class MainActivity : ComponentActivity() {
 
         // Initialize app data
         appInitializer.initialize()
+
+        // Start sync manager
+        lifecycleScope.launch {
+            // Initial sync on app start
+            syncManager.performSync(forceFullCheck = false)
+            // Start periodic sync
+            syncManager.startPeriodicSync()
+        }
 
         // Request calendar permissions if not already granted
         requestCalendarPermissionsIfNeeded()
@@ -65,6 +84,9 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+
+                // Observe sync state
+                val isSyncing by syncManager.isSyncing.collectAsState()
 
                 Scaffold(
                     bottomBar = {
@@ -112,20 +134,46 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { paddingValues ->
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(paddingValues),
-                        color = MaterialTheme.colorScheme.background
+                            .padding(paddingValues)
                     ) {
-                        QuestFlowNavHost(
-                            navController = navController,
-                            appViewModel = appViewModel
-                        )
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            QuestFlowNavHost(
+                                navController = navController,
+                                appViewModel = appViewModel
+                            )
+                        }
+
+                        // Sync indicator in bottom left corner
+                        if (isSyncing) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(16.dp)
+                                    .size(24.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.fillMaxSize(),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        syncManager.stopPeriodicSync()
+        syncManager.onDestroy()
     }
 
     private fun requestCalendarPermissionsIfNeeded() {
@@ -142,4 +190,5 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+
 }

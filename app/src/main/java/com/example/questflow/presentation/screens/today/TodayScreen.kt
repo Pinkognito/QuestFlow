@@ -1,5 +1,10 @@
 package com.example.questflow.presentation.screens.today
 
+import com.example.questflow.presentation.components.RecurringConfigDialog
+import com.example.questflow.presentation.components.RecurringConfig
+import com.example.questflow.presentation.components.RecurringMode
+import com.example.questflow.presentation.components.TriggerMode
+import com.example.questflow.presentation.components.getRecurringSummary
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
@@ -267,8 +273,10 @@ fun AddTaskDialog(
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
     var addToCalendar by remember { mutableStateOf(true) } // Default to true
     var deleteOnClaim by remember { mutableStateOf(isCalendarMode) } // Default true for calendar mode
+    var deleteOnExpiry by remember { mutableStateOf(false) } // Delete on expiry
     var isRecurring by remember { mutableStateOf(false) }
-    var recurringHours by remember { mutableStateOf("24") }
+    var recurringConfig by remember { mutableStateOf(RecurringConfig()) }
+    var showRecurringDialog by remember { mutableStateOf(false) }
     val hasCalendarPermission by viewModel.hasCalendarPermission.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -579,6 +587,29 @@ fun AddTaskDialog(
                                         )
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = deleteOnExpiry,
+                                        onCheckedChange = { deleteOnExpiry = it }
+                                    )
+                                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                                        Text(
+                                            "Nach Ablauf löschen",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            "Kalendereintrag wird automatisch entfernt wenn abgelaufen",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
 
                             // Recurring task option
@@ -605,20 +636,21 @@ fun AddTaskDialog(
                                 }
                             }
 
-                            // Recurring interval if enabled
+                            // Recurring configuration button
                             if (isRecurring) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = recurringHours,
-                                    onValueChange = {
-                                        if (it.all { char -> char.isDigit() }) {
-                                            recurringHours = it
-                                        }
-                                    },
-                                    label = { Text("Wiederholung alle X Stunden") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
+                                OutlinedButton(
+                                    onClick = { showRecurringDialog = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(getRecurringButtonText(recurringConfig))
+                                }
                             }
                         } else {
                             Card(
@@ -655,8 +687,9 @@ fun AddTaskDialog(
                             addToCalendar = addToCalendar,
                             categoryId = taskCategory?.id,
                             deleteOnClaim = deleteOnClaim,
+                            deleteOnExpiry = deleteOnExpiry,
                             isRecurring = isRecurring,
-                            recurringInterval = if (isRecurring) (recurringHours.toIntOrNull() ?: 24) * 60 else null
+                            recurringConfig = if (isRecurring) recurringConfig else null
                         )
                         onDismiss()
                     }
@@ -671,4 +704,21 @@ fun AddTaskDialog(
             }
         }
     )
+
+    // Show recurring configuration dialog
+    if (showRecurringDialog) {
+        RecurringConfigDialog(
+            initialConfig = recurringConfig,
+            onDismiss = { showRecurringDialog = false },
+            onConfirm = { config ->
+                recurringConfig = config
+                showRecurringDialog = false
+            }
+        )
+    }
+}
+
+// Helper function to get button text for recurring configuration - now uses the shared function
+private fun getRecurringButtonText(config: RecurringConfig): String {
+    return getRecurringSummary(config)
 }

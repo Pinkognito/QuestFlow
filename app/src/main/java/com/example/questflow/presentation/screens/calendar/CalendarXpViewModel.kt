@@ -14,6 +14,7 @@ import com.example.questflow.data.preferences.CalendarFilterPreferences
 import com.example.questflow.data.preferences.CalendarFilterSettings
 import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.domain.usecase.RecordCalendarXpUseCase
+import com.example.questflow.domain.usecase.CheckExpiredEventsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -30,7 +31,8 @@ class CalendarXpViewModel @Inject constructor(
     private val statsRepository: StatsRepository,
     private val categoryRepository: CategoryRepository,
     private val filterPreferences: CalendarFilterPreferences,
-    private val taskRepository: TaskRepository
+    private val taskRepository: TaskRepository,
+    private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase
 ) : ViewModel() {
 
     private var selectedCategoryId: Long? = null
@@ -93,6 +95,13 @@ class CalendarXpViewModel @Inject constructor(
 
     fun loadCalendarLinks() {
         viewModelScope.launch {
+            // Check for expired events first
+            try {
+                checkExpiredEventsUseCase()
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Failed to check expired events", e)
+            }
+
             calendarLinkRepository.getAllLinks().collect { allLinks ->
                 val filteredLinks = filterLinks(allLinks)
                 _uiState.value = _uiState.value.copy(links = filteredLinks)
@@ -103,13 +112,31 @@ class CalendarXpViewModel @Inject constructor(
     private fun filterLinks(links: List<CalendarEventLinkEntity>): List<CalendarEventLinkEntity> {
         var filtered = links
 
-        // Filter by completion status
+        // First check for expired events
+        val now = LocalDateTime.now()
+        filtered = filtered.map { link ->
+            if (link.status != "EXPIRED" && link.status != "CLAIMED" && link.endsAt < now) {
+                // Mark as expired if time has passed
+                link.copy(status = "EXPIRED")
+            } else if (link.rewarded && link.status != "CLAIMED") {
+                // Mark as claimed if rewarded
+                link.copy(status = "CLAIMED")
+            } else {
+                link
+            }
+        }
+
+        // Filter by status
         filtered = filtered.filter { link ->
-            when {
-                _uiState.value.showCompleted && _uiState.value.showOpen -> true
-                _uiState.value.showCompleted -> link.rewarded
-                _uiState.value.showOpen -> !link.rewarded
-                else -> false
+            val showOpen = filterSettings.value.showOpen
+            val showCompleted = filterSettings.value.showCompleted
+            val showExpired = filterSettings.value.showExpired
+
+            when (link.status) {
+                "PENDING" -> showOpen
+                "CLAIMED" -> showCompleted
+                "EXPIRED" -> showExpired
+                else -> showOpen
             }
         }
 
@@ -119,7 +146,6 @@ class CalendarXpViewModel @Inject constructor(
         }
 
         // Filter by date
-        val now = LocalDateTime.now()
         filtered = when (_uiState.value.dateFilterType) {
             DateFilterType.TODAY -> {
                 filtered.filter { link ->

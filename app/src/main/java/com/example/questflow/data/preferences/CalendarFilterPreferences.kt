@@ -16,13 +16,14 @@ enum class DateFilterType {
 data class CalendarFilterSettings(
     val showCompleted: Boolean = true,
     val showOpen: Boolean = true,
+    val showExpired: Boolean = false,  // Filter for expired events
     val filterByCategory: Boolean = false,
     val dateFilterType: DateFilterType = DateFilterType.ALL,
     val customRangeStart: Long = 0,
     val customRangeEnd: Long = 0
 ) {
     fun isActive(): Boolean {
-        return !showCompleted || !showOpen || filterByCategory || dateFilterType != DateFilterType.ALL
+        return !showCompleted || !showOpen || showExpired || filterByCategory || dateFilterType != DateFilterType.ALL
     }
 }
 

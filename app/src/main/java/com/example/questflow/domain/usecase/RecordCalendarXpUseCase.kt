@@ -27,8 +27,13 @@ class RecordCalendarXpUseCase @Inject constructor(
             return RecordCalendarXpResult(success = false, message = "XP already claimed for this event")
         }
 
-        // Mark as rewarded
-        calendarLinkRepository.markAsRewarded(linkId)
+        // Allow claiming even if expired
+        // This enables users to still get XP from expired events
+
+        // Mark as rewarded and update status to CLAIMED
+        calendarLinkRepository.updateLink(
+            link.copy(rewarded = true, status = "CLAIMED")
+        )
 
         // Delete calendar event if deleteOnClaim flag is set
         if (link.deleteOnClaim) {

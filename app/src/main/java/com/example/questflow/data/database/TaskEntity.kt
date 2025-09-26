@@ -28,6 +28,7 @@ data class TaskEntity(
     val recurringDays: String? = null, // JSON array of weekdays for WEEKLY
     val lastCompletedAt: LocalDateTime? = null,
     val nextDueDate: LocalDateTime? = null,
+    val triggerMode: String? = null, // FIXED_INTERVAL, AFTER_COMPLETION, AFTER_EXPIRY
     // Task editing fields
     val isEditable: Boolean = true,
     val parentTaskId: Long? = null // Reference to parent recurring task

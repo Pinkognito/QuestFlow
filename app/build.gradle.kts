@@ -84,7 +84,10 @@ dependencies {
     
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
-    
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     

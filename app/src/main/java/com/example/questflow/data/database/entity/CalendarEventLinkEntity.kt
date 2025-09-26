@@ -17,5 +17,15 @@ data class CalendarEventLinkEntity(
     val categoryId: Long? = null, // Associated category
     val rewarded: Boolean = false,
     val deleteOnClaim: Boolean = false, // Delete calendar event when XP is claimed
-    val taskId: Long? = null // Link to associated task for editing
+    val taskId: Long? = null, // Link to associated task for editing
+    val status: String = "PENDING", // PENDING, CLAIMED, EXPIRED
+    val isRecurring: Boolean = false,
+    val recurringTaskId: Long? = null,
+    val deleteOnExpiry: Boolean = false // Delete calendar event when it expires
 )
+
+enum class EventStatus {
+    PENDING,   // Event is waiting to be claimed
+    CLAIMED,   // XP has been claimed
+    EXPIRED    // Event has expired and cannot be claimed
+}

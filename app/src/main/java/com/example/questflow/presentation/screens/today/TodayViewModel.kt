@@ -138,8 +138,9 @@ class TodayViewModel @Inject constructor(
         addToCalendar: Boolean,
         categoryId: Long? = null,
         deleteOnClaim: Boolean = false,
+        deleteOnExpiry: Boolean = false,
         isRecurring: Boolean = false,
-        recurringInterval: Int? = null
+        recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null
     ) {
         if (title.isBlank()) return
 
@@ -186,7 +187,8 @@ class TodayViewModel @Inject constructor(
                         xp = xpReward,
                         xpPercentage = xpPercentage,
                         categoryId = effectiveCategoryId,
-                        deleteOnClaim = deleteOnClaim  // Pass the new parameter
+                        deleteOnClaim = deleteOnClaim,  // Pass the new parameter
+                        deleteOnExpiry = deleteOnExpiry
                     )
                 }
             }
@@ -201,6 +203,31 @@ class TodayViewModel @Inject constructor(
                 else -> Priority.MEDIUM
             }
 
+            // Convert RecurringConfig to task parameters
+            val recurringType = recurringConfig?.let {
+                when (it.mode) {
+                    com.example.questflow.presentation.components.RecurringMode.DAILY -> "DAILY"
+                    com.example.questflow.presentation.components.RecurringMode.WEEKLY -> "WEEKLY"
+                    com.example.questflow.presentation.components.RecurringMode.MONTHLY -> "MONTHLY"
+                    com.example.questflow.presentation.components.RecurringMode.CUSTOM -> "CUSTOM"
+                }
+            }
+
+            val recurringInterval = recurringConfig?.let {
+                when (it.mode) {
+                    com.example.questflow.presentation.components.RecurringMode.DAILY -> it.dailyInterval * 24 * 60
+                    com.example.questflow.presentation.components.RecurringMode.WEEKLY -> 7 * 24 * 60 // Weekly uses days field instead
+                    com.example.questflow.presentation.components.RecurringMode.MONTHLY -> it.monthlyDay * 24 * 60
+                    com.example.questflow.presentation.components.RecurringMode.CUSTOM -> it.customHours * 60 + it.customMinutes
+                }
+            }
+
+            val recurringDays = recurringConfig?.let {
+                if (it.mode == com.example.questflow.presentation.components.RecurringMode.WEEKLY) {
+                    it.weeklyDays.map { day -> day.value }.joinToString(",")
+                } else null
+            }
+
             // Create task with calendar event ID and percentage
             val task = Task(
                 title = title,
@@ -212,8 +239,10 @@ class TodayViewModel @Inject constructor(
                 categoryId = effectiveCategoryId,
                 calendarEventId = calendarEventId,
                 isRecurring = isRecurring,
-                recurringType = if (isRecurring) "CUSTOM" else null,
-                recurringInterval = recurringInterval
+                recurringType = recurringType,
+                recurringInterval = recurringInterval,
+                recurringDays = recurringDays,
+                triggerMode = recurringConfig?.triggerMode?.name
             )
 
             taskRepository.insertTask(task)

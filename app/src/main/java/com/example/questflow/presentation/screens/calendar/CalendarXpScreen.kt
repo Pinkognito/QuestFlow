@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.unit.sp
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,17 +131,40 @@ fun CalendarXpScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                if (link.taskId != null) {
+                                if (link.taskId != null && link.status != "EXPIRED") {
                                     selectedEditLink = link
                                 }
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = when (link.status) {
+                                "EXPIRED" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                                "CLAIMED" -> MaterialTheme.colorScheme.surfaceVariant
+                                else -> MaterialTheme.colorScheme.surface
                             }
+                        )
                     ) {
                         ListItem(
                             headlineContent = {
-                                Text(
-                                    link.title,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        link.title,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (link.status == "EXPIRED")
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        else
+                                            MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (link.status == "EXPIRED") {
+                                        Badge(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        ) {
+                                            Text("Abgelaufen", fontSize = 10.sp)
+                                        }
+                                    }
+                                }
                             },
                             supportingContent = {
                                 Column {
@@ -159,23 +183,42 @@ fun CalendarXpScreen(
                                     Text(
                                         "Schwierigkeit: $difficultyText",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = if (link.status == "EXPIRED")
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        else
+                                            MaterialTheme.colorScheme.primary
                                     )
                                 }
                             },
                             trailingContent = {
-                                Button(
-                                    onClick = {
-                                        viewModel.claimXp(link.id) {
-                                            // Refresh stats after claiming
-                                            appViewModel.refreshStats()
+                                when (link.status) {
+                                    "EXPIRED" -> {
+                                        Text(
+                                            "Abgelaufen",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                    "CLAIMED" -> {
+                                        Text(
+                                            "Erhalten",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                    else -> {
+                                        Button(
+                                            onClick = {
+                                                viewModel.claimXp(link.id) {
+                                                    // Refresh stats after claiming
+                                                    appViewModel.refreshStats()
+                                                }
+                                            },
+                                            enabled = !link.rewarded
+                                        ) {
+                                            Text("Claim XP")
                                         }
-                                    },
-                                    enabled = !link.rewarded
-                                ) {
-                                    Text(
-                                        if (link.rewarded) "Claimed" else "Claim XP"
-                                    )
+                                    }
                                 }
                             }
                         )
@@ -253,6 +296,7 @@ fun CalendarFilterDialog(
 ) {
     var showCompleted by remember { mutableStateOf(filterSettings.showCompleted) }
     var showOpen by remember { mutableStateOf(filterSettings.showOpen) }
+    var showExpired by remember { mutableStateOf(filterSettings.showExpired) }
     var filterByCategory by remember { mutableStateOf(filterSettings.filterByCategory) }
     var dateFilterType by remember { mutableStateOf(filterSettings.dateFilterType) }
 
@@ -275,18 +319,26 @@ fun CalendarFilterDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
+                        selected = showOpen,
+                        onClick = { showOpen = !showOpen },
+                        label = { Text("Offen") },
+                        leadingIcon = if (showOpen) {
+                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        } else null
+                    )
+                    FilterChip(
                         selected = showCompleted,
                         onClick = { showCompleted = !showCompleted },
-                        label = { Text("Claimed") },
+                        label = { Text("Erhalten") },
                         leadingIcon = if (showCompleted) {
                             { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                         } else null
                     )
                     FilterChip(
-                        selected = showOpen,
-                        onClick = { showOpen = !showOpen },
-                        label = { Text("Unclaimed") },
-                        leadingIcon = if (showOpen) {
+                        selected = showExpired,
+                        onClick = { showExpired = !showExpired },
+                        label = { Text("Abgelaufen") },
+                        leadingIcon = if (showExpired) {
                             { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                         } else null
                     )
@@ -361,6 +413,7 @@ fun CalendarFilterDialog(
                         filterSettings.copy(
                             showCompleted = showCompleted,
                             showOpen = showOpen,
+                            showExpired = showExpired,
                             filterByCategory = filterByCategory,
                             dateFilterType = dateFilterType
                         )
