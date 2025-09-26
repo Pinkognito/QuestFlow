@@ -16,7 +16,9 @@ class CalendarLinkRepository @Inject constructor(
         endsAt: LocalDateTime,
         xp: Int,
         xpPercentage: Int = 60,
-        categoryId: Long? = null
+        categoryId: Long? = null,
+        deleteOnClaim: Boolean = false,
+        taskId: Long? = null
     ): Long {
         return calendarEventLinkDao.insert(
             CalendarEventLinkEntity(
@@ -27,7 +29,9 @@ class CalendarLinkRepository @Inject constructor(
                 xp = xp,
                 xpPercentage = xpPercentage,
                 categoryId = categoryId,
-                rewarded = false
+                rewarded = false,
+                deleteOnClaim = deleteOnClaim,
+                taskId = taskId
             )
         )
     }
@@ -46,5 +50,13 @@ class CalendarLinkRepository @Inject constructor(
 
     suspend fun getLinkById(linkId: Long): CalendarEventLinkEntity? {
         return calendarEventLinkDao.getLinkById(linkId)
+    }
+
+    suspend fun insertLink(link: CalendarEventLinkEntity): Long {
+        return calendarEventLinkDao.insert(link)
+    }
+
+    suspend fun updateLink(link: CalendarEventLinkEntity) {
+        calendarEventLinkDao.update(link)
     }
 }

@@ -20,4 +20,7 @@ interface CalendarEventLinkDao {
 
     @Query("SELECT * FROM calendar_event_links WHERE id = :linkId")
     suspend fun getLinkById(linkId: Long): CalendarEventLinkEntity?
+
+    @Update
+    suspend fun update(link: CalendarEventLinkEntity)
 }

@@ -15,5 +15,7 @@ data class CalendarEventLinkEntity(
     val xp: Int,
     val xpPercentage: Int = 60, // Default to medium difficulty
     val categoryId: Long? = null, // Associated category
-    val rewarded: Boolean = false
+    val rewarded: Boolean = false,
+    val deleteOnClaim: Boolean = false, // Delete calendar event when XP is claimed
+    val taskId: Long? = null // Link to associated task for editing
 )

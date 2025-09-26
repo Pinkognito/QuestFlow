@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.questflow.data.calendar.CalendarEvent
 import com.example.questflow.data.calendar.CalendarManager
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.repository.CalendarLinkRepository
+import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.preferences.CalendarFilterPreferences
@@ -27,7 +29,8 @@ class CalendarXpViewModel @Inject constructor(
     private val calendarManager: CalendarManager,
     private val statsRepository: StatsRepository,
     private val categoryRepository: CategoryRepository,
-    private val filterPreferences: CalendarFilterPreferences
+    private val filterPreferences: CalendarFilterPreferences,
+    private val taskRepository: TaskRepository
 ) : ViewModel() {
 
     private var selectedCategoryId: Long? = null
@@ -88,7 +91,7 @@ class CalendarXpViewModel @Inject constructor(
         }
     }
 
-    private fun loadCalendarLinks() {
+    fun loadCalendarLinks() {
         viewModelScope.launch {
             calendarLinkRepository.getAllLinks().collect { allLinks ->
                 val filteredLinks = filterLinks(allLinks)
@@ -178,6 +181,129 @@ class CalendarXpViewModel @Inject constructor(
 
     fun clearXpAnimation() {
         _uiState.value = _uiState.value.copy(xpAnimationData = null)
+    }
+
+    fun createCalendarTask(
+        title: String,
+        description: String = "",
+        dueDate: LocalDateTime,
+        xpPercentage: Int,
+        deleteOnClaim: Boolean,
+        isRecurring: Boolean = false,
+        recurringInterval: Int? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                // Create task in database
+                val task = TaskEntity(
+                    title = title,
+                    description = description,
+                    dueDate = dueDate,
+                    xpReward = 10,
+                    xpPercentage = xpPercentage,
+                    categoryId = selectedCategoryId,
+                    isRecurring = isRecurring,
+                    recurringType = if (isRecurring) "CUSTOM" else null,
+                    recurringInterval = recurringInterval,
+                    nextDueDate = if (isRecurring) dueDate else null
+                )
+
+                val taskId = taskRepository.insertTaskEntity(task)
+
+                // Create calendar event
+                val eventId = calendarManager.createTaskEvent(
+                    taskTitle = title,
+                    taskDescription = description,
+                    startTime = dueDate,
+                    endTime = dueDate.plusHours(1),
+                    xpReward = 10
+                )
+
+                eventId?.let {
+                    // Create calendar link
+                    val link = CalendarEventLinkEntity(
+                        calendarEventId = it,
+                        title = title,
+                        startsAt = dueDate,
+                        endsAt = dueDate.plusHours(1),
+                        xp = 0,
+                        xpPercentage = xpPercentage,
+                        categoryId = selectedCategoryId,
+                        rewarded = false,
+                        deleteOnClaim = deleteOnClaim,
+                        taskId = taskId
+                    )
+                    calendarLinkRepository.insertLink(link)
+
+                    // Update task with calendar event ID
+                    taskRepository.updateTaskEntity(
+                        task.copy(id = taskId, calendarEventId = it)
+                    )
+                }
+
+                // Refresh calendar events
+                loadCalendarEvents()
+                loadCalendarLinks()
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Failed to create task: ${e.message}")
+            }
+        }
+    }
+
+    fun updateCalendarTask(
+        linkId: Long,
+        title: String,
+        dueDate: LocalDateTime,
+        xpPercentage: Int,
+        deleteOnClaim: Boolean,
+        reactivate: Boolean = false
+    ) {
+        viewModelScope.launch {
+            try {
+                val link = calendarLinkRepository.getLinkById(linkId) ?: return@launch
+
+                // Update calendar event
+                calendarManager.updateTaskEvent(
+                    eventId = link.calendarEventId,
+                    taskTitle = title,
+                    taskDescription = "",
+                    startTime = dueDate,
+                    endTime = dueDate.plusHours(1)
+                )
+
+                // Update link
+                val updatedLink = link.copy(
+                    title = title,
+                    startsAt = dueDate,
+                    endsAt = dueDate.plusHours(1),
+                    xpPercentage = xpPercentage,
+                    deleteOnClaim = deleteOnClaim,
+                    rewarded = if (reactivate) false else link.rewarded
+                )
+                calendarLinkRepository.updateLink(updatedLink)
+
+                // Update associated task if exists
+                link.taskId?.let { taskId ->
+                    val task = taskRepository.getTaskEntityById(taskId)
+                    task?.let {
+                        taskRepository.updateTaskEntity(
+                            it.copy(
+                                title = title,
+                                dueDate = dueDate,
+                                xpPercentage = xpPercentage,
+                                isCompleted = if (reactivate) false else it.isCompleted
+                            )
+                        )
+                    }
+                }
+
+                // Refresh
+                loadCalendarEvents()
+                loadCalendarLinks()
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Failed to update task: ${e.message}")
+            }
+        }
     }
 }
 

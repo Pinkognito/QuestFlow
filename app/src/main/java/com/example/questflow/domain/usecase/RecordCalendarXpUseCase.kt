@@ -6,6 +6,7 @@ import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.domain.usecase.category.GrantCategoryXpUseCase
+import com.example.questflow.data.calendar.CalendarManager
 import javax.inject.Inject
 
 class RecordCalendarXpUseCase @Inject constructor(
@@ -15,7 +16,8 @@ class RecordCalendarXpUseCase @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val grantXpUseCase: GrantXpUseCase,
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
-    private val calculateXpRewardUseCase: CalculateXpRewardUseCase
+    private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
+    private val calendarManager: CalendarManager
 ) {
     suspend operator fun invoke(linkId: Long): RecordCalendarXpResult {
         val link = calendarLinkRepository.getLinkById(linkId)
@@ -27,6 +29,16 @@ class RecordCalendarXpUseCase @Inject constructor(
 
         // Mark as rewarded
         calendarLinkRepository.markAsRewarded(linkId)
+
+        // Delete calendar event if deleteOnClaim flag is set
+        if (link.deleteOnClaim) {
+            try {
+                calendarManager.deleteCalendarEvent(link.calendarEventId)
+                android.util.Log.d("RecordCalendarXp", "Deleted calendar event ${link.calendarEventId} after claiming XP")
+            } catch (e: Exception) {
+                android.util.Log.e("RecordCalendarXp", "Failed to delete calendar event: ${e.message}")
+            }
+        }
 
         // Determine which level to use for XP calculation
         val (currentLevel, categoryName) = if (link.categoryId != null) {

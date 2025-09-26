@@ -40,6 +40,15 @@ class TaskRepository @Inject constructor(
     
     suspend fun toggleTaskCompletion(taskId: Long, isCompleted: Boolean) =
         taskDao.updateTaskCompletion(taskId, isCompleted)
+
+    suspend fun insertTaskEntity(task: TaskEntity): Long =
+        taskDao.insertTask(task)
+
+    suspend fun updateTaskEntity(task: TaskEntity) =
+        taskDao.updateTask(task)
+
+    suspend fun getTaskEntityById(id: Long): TaskEntity? =
+        taskDao.getTaskById(id)
 }
 
 private fun TaskEntity.toDomainModel() = Task(
@@ -54,7 +63,15 @@ private fun TaskEntity.toDomainModel() = Task(
     categoryId = categoryId,
     calendarEventId = calendarEventId,
     createdAt = createdAt,
-    completedAt = completedAt
+    completedAt = completedAt,
+    isRecurring = isRecurring,
+    recurringType = recurringType,
+    recurringInterval = recurringInterval,
+    recurringDays = recurringDays,
+    lastCompletedAt = lastCompletedAt,
+    nextDueDate = nextDueDate,
+    isEditable = isEditable,
+    parentTaskId = parentTaskId
 )
 
 private fun Task.toEntity() = TaskEntity(
@@ -71,5 +88,13 @@ private fun Task.toEntity() = TaskEntity(
     categoryId = categoryId,
     calendarEventId = calendarEventId,
     createdAt = createdAt,
-    completedAt = completedAt
+    completedAt = completedAt,
+    isRecurring = isRecurring,
+    recurringType = recurringType,
+    recurringInterval = recurringInterval,
+    recurringDays = recurringDays,
+    lastCompletedAt = lastCompletedAt,
+    nextDueDate = nextDueDate,
+    isEditable = isEditable,
+    parentTaskId = parentTaskId
 )

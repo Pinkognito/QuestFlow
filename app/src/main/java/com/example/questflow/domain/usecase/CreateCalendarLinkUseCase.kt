@@ -14,7 +14,9 @@ class CreateCalendarLinkUseCase @Inject constructor(
         endsAt: LocalDateTime,
         xp: Int,
         xpPercentage: Int = 60,
-        categoryId: Long? = null
+        categoryId: Long? = null,
+        deleteOnClaim: Boolean = false,
+        taskId: Long? = null
     ): Long {
         return calendarLinkRepository.createLink(
             calendarEventId = calendarEventId,
@@ -23,7 +25,9 @@ class CreateCalendarLinkUseCase @Inject constructor(
             endsAt = endsAt,
             xp = xp,
             xpPercentage = xpPercentage,
-            categoryId = categoryId
+            categoryId = categoryId,
+            deleteOnClaim = deleteOnClaim,
+            taskId = taskId
         )
     }
 }

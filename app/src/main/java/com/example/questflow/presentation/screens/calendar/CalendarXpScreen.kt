@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
+import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,13 +25,16 @@ import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.AppViewModel
 import androidx.navigation.NavController
 import java.time.format.DateTimeFormatter
+import com.example.questflow.presentation.screens.today.TodayViewModel
+import com.example.questflow.presentation.screens.today.AddTaskDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarXpScreen(
     appViewModel: AppViewModel,
     navController: NavController,
-    viewModel: CalendarXpViewModel = hiltViewModel()
+    viewModel: CalendarXpViewModel = hiltViewModel(),
+    todayViewModel: TodayViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
@@ -39,6 +43,8 @@ fun CalendarXpScreen(
     val showFilterDialog by viewModel.showFilterDialog.collectAsState()
     val filterSettings by viewModel.filterSettings.collectAsState()
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
+    var showAddTaskDialog by remember { mutableStateOf(false) }
+    var selectedEditLink by remember { mutableStateOf<CalendarEventLinkEntity?>(null) }
 
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
@@ -57,6 +63,13 @@ fun CalendarXpScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showAddTaskDialog = true }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Task")
+                }
+            },
             topBar = {
                 QuestFlowTopBar(
                     title = "Calendar XP",
@@ -114,7 +127,13 @@ fun CalendarXpScreen(
             ) {
                 items(uiState.links) { link ->
                     Card(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (link.taskId != null) {
+                                    selectedEditLink = link
+                                }
+                            }
                     ) {
                         ListItem(
                             headlineContent = {
@@ -202,6 +221,27 @@ fun CalendarXpScreen(
             )
         }
     }
+
+    // Add Task Dialog using the unified Today dialog
+    if (showAddTaskDialog) {
+        // Sync category with Today ViewModel
+        LaunchedEffect(selectedCategory) {
+            todayViewModel.syncSelectedCategory(selectedCategory)
+        }
+
+        AddTaskDialog(
+            viewModel = todayViewModel,
+            onDismiss = {
+                showAddTaskDialog = false
+                // Refresh calendar links after creating
+                viewModel.loadCalendarLinks()
+            },
+            isCalendarMode = true  // Enable calendar-specific features
+        )
+    }
+
+    // Edit Task Dialog - temporarily disabled until we create a unified solution
+    // TODO: Create unified edit dialog that can handle both regular tasks and calendar links
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

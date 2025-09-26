@@ -61,6 +61,13 @@ class CompleteTaskUseCase @Inject constructor(
             genResult to null
         }
 
+        // Process recurring task if applicable - temporarily disabled
+        /*
+        if (task.isRecurring) {
+            processRecurringTasksUseCase(taskId)
+        }
+        */
+
         return CompleteTaskResult(
             success = true,
             xpGranted = xpResult?.xpGranted ?: categoryXpResult?.xpGranted,

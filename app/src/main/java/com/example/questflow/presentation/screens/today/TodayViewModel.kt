@@ -136,7 +136,10 @@ class TodayViewModel @Inject constructor(
         xpPercentage: Int,
         dateTime: LocalDateTime,
         addToCalendar: Boolean,
-        categoryId: Long? = null
+        categoryId: Long? = null,
+        deleteOnClaim: Boolean = false,
+        isRecurring: Boolean = false,
+        recurringInterval: Int? = null
     ) {
         if (title.isBlank()) return
 
@@ -182,7 +185,8 @@ class TodayViewModel @Inject constructor(
                         endsAt = dateTime.plusHours(1),
                         xp = xpReward,
                         xpPercentage = xpPercentage,
-                        categoryId = effectiveCategoryId
+                        categoryId = effectiveCategoryId,
+                        deleteOnClaim = deleteOnClaim  // Pass the new parameter
                     )
                 }
             }
@@ -206,7 +210,10 @@ class TodayViewModel @Inject constructor(
                 xpReward = xpReward,
                 xpPercentage = xpPercentage,
                 categoryId = effectiveCategoryId,
-                calendarEventId = calendarEventId
+                calendarEventId = calendarEventId,
+                isRecurring = isRecurring,
+                recurringType = if (isRecurring) "CUSTOM" else null,
+                recurringInterval = recurringInterval
             )
 
             taskRepository.insertTask(task)

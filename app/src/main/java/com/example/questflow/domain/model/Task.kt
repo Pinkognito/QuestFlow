@@ -14,7 +14,16 @@ data class Task(
     val categoryId: Long? = null,
     val calendarEventId: Long? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
-    val completedAt: LocalDateTime? = null
+    val completedAt: LocalDateTime? = null,
+    // Recurring task fields
+    val isRecurring: Boolean = false,
+    val recurringType: String? = null,
+    val recurringInterval: Int? = null,
+    val recurringDays: String? = null,
+    val lastCompletedAt: LocalDateTime? = null,
+    val nextDueDate: LocalDateTime? = null,
+    val isEditable: Boolean = true,
+    val parentTaskId: Long? = null
 )
 
 enum class Priority {

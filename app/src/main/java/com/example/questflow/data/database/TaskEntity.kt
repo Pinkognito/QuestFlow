@@ -20,7 +20,17 @@ data class TaskEntity(
     val categoryId: Long? = null, // Associated category
     val calendarEventId: Long? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
-    val completedAt: LocalDateTime? = null
+    val completedAt: LocalDateTime? = null,
+    // Recurring task fields
+    val isRecurring: Boolean = false,
+    val recurringType: String? = null, // DAILY, WEEKLY, MONTHLY, CUSTOM
+    val recurringInterval: Int? = null, // Minutes for CUSTOM
+    val recurringDays: String? = null, // JSON array of weekdays for WEEKLY
+    val lastCompletedAt: LocalDateTime? = null,
+    val nextDueDate: LocalDateTime? = null,
+    // Task editing fields
+    val isEditable: Boolean = true,
+    val parentTaskId: Long? = null // Reference to parent recurring task
 )
 
 enum class TaskDifficulty {
@@ -29,4 +39,11 @@ enum class TaskDifficulty {
     MEDIUM,     // 60% of level XP requirement
     HARD,       // 80% of level XP requirement
     EPIC        // 100% of level XP requirement
+}
+
+enum class RecurringType {
+    DAILY,      // Every X days
+    WEEKLY,     // Specific weekdays
+    MONTHLY,    // Every X months on specific day
+    CUSTOM      // Every X minutes/hours
 }

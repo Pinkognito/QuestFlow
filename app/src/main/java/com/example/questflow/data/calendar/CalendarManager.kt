@@ -203,6 +203,32 @@ class CalendarManager @Inject constructor(
         val rows = context.contentResolver.delete(uri, null, null)
         rows > 0
     }
+
+    suspend fun deleteCalendarEvent(eventId: Long): Boolean = deleteEvent(eventId)
+
+    suspend fun updateTaskEvent(
+        eventId: Long,
+        taskTitle: String,
+        taskDescription: String,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime = startTime.plusHours(1)
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!hasCalendarPermission()) return@withContext false
+
+        val startMillis = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endMillis = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val values = ContentValues().apply {
+            put(CalendarContract.Events.TITLE, taskTitle)
+            put(CalendarContract.Events.DESCRIPTION, taskDescription)
+            put(CalendarContract.Events.DTSTART, startMillis)
+            put(CalendarContract.Events.DTEND, endMillis)
+        }
+
+        val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
+        val rows = context.contentResolver.update(uri, values, null, null)
+        rows > 0
+    }
 }
 
 data class CalendarEvent(

@@ -258,13 +258,17 @@ fun TaskItem(
 @Composable
 fun AddTaskDialog(
     viewModel: TodayViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isCalendarMode: Boolean = false  // Add parameter to distinguish context
 ) {
     val context = LocalContext.current
     var taskTitle by remember { mutableStateOf("") }
     var taskDescription by remember { mutableStateOf("") }
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
     var addToCalendar by remember { mutableStateOf(true) } // Default to true
+    var deleteOnClaim by remember { mutableStateOf(isCalendarMode) } // Default true for calendar mode
+    var isRecurring by remember { mutableStateOf(false) }
+    var recurringHours by remember { mutableStateOf("24") }
     val hasCalendarPermission by viewModel.hasCalendarPermission.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -550,6 +554,72 @@ fun AddTaskDialog(
                                     )
                                 }
                             }
+
+                            // Show deleteOnClaim option if calendar is enabled
+                            if (addToCalendar) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = deleteOnClaim,
+                                        onCheckedChange = { deleteOnClaim = it }
+                                    )
+                                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                                        Text(
+                                            "Nach XP-Claim löschen",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            "Kalendereintrag wird nach XP-Erhalt entfernt",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Recurring task option
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isRecurring,
+                                    onCheckedChange = { isRecurring = it }
+                                )
+                                Column(modifier = Modifier.padding(start = 8.dp)) {
+                                    Text(
+                                        "Wiederkehrende Aufgabe",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        "Aufgabe wiederholt sich automatisch",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Recurring interval if enabled
+                            if (isRecurring) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = recurringHours,
+                                    onValueChange = {
+                                        if (it.all { char -> char.isDigit() }) {
+                                            recurringHours = it
+                                        }
+                                    },
+                                    label = { Text("Wiederholung alle X Stunden") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                            }
                         } else {
                             Card(
                                 colors = CardDefaults.cardColors(
@@ -583,7 +653,10 @@ fun AddTaskDialog(
                             xpPercentage = selectedPercentage,
                             dateTime = dateTime,
                             addToCalendar = addToCalendar,
-                            categoryId = taskCategory?.id
+                            categoryId = taskCategory?.id,
+                            deleteOnClaim = deleteOnClaim,
+                            isRecurring = isRecurring,
+                            recurringInterval = if (isRecurring) (recurringHours.toIntOrNull() ?: 24) * 60 else null
                         )
                         onDismiss()
                     }
