@@ -157,25 +157,40 @@ class TodayViewModel @Inject constructor(
             }
             val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
 
-            // Create calendar event if requested (but delay link creation until after task)
+            // Check if the task is already expired
+            val isExpired = dateTime.plusHours(1) <= LocalDateTime.now()
+
+            android.util.Log.d("TodayViewModel", "Creating task: $title")
+            android.util.Log.d("TodayViewModel", "  DateTime: $dateTime, IsExpired: $isExpired")
+            android.util.Log.d("TodayViewModel", "  DeleteOnExpiry: $deleteOnExpiry, AddToCalendar: $addToCalendar")
+
+            // Create calendar event if requested - BUT NOT if it's expired and should be deleted on expiry!
             var calendarEventId: Long? = null
             if (addToCalendar && calendarManager.hasCalendarPermission()) {
-                val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
-                val eventTitle = if (category != null) {
-                    "${category.emoji} $title"
+                // Don't create calendar event if it's already expired and deleteOnExpiry is true
+                if (isExpired && deleteOnExpiry) {
+                    android.util.Log.d("TodayViewModel", "NOT creating calendar event - already expired with deleteOnExpiry=true")
+                    // We still need to create a placeholder ID for the link
+                    calendarEventId = -1L // Will be stored but event not actually created
                 } else {
-                    "🎯 $title"
-                }
+                    val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
+                    val eventTitle = if (category != null) {
+                        "${category.emoji} $title"
+                    } else {
+                        "🎯 $title"
+                    }
 
-                calendarEventId = calendarManager.createTaskEvent(
-                    taskTitle = eventTitle,
-                    taskDescription = description,
-                    startTime = dateTime,
-                    endTime = dateTime.plusHours(1),
-                    xpReward = xpReward,
-                    xpPercentage = xpPercentage,
-                    categoryColor = category?.color
-                )
+                    android.util.Log.d("TodayViewModel", "Creating calendar event for task")
+                    calendarEventId = calendarManager.createTaskEvent(
+                        taskTitle = eventTitle,
+                        taskDescription = description,
+                        startTime = dateTime,
+                        endTime = dateTime.plusHours(1),
+                        xpReward = xpReward,
+                        xpPercentage = xpPercentage,
+                        categoryColor = category?.color
+                    )
+                }
             }
 
             // Map percentage to Priority enum for visual distinction
@@ -233,8 +248,10 @@ class TodayViewModel @Inject constructor(
             val taskId = taskRepository.insertTask(task)
 
             // Now create calendar link with taskId for XP tracking
-            if (addToCalendar && calendarEventId != null) {
-                createCalendarLinkUseCase(
+            if (addToCalendar && calendarEventId != null && calendarEventId != -1L) {
+                android.util.Log.d("TodayViewModel", "Creating calendar link for task")
+
+                val linkId = createCalendarLinkUseCase(
                     calendarEventId = calendarEventId,
                     title = title,
                     startsAt = dateTime,
@@ -246,6 +263,31 @@ class TodayViewModel @Inject constructor(
                     deleteOnExpiry = deleteOnExpiry,
                     taskId = taskId
                 )
+
+                // If task is already expired, immediately update the link status
+                if (isExpired) {
+                    android.util.Log.d("TodayViewModel", "Task is expired, updating link status to EXPIRED")
+                    calendarLinkRepository.updateLinkStatus(linkId, "EXPIRED")
+                }
+            } else if (addToCalendar && calendarEventId == -1L) {
+                // Still create the link for expired events, but with no real calendar event
+                android.util.Log.d("TodayViewModel", "Creating calendar link for expired task (no actual calendar event)")
+
+                val linkId = createCalendarLinkUseCase(
+                    calendarEventId = System.currentTimeMillis(), // Fake ID
+                    title = title,
+                    startsAt = dateTime,
+                    endsAt = dateTime.plusHours(1),
+                    xp = xpReward,
+                    xpPercentage = xpPercentage,
+                    categoryId = effectiveCategoryId,
+                    deleteOnClaim = deleteOnClaim,
+                    deleteOnExpiry = deleteOnExpiry,
+                    taskId = taskId
+                )
+
+                // Mark as expired immediately
+                calendarLinkRepository.updateLinkStatus(linkId, "EXPIRED")
             }
         }
     }
@@ -330,9 +372,23 @@ class TodayViewModel @Inject constructor(
                 )
                 taskRepository.updateTask(updatedTask)
 
+                // Check if the task is now expired
+                val now = LocalDateTime.now()
+                val isExpiredNow = dateTime.plusHours(1) <= now
+
                 // Get the calendar link to update
                 val existingLink = calendarLinkRepository.getLinkById(linkId)
                 if (existingLink != null) {
+                    // Determine the correct status
+                    val newStatus = when {
+                        shouldReactivate -> "PENDING"
+                        isExpiredNow && !existingLink.rewarded -> "EXPIRED"
+                        !isExpiredNow -> "PENDING"  // If not expired anymore, set to PENDING
+                        else -> existingLink.status
+                    }
+
+                    android.util.Log.d("TodayViewModel", "Updating calendar link - newStatus: $newStatus, isExpiredNow: $isExpiredNow")
+
                     val updatedLink = existingLink.copy(
                         title = title,
                         xpPercentage = xpPercentage,
@@ -342,29 +398,118 @@ class TodayViewModel @Inject constructor(
                         deleteOnClaim = deleteOnClaim,
                         deleteOnExpiry = deleteOnExpiry,
                         isRecurring = isRecurring,
-                        // Reset status and rewarded flag if reactivating
-                        status = if (shouldReactivate) "PENDING" else existingLink.status,
+                        status = newStatus,
                         rewarded = if (shouldReactivate) false else existingLink.rewarded
                     )
                     calendarLinkRepository.updateLink(updatedLink)
                 }
 
-                // Update the calendar event if it exists
-                if (calendarEventId != null && calendarManager.hasCalendarPermission()) {
-                    val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                    val eventTitle = if (category != null) {
-                        "${category.emoji} $title"
-                    } else {
-                        "🎯 $title"
-                    }
+                // Handle calendar event - DELETE, CREATE, or UPDATE based on conditions
+                if (calendarManager.hasCalendarPermission()) {
+                    val wasExpired = existingLink?.let {
+                        it.endsAt <= now
+                    } ?: false
 
-                    calendarManager.updateTaskEvent(
-                        eventId = calendarEventId,
-                        taskTitle = eventTitle,
-                        taskDescription = description,
-                        startTime = dateTime,
-                        endTime = dateTime.plusHours(1)
-                    )
+                    android.util.Log.e("TodayViewModel", "=== CALENDAR EVENT HANDLING IN updateCalendarTask ===")
+                    android.util.Log.e("TodayViewModel", "  Task: $title")
+                    android.util.Log.e("TodayViewModel", "  DateTime: $dateTime")
+                    android.util.Log.e("TodayViewModel", "  IsExpiredNow: $isExpiredNow")
+                    android.util.Log.e("TodayViewModel", "  WasExpired: $wasExpired")
+                    android.util.Log.e("TodayViewModel", "  DeleteOnExpiry: $deleteOnExpiry")
+                    android.util.Log.e("TodayViewModel", "  CalendarEventId: $calendarEventId")
+                    android.util.Log.e("TodayViewModel", "  ExistingLink deleteOnExpiry: ${existingLink?.deleteOnExpiry}")
+
+                    when {
+                        // Case 1: Event is expired and deleteOnExpiry is ON -> DELETE
+                        isExpiredNow && deleteOnExpiry -> {
+                            android.util.Log.e("TodayViewModel", "  >>> CASE 1: DELETING - expired with deleteOnExpiry=true <<<")
+                            if (calendarEventId != null) {
+                                try {
+                                    val deleted = calendarManager.deleteCalendarEvent(calendarEventId)
+                                    android.util.Log.e("TodayViewModel", "  Delete result: $deleted")
+                                } catch (e: Exception) {
+                                    android.util.Log.e("TodayViewModel", "  Failed to delete calendar event", e)
+                                }
+                            }
+                        }
+
+                        // Case 2: Was expired/deleted but now is in future OR deleteOnExpiry turned OFF -> CREATE NEW
+                        (wasExpired && !isExpiredNow) ||
+                        (isExpiredNow && !deleteOnExpiry && existingLink?.deleteOnExpiry == true) ||
+                        (calendarEventId == null && !isExpiredNow) -> {
+                            android.util.Log.e("TodayViewModel", "  >>> CASE 2: CREATING NEW - needs calendar event <<<")
+                            val category = categoryId?.let { categoryRepository.getCategoryById(it) }
+                            val eventTitle = if (category != null) {
+                                "${category.emoji} $title"
+                            } else {
+                                "🎯 $title"
+                            }
+
+                            try {
+                                // Calculate XP for the new event
+                                val currentLevel = if (categoryId != null) {
+                                    categoryRepository.getCategoryById(categoryId)?.currentLevel ?: 1
+                                } else {
+                                    _uiState.value.level
+                                }
+                                val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
+
+                                val newEventId = calendarManager.createTaskEvent(
+                                    taskTitle = eventTitle,
+                                    taskDescription = description,
+                                    startTime = dateTime,
+                                    endTime = dateTime.plusHours(1),
+                                    xpReward = xpReward,
+                                    xpPercentage = xpPercentage,
+                                    categoryColor = category?.color
+                                )
+
+                                if (newEventId != null) {
+                                    // Update the task with the new calendar event ID
+                                    val taskToUpdate = taskRepository.getTaskById(taskId)
+                                    taskToUpdate?.let {
+                                        taskRepository.updateTask(it.copy(calendarEventId = newEventId))
+                                    }
+
+                                    // Update the link with the new calendar event ID
+                                    existingLink?.let {
+                                        calendarLinkRepository.updateLink(it.copy(calendarEventId = newEventId))
+                                    }
+
+                                    android.util.Log.e("TodayViewModel", "  Created new calendar event with ID: $newEventId")
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("TodayViewModel", "  Failed to create calendar event", e)
+                            }
+                        }
+
+                        // Case 3: Regular update (not expired, has event, no special conditions)
+                        calendarEventId != null && !isExpiredNow -> {
+                            android.util.Log.e("TodayViewModel", "  >>> CASE 3: UPDATING existing event <<<")
+                            val category = categoryId?.let { categoryRepository.getCategoryById(it) }
+                            val eventTitle = if (category != null) {
+                                "${category.emoji} $title"
+                            } else {
+                                "🎯 $title"
+                            }
+
+                            try {
+                                calendarManager.updateTaskEvent(
+                                    eventId = calendarEventId,
+                                    taskTitle = eventTitle,
+                                    taskDescription = description,
+                                    startTime = dateTime,
+                                    endTime = dateTime.plusHours(1)
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("TodayViewModel", "  Failed to update calendar event", e)
+                            }
+                        }
+
+                        else -> {
+                            android.util.Log.e("TodayViewModel", "  >>> NO ACTION NEEDED <<<")
+                        }
+                    }
                 }
 
                 // Reload tasks to reflect changes
@@ -394,6 +539,8 @@ class TodayViewModel @Inject constructor(
             } else {
                 // Uncomplete task
                 taskRepository.toggleTaskCompletion(taskId, false)
+                // Also unclaim any associated calendar events
+                calendarLinkRepository.unclaimByTaskId(taskId)
             }
         }
     }

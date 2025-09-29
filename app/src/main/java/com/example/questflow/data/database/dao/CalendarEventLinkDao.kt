@@ -23,4 +23,7 @@ interface CalendarEventLinkDao {
 
     @Update
     suspend fun update(link: CalendarEventLinkEntity)
+
+    @Query("UPDATE calendar_event_links SET rewarded = 0, status = 'PENDING' WHERE taskId = :taskId")
+    suspend fun unclaimByTaskId(taskId: Long)
 }

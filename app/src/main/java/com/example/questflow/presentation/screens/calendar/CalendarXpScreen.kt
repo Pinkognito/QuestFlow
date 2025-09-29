@@ -559,7 +559,7 @@ fun EditCalendarTaskDialog(
                         ) {
                             OutlinedButton(
                                 onClick = {
-                                    DatePickerDialog(
+                                    val picker = DatePickerDialog(
                                         context,
                                         { _, year, month, dayOfMonth ->
                                             selectedYear = year
@@ -569,7 +569,11 @@ fun EditCalendarTaskDialog(
                                         selectedYear,
                                         selectedMonth - 1,
                                         selectedDay
-                                    ).show()
+                                    )
+                                    // Explicitly remove any date restrictions
+                                    picker.datePicker.minDate = 0
+                                    picker.datePicker.maxDate = Long.MAX_VALUE
+                                    picker.show()
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {

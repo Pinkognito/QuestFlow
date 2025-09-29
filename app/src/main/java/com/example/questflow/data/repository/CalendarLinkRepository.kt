@@ -81,4 +81,15 @@ class CalendarLinkRepository @Inject constructor(
         )
         calendarEventLinkDao.update(updatedLink)
     }
+
+    suspend fun unclaimByTaskId(taskId: Long) {
+        calendarEventLinkDao.unclaimByTaskId(taskId)
+    }
+
+    suspend fun updateLinkStatus(linkId: Long, status: String) {
+        val link = calendarEventLinkDao.getLinkById(linkId)
+        link?.let {
+            calendarEventLinkDao.update(it.copy(status = status))
+        }
+    }
 }

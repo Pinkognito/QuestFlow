@@ -196,11 +196,58 @@ class CalendarManager @Inject constructor(
         events
     }
 
+    suspend fun getCalendarEvent(eventId: Long): CalendarEvent? = withContext(Dispatchers.IO) {
+        if (!hasCalendarPermission()) return@withContext null
+
+        val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND
+        )
+
+        var event: CalendarEvent? = null
+        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(CalendarContract.Events._ID))
+                val title = cursor.getString(cursor.getColumnIndexOrThrow(CalendarContract.Events.TITLE)) ?: ""
+                val description = cursor.getString(cursor.getColumnIndexOrThrow(CalendarContract.Events.DESCRIPTION)) ?: ""
+                val startMillis = cursor.getLong(cursor.getColumnIndexOrThrow(CalendarContract.Events.DTSTART))
+                val endMillis = cursor.getLong(cursor.getColumnIndexOrThrow(CalendarContract.Events.DTEND))
+
+                event = CalendarEvent(
+                    id = id,
+                    title = title,
+                    description = description,
+                    startTime = LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(startMillis),
+                        ZoneId.systemDefault()
+                    ),
+                    endTime = LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(endMillis),
+                        ZoneId.systemDefault()
+                    )
+                )
+            }
+        }
+        event
+    }
+
     suspend fun deleteEvent(eventId: Long): Boolean = withContext(Dispatchers.IO) {
-        if (!hasCalendarPermission()) return@withContext false
+        android.util.Log.d("CalendarManager", "=== deleteEvent CALLED ===")
+        android.util.Log.d("CalendarManager", "  eventId to delete: $eventId")
+
+        if (!hasCalendarPermission()) {
+            android.util.Log.d("CalendarManager", "  NO PERMISSION - returning false")
+            return@withContext false
+        }
 
         val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
         val rows = context.contentResolver.delete(uri, null, null)
+        android.util.Log.d("CalendarManager", "  DELETE RESULT: $rows rows deleted")
+        android.util.Log.d("CalendarManager", "=== deleteEvent DONE ===")
         rows > 0
     }
 
@@ -213,7 +260,16 @@ class CalendarManager @Inject constructor(
         startTime: LocalDateTime,
         endTime: LocalDateTime = startTime.plusHours(1)
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!hasCalendarPermission()) return@withContext false
+        android.util.Log.d("CalendarManager", "=== updateTaskEvent CALLED ===")
+        android.util.Log.d("CalendarManager", "  eventId: $eventId")
+        android.util.Log.d("CalendarManager", "  title: $taskTitle")
+        android.util.Log.d("CalendarManager", "  startTime: $startTime")
+        android.util.Log.d("CalendarManager", "  endTime: $endTime")
+
+        if (!hasCalendarPermission()) {
+            android.util.Log.d("CalendarManager", "  NO PERMISSION - returning false")
+            return@withContext false
+        }
 
         val startMillis = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val endMillis = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -227,6 +283,8 @@ class CalendarManager @Inject constructor(
 
         val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
         val rows = context.contentResolver.update(uri, values, null, null)
+        android.util.Log.d("CalendarManager", "  UPDATE RESULT: $rows rows updated")
+        android.util.Log.d("CalendarManager", "=== updateTaskEvent DONE ===")
         rows > 0
     }
 }
