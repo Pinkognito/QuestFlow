@@ -16,6 +16,7 @@ import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.domain.usecase.RecordCalendarXpUseCase
 import com.example.questflow.domain.usecase.CheckExpiredEventsUseCase
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
+import com.example.questflow.domain.usecase.UpdateTaskWithCalendarUseCase
 import com.example.questflow.presentation.components.RecurringConfig
 import com.example.questflow.presentation.components.RecurringMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,8 +38,14 @@ class CalendarXpViewModel @Inject constructor(
     private val filterPreferences: CalendarFilterPreferences,
     private val taskRepository: TaskRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
-    private val calculateXpRewardUseCase: CalculateXpRewardUseCase
+    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase
 ) : ViewModel() {
+    // NOTE: calculateXpRewardUseCase entfernt - wird jetzt in UpdateTaskWithCalendarUseCase verwendet
+    // NOTE: calendarManager, statsRepository, categoryRepository, taskRepository still needed for:
+    // - loadCalendarEvents()
+    // - claimXp()
+    // - createCalendarTask()
+    // - checkExpiredEventsUseCase()
 
     private var selectedCategoryId: Long? = null
 
@@ -279,347 +286,52 @@ class CalendarXpViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Unified update method for calendar tasks.
+     * Works for both tasks with and without taskId (calendar-only events).
+     * Uses the central UpdateTaskWithCalendarUseCase for consistency.
+     */
     fun updateCalendarTask(
         linkId: Long,
-        taskId: Long,
+        taskId: Long?,
         title: String,
         description: String,
         xpPercentage: Int,
         dateTime: LocalDateTime,
         categoryId: Long?,
-        calendarEventId: Long,
         shouldReactivate: Boolean = false,
+        addToCalendar: Boolean = true,
         deleteOnClaim: Boolean = false,
         deleteOnExpiry: Boolean = false,
         isRecurring: Boolean = false,
         recurringConfig: RecurringConfig? = null
     ) {
         viewModelScope.launch {
-            try {
-                val link = calendarLinkRepository.getLinkById(linkId) ?: return@launch
+            val params = UpdateTaskWithCalendarUseCase.UpdateParams(
+                taskId = taskId, // Can be null for calendar-only events
+                linkId = linkId,
+                title = title,
+                description = description,
+                xpPercentage = xpPercentage,
+                dateTime = dateTime,
+                categoryId = categoryId,
+                shouldReactivate = shouldReactivate,
+                addToCalendar = addToCalendar,
+                deleteOnClaim = deleteOnClaim,
+                deleteOnExpiry = deleteOnExpiry,
+                isRecurring = isRecurring,
+                recurringConfig = recurringConfig
+            )
 
-                val now = LocalDateTime.now()
-                val isExpiredNow = dateTime.plusHours(1) <= now
-
-                // Check if we need to restore an expired event
-                val shouldRestoreExpired = link.status == "EXPIRED" &&
-                    link.deleteOnExpiry && !deleteOnExpiry
-
-                // Add debug logging
-                android.util.Log.d("CalendarXpViewModel", "updateCalendarTask: $title")
-                android.util.Log.d("CalendarXpViewModel", "  isExpiredNow: $isExpiredNow, deleteOnExpiry: $deleteOnExpiry")
-                android.util.Log.d("CalendarXpViewModel", "  link.deleteOnExpiry: ${link.deleteOnExpiry}")
-                android.util.Log.d("CalendarXpViewModel", "  Time changed: ${dateTime != link.startsAt}")
-
-                // Handle calendar event operations - DELETION has priority over update!
-                var calendarEventDeleted = false
-                if (calendarManager.hasCalendarPermission()) {
-                    when {
-                        // Event is expired and deleteOnExpiry is ON -> delete calendar event (PRIORITY!)
-                        isExpiredNow && deleteOnExpiry -> {
-                            try {
-                                android.util.Log.d("CalendarXpViewModel", "Attempting to delete calendar event ID: $calendarEventId")
-                                val deleted = calendarManager.deleteCalendarEvent(calendarEventId)
-                                calendarEventDeleted = deleted
-                                android.util.Log.d("CalendarXpViewModel", "Delete result: $deleted for calendar event: $title")
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "Failed to delete calendar event: ${e.message}", e)
-                            }
-                        }
-                        // Event was expired with deleteOnExpiry ON, now deleteOnExpiry is OFF -> recreate
-                        shouldRestoreExpired -> {
-                            try {
-                                val eventExists = try {
-                                    calendarManager.getCalendarEvent(calendarEventId) != null
-                                } catch (e: Exception) {
-                                    false
-                                }
-
-                                if (!eventExists) {
-                                    // Calculate XP reward based on current level
-                                    val currentStats = statsRepository.getStatsFlow().first()
-                                    val xpReward = calculateXpRewardUseCase(xpPercentage, currentStats.level)
-                                    val newEventId = calendarManager.createTaskEvent(
-                                        taskTitle = title,
-                                        taskDescription = description,
-                                        startTime = dateTime,
-                                        endTime = dateTime.plusHours(1),
-                                        xpReward = xpReward,
-                                        xpPercentage = xpPercentage
-                                    )
-                                    android.util.Log.d("CalendarXpViewModel", "Recreated calendar event: $title with ID: $newEventId")
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "Failed to recreate calendar event", e)
-                            }
-                        }
-                        // Update calendar event ONLY if not deleted and not being recreated
-                        !calendarEventDeleted && !shouldRestoreExpired -> {
-                            try {
-                                android.util.Log.d("CalendarXpViewModel", "Updating calendar event for: $title")
-                                calendarManager.updateTaskEvent(
-                                    eventId = calendarEventId,
-                                    taskTitle = title,
-                                    taskDescription = description,
-                                    startTime = dateTime,
-                                    endTime = dateTime.plusHours(1)
-                                )
-                                android.util.Log.d("CalendarXpViewModel", "Successfully updated calendar event")
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "Failed to update calendar event", e)
-                            }
-                        }
-                        else -> {
-                            android.util.Log.d("CalendarXpViewModel", "No calendar operation needed (deleted or recreating)")
-                        }
-                    }
+            when (val result = updateTaskWithCalendarUseCase(params)) {
+                is UpdateTaskWithCalendarUseCase.UpdateResult.Success -> {
+                    android.util.Log.d("CalendarXpViewModel", "Task updated successfully via UseCase")
+                    loadCalendarEvents()
+                    loadCalendarLinks()
                 }
-
-                // Determine new status
-                val newStatus = when {
-                    shouldReactivate -> "PENDING"
-                    shouldRestoreExpired -> "PENDING"
-                    isExpiredNow && !link.rewarded -> "EXPIRED"
-                    else -> link.status
+                is UpdateTaskWithCalendarUseCase.UpdateResult.Error -> {
+                    android.util.Log.e("CalendarXpViewModel", "Update failed: ${result.message}", result.throwable)
                 }
-
-                // Update link with proper status handling
-                val updatedLink = link.copy(
-                    title = title,
-                    startsAt = dateTime,
-                    endsAt = dateTime.plusHours(1),
-                    xpPercentage = xpPercentage,
-                    categoryId = categoryId,
-                    deleteOnClaim = deleteOnClaim,
-                    deleteOnExpiry = deleteOnExpiry,
-                    isRecurring = isRecurring,
-                    status = newStatus,
-                    rewarded = if (shouldReactivate || shouldRestoreExpired) false else link.rewarded
-                )
-                calendarLinkRepository.updateLink(updatedLink)
-
-                // Update associated task
-                val task = taskRepository.getTaskEntityById(taskId)
-                task?.let {
-                    taskRepository.updateTaskEntity(
-                        it.copy(
-                            title = title,
-                            description = description,
-                            dueDate = dateTime,
-                            xpPercentage = xpPercentage,
-                            categoryId = categoryId,
-                            isCompleted = if (shouldReactivate || shouldRestoreExpired) false else it.isCompleted,
-                            isRecurring = isRecurring,
-                            recurringType = recurringConfig?.mode?.name,
-                            recurringInterval = when(recurringConfig?.mode) {
-                                RecurringMode.DAILY -> recurringConfig.dailyInterval * 24 * 60
-                                RecurringMode.CUSTOM -> recurringConfig.customMinutes + recurringConfig.customHours * 60
-                                else -> null
-                            },
-                            recurringDays = if (recurringConfig?.mode == RecurringMode.WEEKLY) {
-                                recurringConfig.weeklyDays.map { it.value }.joinToString(",")
-                            } else null
-                        )
-                    )
-                }
-
-                // Refresh
-                loadCalendarEvents()
-                loadCalendarLinks()
-            } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Failed to update task: ${e.message}")
-            }
-        }
-    }
-
-    fun updateCalendarLink(
-        linkId: Long,
-        title: String,
-        xpPercentage: Int,
-        startsAt: LocalDateTime,
-        endsAt: LocalDateTime,
-        categoryId: Long?
-    ) {
-        android.util.Log.e("CalendarXpViewModel", "!!! updateCalendarLink CALLED (SIMPLE VERSION) !!!")
-        android.util.Log.e("CalendarXpViewModel", "!!! THIS SHOULD NOT BE CALLED FOR TASK EDITING !!!")
-        android.util.Log.e("CalendarXpViewModel", "  linkId: $linkId")
-        android.util.Log.e("CalendarXpViewModel", "  title: $title")
-        android.util.Log.e("CalendarXpViewModel", "  startsAt: $startsAt")
-        android.util.Log.e("CalendarXpViewModel", "  endsAt: $endsAt")
-
-        viewModelScope.launch {
-            try {
-                calendarLinkRepository.updateLink(
-                    linkId = linkId,
-                    title = title,
-                    xpPercentage = xpPercentage,
-                    startsAt = startsAt,
-                    endsAt = endsAt,
-                    categoryId = categoryId
-                )
-
-                // Reload links to show changes
-                loadCalendarLinks()
-            } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Failed to update calendar link", e)
-            }
-        }
-    }
-
-    fun updateCalendarLinkWithReactivation(
-        linkId: Long,
-        title: String,
-        xpPercentage: Int,
-        startsAt: LocalDateTime,
-        endsAt: LocalDateTime,
-        categoryId: Long?,
-        shouldReactivate: Boolean = false,
-        deleteOnClaim: Boolean = false,
-        deleteOnExpiry: Boolean = false,
-        isRecurring: Boolean = false
-    ) {
-        viewModelScope.launch {
-            try {
-                val existingLink = calendarLinkRepository.getLinkById(linkId) ?: return@launch
-                val now = LocalDateTime.now()
-
-                // Check if the event is expired based on the new time
-                val isExpiredNow = endsAt <= now
-
-                // Check if we need to restore an expired event
-                val shouldRestoreExpired = existingLink.status == "EXPIRED" &&
-                    existingLink.deleteOnExpiry && !deleteOnExpiry
-
-                // Add debug logging
-                android.util.Log.e("CalendarXpViewModel", "========================================")
-                android.util.Log.e("CalendarXpViewModel", "=== updateCalendarLinkWithReactivation CALLED ===")
-                android.util.Log.e("CalendarXpViewModel", "  title: $title")
-                android.util.Log.e("CalendarXpViewModel", "  linkId: $linkId")
-                android.util.Log.e("CalendarXpViewModel", "  NEW startsAt: $startsAt")
-                android.util.Log.e("CalendarXpViewModel", "  NEW endsAt: $endsAt")
-                android.util.Log.e("CalendarXpViewModel", "  OLD startsAt: ${existingLink.startsAt}")
-                android.util.Log.e("CalendarXpViewModel", "  OLD endsAt: ${existingLink.endsAt}")
-                android.util.Log.e("CalendarXpViewModel", "  isExpiredNow: $isExpiredNow")
-                android.util.Log.e("CalendarXpViewModel", "  deleteOnExpiry NEW: $deleteOnExpiry")
-                android.util.Log.e("CalendarXpViewModel", "  deleteOnExpiry OLD: ${existingLink.deleteOnExpiry}")
-                android.util.Log.e("CalendarXpViewModel", "  shouldRestoreExpired: $shouldRestoreExpired")
-                android.util.Log.e("CalendarXpViewModel", "  Time changed: ${startsAt != existingLink.startsAt || endsAt != existingLink.endsAt}")
-                android.util.Log.e("CalendarXpViewModel", "  calendarEventId: ${existingLink.calendarEventId}")
-                android.util.Log.e("CalendarXpViewModel", "========================================")
-
-                // Check if we need to handle calendar event deletion or recreation
-                // IMPORTANT: Handle deletion FIRST and skip update if we're deleting
-                var calendarEventDeleted = false
-                if (calendarManager.hasCalendarPermission()) {
-                    android.util.Log.e("CalendarXpViewModel", ">>> ENTERING WHEN BLOCK <<<")
-                    when {
-                        // Case 1: Event is expired and deleteOnExpiry is ON -> delete calendar event (PRIORITY)
-                        isExpiredNow && deleteOnExpiry -> {
-                            android.util.Log.e("CalendarXpViewModel", ">>> CASE 1: SHOULD DELETE EVENT <<<")
-                            android.util.Log.e("CalendarXpViewModel", "  Reason: isExpiredNow=$isExpiredNow AND deleteOnExpiry=$deleteOnExpiry")
-                            try {
-                                android.util.Log.e("CalendarXpViewModel", "  CALLING deleteCalendarEvent with ID: ${existingLink.calendarEventId}")
-                                val deleted = calendarManager.deleteCalendarEvent(existingLink.calendarEventId)
-                                calendarEventDeleted = deleted
-                                android.util.Log.e("CalendarXpViewModel", "  DELETE RESULT: $deleted")
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "  DELETE FAILED: ${e.message}", e)
-                            }
-                        }
-                        // Case 2: Event was expired with deleteOnExpiry ON, now deleteOnExpiry is OFF -> recreate calendar event
-                        shouldRestoreExpired -> {
-                            try {
-                                // Check if calendar event still exists
-                                val eventExists = try {
-                                    calendarManager.getCalendarEvent(existingLink.calendarEventId) != null
-                                } catch (e: Exception) {
-                                    false
-                                }
-
-                                if (!eventExists) {
-                                    // Calculate XP reward based on current level
-                                    val currentStats = statsRepository.getStatsFlow().first()
-                                    val xpReward = calculateXpRewardUseCase(xpPercentage, currentStats.level)
-                                    // Recreate the calendar event
-                                    val newEventId = calendarManager.createTaskEvent(
-                                        taskTitle = title,
-                                        taskDescription = "",
-                                        startTime = startsAt,
-                                        endTime = endsAt,
-                                        xpReward = xpReward,
-                                        xpPercentage = xpPercentage
-                                    )
-                                    // We'll update the link with the new event ID below
-                                    android.util.Log.d("CalendarXpViewModel", "Recreated calendar event for: $title with ID: $newEventId")
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "Failed to recreate calendar event", e)
-                            }
-                        }
-                        // Case 3: Update the calendar event time if it changed (ONLY if not deleted)
-                        !calendarEventDeleted && (startsAt != existingLink.startsAt || endsAt != existingLink.endsAt) -> {
-                            android.util.Log.e("CalendarXpViewModel", ">>> CASE 3: UPDATING EVENT TIME <<<")
-                            android.util.Log.e("CalendarXpViewModel", "  Reason: NOT deleted ($calendarEventDeleted) AND time changed")
-                            android.util.Log.e("CalendarXpViewModel", "  THIS SHOULD NOT HAPPEN IF EVENT IS EXPIRED WITH deleteOnExpiry!")
-                            try {
-                                android.util.Log.e("CalendarXpViewModel", "  CALLING updateTaskEvent with ID: ${existingLink.calendarEventId}")
-                                calendarManager.updateTaskEvent(
-                                    eventId = existingLink.calendarEventId,
-                                    taskTitle = title,
-                                    taskDescription = "",
-                                    startTime = startsAt,
-                                    endTime = endsAt
-                                )
-                                android.util.Log.e("CalendarXpViewModel", "  UPDATE COMPLETED")
-                            } catch (e: Exception) {
-                                android.util.Log.e("CalendarXpViewModel", "  UPDATE FAILED: ${e.message}", e)
-                            }
-                        }
-                        else -> {
-                            android.util.Log.e("CalendarXpViewModel", ">>> NO CALENDAR OPERATION <<<")
-                            android.util.Log.e("CalendarXpViewModel", "  calendarEventDeleted: $calendarEventDeleted")
-                            android.util.Log.e("CalendarXpViewModel", "  Time changed: ${startsAt != existingLink.startsAt || endsAt != existingLink.endsAt}")
-                        }
-                    }
-                }
-
-                // Determine new status based on conditions
-                val newStatus = when {
-                    shouldReactivate -> "PENDING"
-                    shouldRestoreExpired -> "PENDING"
-                    isExpiredNow && !existingLink.rewarded -> "EXPIRED"
-                    !isExpiredNow -> "PENDING"  // If not expired anymore, set to PENDING
-                    else -> existingLink.status
-                }
-
-                // Update link with all changes
-                val updatedLink = existingLink.copy(
-                    title = title,
-                    xpPercentage = xpPercentage,
-                    startsAt = startsAt,
-                    endsAt = endsAt,
-                    categoryId = categoryId,
-                    deleteOnClaim = deleteOnClaim,
-                    deleteOnExpiry = deleteOnExpiry,
-                    isRecurring = isRecurring,
-                    status = newStatus,
-                    rewarded = if (shouldReactivate || shouldRestoreExpired) false else existingLink.rewarded
-                )
-
-                calendarLinkRepository.updateLink(updatedLink)
-
-                // Reload links to show changes
-                loadCalendarLinks()
-
-                // Log status changes
-                if (shouldReactivate) {
-                    android.util.Log.d("CalendarXpViewModel", "Reactivated calendar link: $title")
-                }
-                if (shouldRestoreExpired) {
-                    android.util.Log.d("CalendarXpViewModel", "Restored expired event: $title")
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Failed to update calendar link with reactivation", e)
             }
         }
     }

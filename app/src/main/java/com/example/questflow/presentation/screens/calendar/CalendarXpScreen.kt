@@ -332,11 +332,26 @@ fun EditCalendarTaskDialog(
     }
     var shouldReactivate by remember { mutableStateOf(false) }
 
-    // Calendar integration options
+    // Calendar integration options - initialize once per dialog instance
+    // WICHTIG: Keine calendarLink.deleteOnClaim/deleteOnExpiry als Keys verwenden!
+    // Sonst wird State zurückgesetzt wenn DB sich durch Background-Updates ändert
     val hasCalendarPermission by viewModel.hasCalendarPermission.collectAsState()
-    var addToCalendar by remember { mutableStateOf(calendarLink.calendarEventId != 0L) }
-    var deleteOnClaim by remember { mutableStateOf(calendarLink.deleteOnClaim) }
-    var deleteOnExpiry by remember { mutableStateOf(calendarLink.deleteOnExpiry) }
+
+    // addToCalendar: Wenn irgendeine Kalender-Option gesetzt ist ODER Event existiert
+    // → User-Intention, nicht aktueller Event-Status!
+    var addToCalendar by remember(calendarLink.id) {
+        mutableStateOf(
+            calendarLink.calendarEventId != 0L ||
+            calendarLink.deleteOnClaim ||
+            calendarLink.deleteOnExpiry
+        )
+    }
+    var deleteOnClaim by remember(calendarLink.id) {
+        mutableStateOf(calendarLink.deleteOnClaim)
+    }
+    var deleteOnExpiry by remember(calendarLink.id) {
+        mutableStateOf(calendarLink.deleteOnExpiry)
+    }
 
     // Recurring task options
     var isRecurring by remember { mutableStateOf(calendarLink.isRecurring) }
@@ -785,38 +800,23 @@ fun EditCalendarTaskDialog(
                         val isReactivating = shouldReactivate &&
                             (calendarLink.rewarded || calendarLink.status == "CLAIMED")
 
-                        if (calendarLink.taskId != null) {
-                            // Update task if it exists
-                            viewModel.updateCalendarTask(
-                                linkId = calendarLink.id,
-                                taskId = calendarLink.taskId,
-                                title = taskTitle,
-                                description = taskDescription,
-                                xpPercentage = selectedPercentage,
-                                dateTime = dateTime,
-                                categoryId = taskCategory?.id,
-                                calendarEventId = calendarLink.calendarEventId,
-                                shouldReactivate = isReactivating,
-                                deleteOnClaim = deleteOnClaim,
-                                deleteOnExpiry = deleteOnExpiry,
-                                isRecurring = isRecurring,
-                                recurringConfig = if (isRecurring) recurringConfig else null
-                            )
-                        } else {
-                            // Just update the calendar link directly
-                            calendarViewModel.updateCalendarLinkWithReactivation(
-                                linkId = calendarLink.id,
-                                title = taskTitle,
-                                xpPercentage = selectedPercentage,
-                                startsAt = dateTime,
-                                endsAt = dateTime.plusHours(1),
-                                categoryId = taskCategory?.id,
-                                shouldReactivate = isReactivating,
-                                deleteOnClaim = deleteOnClaim,
-                                deleteOnExpiry = deleteOnExpiry,
-                                isRecurring = isRecurring
-                            )
-                        }
+                        // UNIFIED: Always use calendarViewModel.updateCalendarTask()
+                        // Works for both tasks (with taskId) and calendar-only events (taskId = null)
+                        calendarViewModel.updateCalendarTask(
+                            linkId = calendarLink.id,
+                            taskId = calendarLink.taskId, // Can be null
+                            title = taskTitle,
+                            description = taskDescription,
+                            xpPercentage = selectedPercentage,
+                            dateTime = dateTime,
+                            categoryId = taskCategory?.id,
+                            shouldReactivate = isReactivating,
+                            addToCalendar = addToCalendar, // User's calendar integration checkbox
+                            deleteOnClaim = deleteOnClaim,
+                            deleteOnExpiry = deleteOnExpiry,
+                            isRecurring = isRecurring,
+                            recurringConfig = if (isRecurring) recurringConfig else null
+                        )
                         onDismiss()
                     }
                 }

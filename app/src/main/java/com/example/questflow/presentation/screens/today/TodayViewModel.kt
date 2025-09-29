@@ -13,6 +13,7 @@ import com.example.questflow.domain.model.Task
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
 import com.example.questflow.domain.usecase.CompleteTaskUseCase
 import com.example.questflow.domain.usecase.CreateCalendarLinkUseCase
+import com.example.questflow.domain.usecase.UpdateTaskWithCalendarUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -28,8 +29,13 @@ class TodayViewModel @Inject constructor(
     private val calendarLinkRepository: CalendarLinkRepository,
     private val createCalendarLinkUseCase: CreateCalendarLinkUseCase,
     private val completeTaskUseCase: CompleteTaskUseCase,
-    private val calculateXpRewardUseCase: CalculateXpRewardUseCase
+    private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
+    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase
 ) : ViewModel() {
+    // NOTE: calendarManager & calendarLinkRepository still needed for:
+    // - checkCalendarPermission()
+    // - createTaskWithCalendar() (creates new tasks)
+    // - toggleTaskCompletion() (unclaim)
 
     private val _uiState = MutableStateFlow(TodayUiState())
     val uiState: StateFlow<TodayUiState> = _uiState.asStateFlow()
@@ -302,221 +308,37 @@ class TodayViewModel @Inject constructor(
         categoryId: Long?,
         calendarEventId: Long?,
         shouldReactivate: Boolean = false,
+        addToCalendar: Boolean = true,
         deleteOnClaim: Boolean = false,
         deleteOnExpiry: Boolean = false,
         isRecurring: Boolean = false,
         recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null
     ) {
         viewModelScope.launch {
-            try {
-                // Get the task to update
-                val existingTask = taskRepository.getTaskById(taskId) ?: return@launch
+            val params = UpdateTaskWithCalendarUseCase.UpdateParams(
+                taskId = taskId,
+                linkId = linkId,
+                title = title,
+                description = description,
+                xpPercentage = xpPercentage,
+                dateTime = dateTime,
+                categoryId = categoryId,
+                shouldReactivate = shouldReactivate,
+                addToCalendar = addToCalendar,
+                deleteOnClaim = deleteOnClaim,
+                deleteOnExpiry = deleteOnExpiry,
+                isRecurring = isRecurring,
+                recurringConfig = recurringConfig
+            )
 
-                // Calculate new XP based on new percentage
-                val currentLevel = if (categoryId != null) {
-                    categoryRepository.getCategoryById(categoryId)?.currentLevel ?: 1
-                } else {
-                    _uiState.value.level
+            when (val result = updateTaskWithCalendarUseCase(params)) {
+                is UpdateTaskWithCalendarUseCase.UpdateResult.Success -> {
+                    android.util.Log.d("TodayViewModel", "Task updated successfully via UseCase")
+                    loadTasks() // Refresh
                 }
-                val newXpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
-
-                // Map percentage to Priority enum
-                val priority = when (xpPercentage) {
-                    20, 40 -> Priority.LOW
-                    60 -> Priority.MEDIUM
-                    80, 100 -> Priority.HIGH
-                    else -> Priority.MEDIUM
+                is UpdateTaskWithCalendarUseCase.UpdateResult.Error -> {
+                    android.util.Log.e("TodayViewModel", "Update failed: ${result.message}", result.throwable)
                 }
-
-                // Convert RecurringConfig to task parameters
-                val recurringType = recurringConfig?.let {
-                    when (it.mode) {
-                        com.example.questflow.presentation.components.RecurringMode.DAILY -> "DAILY"
-                        com.example.questflow.presentation.components.RecurringMode.WEEKLY -> "WEEKLY"
-                        com.example.questflow.presentation.components.RecurringMode.MONTHLY -> "MONTHLY"
-                        com.example.questflow.presentation.components.RecurringMode.CUSTOM -> "CUSTOM"
-                    }
-                }
-
-                val recurringInterval = recurringConfig?.let {
-                    when (it.mode) {
-                        com.example.questflow.presentation.components.RecurringMode.DAILY -> it.dailyInterval * 24 * 60
-                        com.example.questflow.presentation.components.RecurringMode.WEEKLY -> 7 * 24 * 60
-                        com.example.questflow.presentation.components.RecurringMode.MONTHLY -> it.monthlyDay * 24 * 60
-                        com.example.questflow.presentation.components.RecurringMode.CUSTOM -> it.customHours * 60 + it.customMinutes
-                    }
-                }
-
-                val recurringDays = recurringConfig?.let {
-                    if (it.mode == com.example.questflow.presentation.components.RecurringMode.WEEKLY) {
-                        it.weeklyDays.map { day -> day.value }.joinToString(",")
-                    } else null
-                }
-
-                // Update the task
-                val updatedTask = existingTask.copy(
-                    title = title,
-                    description = description,
-                    xpPercentage = xpPercentage,
-                    xpReward = newXpReward,
-                    dueDate = dateTime,
-                    priority = priority,
-                    categoryId = categoryId,
-                    isRecurring = isRecurring,
-                    recurringType = recurringType,
-                    recurringInterval = recurringInterval,
-                    recurringDays = recurringDays,
-                    triggerMode = recurringConfig?.triggerMode?.name,
-                    // Reactivate if needed
-                    isCompleted = if (shouldReactivate) false else existingTask.isCompleted
-                )
-                taskRepository.updateTask(updatedTask)
-
-                // Check if the task is now expired
-                val now = LocalDateTime.now()
-                val isExpiredNow = dateTime.plusHours(1) <= now
-
-                // Get the calendar link to update
-                val existingLink = calendarLinkRepository.getLinkById(linkId)
-                if (existingLink != null) {
-                    // Determine the correct status
-                    val newStatus = when {
-                        shouldReactivate -> "PENDING"
-                        isExpiredNow && !existingLink.rewarded -> "EXPIRED"
-                        !isExpiredNow -> "PENDING"  // If not expired anymore, set to PENDING
-                        else -> existingLink.status
-                    }
-
-                    android.util.Log.d("TodayViewModel", "Updating calendar link - newStatus: $newStatus, isExpiredNow: $isExpiredNow")
-
-                    val updatedLink = existingLink.copy(
-                        title = title,
-                        xpPercentage = xpPercentage,
-                        startsAt = dateTime,
-                        endsAt = dateTime.plusHours(1),
-                        categoryId = categoryId,
-                        deleteOnClaim = deleteOnClaim,
-                        deleteOnExpiry = deleteOnExpiry,
-                        isRecurring = isRecurring,
-                        status = newStatus,
-                        rewarded = if (shouldReactivate) false else existingLink.rewarded
-                    )
-                    calendarLinkRepository.updateLink(updatedLink)
-                }
-
-                // Handle calendar event - DELETE, CREATE, or UPDATE based on conditions
-                if (calendarManager.hasCalendarPermission()) {
-                    val wasExpired = existingLink?.let {
-                        it.endsAt <= now
-                    } ?: false
-
-                    android.util.Log.e("TodayViewModel", "=== CALENDAR EVENT HANDLING IN updateCalendarTask ===")
-                    android.util.Log.e("TodayViewModel", "  Task: $title")
-                    android.util.Log.e("TodayViewModel", "  DateTime: $dateTime")
-                    android.util.Log.e("TodayViewModel", "  IsExpiredNow: $isExpiredNow")
-                    android.util.Log.e("TodayViewModel", "  WasExpired: $wasExpired")
-                    android.util.Log.e("TodayViewModel", "  DeleteOnExpiry: $deleteOnExpiry")
-                    android.util.Log.e("TodayViewModel", "  CalendarEventId: $calendarEventId")
-                    android.util.Log.e("TodayViewModel", "  ExistingLink deleteOnExpiry: ${existingLink?.deleteOnExpiry}")
-
-                    when {
-                        // Case 1: Event is expired and deleteOnExpiry is ON -> DELETE
-                        isExpiredNow && deleteOnExpiry -> {
-                            android.util.Log.e("TodayViewModel", "  >>> CASE 1: DELETING - expired with deleteOnExpiry=true <<<")
-                            if (calendarEventId != null) {
-                                try {
-                                    val deleted = calendarManager.deleteCalendarEvent(calendarEventId)
-                                    android.util.Log.e("TodayViewModel", "  Delete result: $deleted")
-                                } catch (e: Exception) {
-                                    android.util.Log.e("TodayViewModel", "  Failed to delete calendar event", e)
-                                }
-                            }
-                        }
-
-                        // Case 2: Was expired/deleted but now is in future OR deleteOnExpiry turned OFF -> CREATE NEW
-                        (wasExpired && !isExpiredNow) ||
-                        (isExpiredNow && !deleteOnExpiry && existingLink?.deleteOnExpiry == true) ||
-                        (calendarEventId == null && !isExpiredNow) -> {
-                            android.util.Log.e("TodayViewModel", "  >>> CASE 2: CREATING NEW - needs calendar event <<<")
-                            val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                            val eventTitle = if (category != null) {
-                                "${category.emoji} $title"
-                            } else {
-                                "🎯 $title"
-                            }
-
-                            try {
-                                // Calculate XP for the new event
-                                val currentLevel = if (categoryId != null) {
-                                    categoryRepository.getCategoryById(categoryId)?.currentLevel ?: 1
-                                } else {
-                                    _uiState.value.level
-                                }
-                                val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
-
-                                val newEventId = calendarManager.createTaskEvent(
-                                    taskTitle = eventTitle,
-                                    taskDescription = description,
-                                    startTime = dateTime,
-                                    endTime = dateTime.plusHours(1),
-                                    xpReward = xpReward,
-                                    xpPercentage = xpPercentage,
-                                    categoryColor = category?.color
-                                )
-
-                                if (newEventId != null) {
-                                    // Update the task with the new calendar event ID
-                                    val taskToUpdate = taskRepository.getTaskById(taskId)
-                                    taskToUpdate?.let {
-                                        taskRepository.updateTask(it.copy(calendarEventId = newEventId))
-                                    }
-
-                                    // Update the link with the new calendar event ID
-                                    existingLink?.let {
-                                        calendarLinkRepository.updateLink(it.copy(calendarEventId = newEventId))
-                                    }
-
-                                    android.util.Log.e("TodayViewModel", "  Created new calendar event with ID: $newEventId")
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.e("TodayViewModel", "  Failed to create calendar event", e)
-                            }
-                        }
-
-                        // Case 3: Regular update (not expired, has event, no special conditions)
-                        calendarEventId != null && !isExpiredNow -> {
-                            android.util.Log.e("TodayViewModel", "  >>> CASE 3: UPDATING existing event <<<")
-                            val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                            val eventTitle = if (category != null) {
-                                "${category.emoji} $title"
-                            } else {
-                                "🎯 $title"
-                            }
-
-                            try {
-                                calendarManager.updateTaskEvent(
-                                    eventId = calendarEventId,
-                                    taskTitle = eventTitle,
-                                    taskDescription = description,
-                                    startTime = dateTime,
-                                    endTime = dateTime.plusHours(1)
-                                )
-                            } catch (e: Exception) {
-                                android.util.Log.e("TodayViewModel", "  Failed to update calendar event", e)
-                            }
-                        }
-
-                        else -> {
-                            android.util.Log.e("TodayViewModel", "  >>> NO ACTION NEEDED <<<")
-                        }
-                    }
-                }
-
-                // Reload tasks to reflect changes
-                loadTasks()
-
-            } catch (e: Exception) {
-                android.util.Log.e("TodayViewModel", "Failed to update calendar task", e)
             }
         }
     }
