@@ -61,4 +61,24 @@ class CalendarLinkRepository @Inject constructor(
     suspend fun updateLink(link: CalendarEventLinkEntity) {
         calendarEventLinkDao.update(link)
     }
+
+    suspend fun updateLink(
+        linkId: Long,
+        title: String,
+        description: String? = null,
+        xpPercentage: Int,
+        startsAt: LocalDateTime,
+        endsAt: LocalDateTime,
+        categoryId: Long?
+    ) {
+        val existingLink = calendarEventLinkDao.getLinkById(linkId) ?: return
+        val updatedLink = existingLink.copy(
+            title = title,
+            xpPercentage = xpPercentage,
+            startsAt = startsAt,
+            endsAt = endsAt,
+            categoryId = categoryId
+        )
+        calendarEventLinkDao.update(updatedLink)
+    }
 }

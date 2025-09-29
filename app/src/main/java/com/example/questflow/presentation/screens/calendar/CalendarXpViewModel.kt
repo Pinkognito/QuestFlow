@@ -112,13 +112,10 @@ class CalendarXpViewModel @Inject constructor(
     private fun filterLinks(links: List<CalendarEventLinkEntity>): List<CalendarEventLinkEntity> {
         var filtered = links
 
-        // First check for expired events
+        // Update status based on rewarded flag only (not expiry date)
         val now = LocalDateTime.now()
         filtered = filtered.map { link ->
-            if (link.status != "EXPIRED" && link.status != "CLAIMED" && link.endsAt < now) {
-                // Mark as expired if time has passed
-                link.copy(status = "EXPIRED")
-            } else if (link.rewarded && link.status != "CLAIMED") {
+            if (link.rewarded && link.status != "CLAIMED") {
                 // Mark as claimed if rewarded
                 link.copy(status = "CLAIMED")
             } else {
@@ -126,16 +123,17 @@ class CalendarXpViewModel @Inject constructor(
             }
         }
 
-        // Filter by status
+        // Filter by status and expiry
         filtered = filtered.filter { link ->
             val showOpen = filterSettings.value.showOpen
             val showCompleted = filterSettings.value.showCompleted
             val showExpired = filterSettings.value.showExpired
+            val isExpired = link.endsAt < now
 
-            when (link.status) {
-                "PENDING" -> showOpen
-                "CLAIMED" -> showCompleted
-                "EXPIRED" -> showExpired
+            when {
+                link.status == "CLAIMED" -> showCompleted
+                isExpired && !link.rewarded -> showExpired  // Expired but not claimed
+                !isExpired && !link.rewarded -> showOpen    // Open and not expired
                 else -> showOpen
             }
         }
@@ -328,6 +326,79 @@ class CalendarXpViewModel @Inject constructor(
                 loadCalendarLinks()
             } catch (e: Exception) {
                 android.util.Log.e("CalendarXpViewModel", "Failed to update task: ${e.message}")
+            }
+        }
+    }
+
+    fun updateCalendarLink(
+        linkId: Long,
+        title: String,
+        xpPercentage: Int,
+        startsAt: LocalDateTime,
+        endsAt: LocalDateTime,
+        categoryId: Long?
+    ) {
+        viewModelScope.launch {
+            try {
+                calendarLinkRepository.updateLink(
+                    linkId = linkId,
+                    title = title,
+                    xpPercentage = xpPercentage,
+                    startsAt = startsAt,
+                    endsAt = endsAt,
+                    categoryId = categoryId
+                )
+
+                // Reload links to show changes
+                loadCalendarLinks()
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Failed to update calendar link", e)
+            }
+        }
+    }
+
+    fun updateCalendarLinkWithReactivation(
+        linkId: Long,
+        title: String,
+        xpPercentage: Int,
+        startsAt: LocalDateTime,
+        endsAt: LocalDateTime,
+        categoryId: Long?,
+        shouldReactivate: Boolean = false,
+        deleteOnClaim: Boolean = false,
+        deleteOnExpiry: Boolean = false,
+        isRecurring: Boolean = false
+    ) {
+        viewModelScope.launch {
+            try {
+                val existingLink = calendarLinkRepository.getLinkById(linkId) ?: return@launch
+
+                // Update link with reactivation if needed
+                val updatedLink = existingLink.copy(
+                    title = title,
+                    xpPercentage = xpPercentage,
+                    startsAt = startsAt,
+                    endsAt = endsAt,
+                    categoryId = categoryId,
+                    deleteOnClaim = deleteOnClaim,
+                    deleteOnExpiry = deleteOnExpiry,
+                    isRecurring = isRecurring,
+                    // Reset status and rewarded flag if reactivating
+                    status = if (shouldReactivate) "PENDING" else existingLink.status,
+                    rewarded = if (shouldReactivate) false else existingLink.rewarded
+                )
+
+                calendarLinkRepository.updateLink(updatedLink)
+
+                // Reload links to show changes
+                loadCalendarLinks()
+
+                // Log reactivation
+                if (shouldReactivate) {
+                    android.util.Log.d("CalendarXpViewModel", "Reactivated calendar link: $title")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Failed to update calendar link with reactivation", e)
             }
         }
     }

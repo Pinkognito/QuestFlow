@@ -157,7 +157,7 @@ class TodayViewModel @Inject constructor(
             }
             val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
 
-            // Create calendar event if requested
+            // Create calendar event if requested (but delay link creation until after task)
             var calendarEventId: Long? = null
             if (addToCalendar && calendarManager.hasCalendarPermission()) {
                 val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
@@ -176,21 +176,6 @@ class TodayViewModel @Inject constructor(
                     xpPercentage = xpPercentage,
                     categoryColor = category?.color
                 )
-
-                // Also create calendar link for XP tracking
-                calendarEventId?.let { eventId ->
-                    createCalendarLinkUseCase(
-                        calendarEventId = eventId,
-                        title = title,
-                        startsAt = dateTime,
-                        endsAt = dateTime.plusHours(1),
-                        xp = xpReward,
-                        xpPercentage = xpPercentage,
-                        categoryId = effectiveCategoryId,
-                        deleteOnClaim = deleteOnClaim,  // Pass the new parameter
-                        deleteOnExpiry = deleteOnExpiry
-                    )
-                }
             }
 
             // Map percentage to Priority enum for visual distinction
@@ -245,10 +230,152 @@ class TodayViewModel @Inject constructor(
                 triggerMode = recurringConfig?.triggerMode?.name
             )
 
-            taskRepository.insertTask(task)
+            val taskId = taskRepository.insertTask(task)
+
+            // Now create calendar link with taskId for XP tracking
+            if (addToCalendar && calendarEventId != null) {
+                createCalendarLinkUseCase(
+                    calendarEventId = calendarEventId,
+                    title = title,
+                    startsAt = dateTime,
+                    endsAt = dateTime.plusHours(1),
+                    xp = xpReward,
+                    xpPercentage = xpPercentage,
+                    categoryId = effectiveCategoryId,
+                    deleteOnClaim = deleteOnClaim,
+                    deleteOnExpiry = deleteOnExpiry,
+                    taskId = taskId
+                )
+            }
         }
     }
-    
+
+    fun updateCalendarTask(
+        linkId: Long,
+        taskId: Long,
+        title: String,
+        description: String,
+        xpPercentage: Int,
+        dateTime: LocalDateTime,
+        categoryId: Long?,
+        calendarEventId: Long?,
+        shouldReactivate: Boolean = false,
+        deleteOnClaim: Boolean = false,
+        deleteOnExpiry: Boolean = false,
+        isRecurring: Boolean = false,
+        recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                // Get the task to update
+                val existingTask = taskRepository.getTaskById(taskId) ?: return@launch
+
+                // Calculate new XP based on new percentage
+                val currentLevel = if (categoryId != null) {
+                    categoryRepository.getCategoryById(categoryId)?.currentLevel ?: 1
+                } else {
+                    _uiState.value.level
+                }
+                val newXpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
+
+                // Map percentage to Priority enum
+                val priority = when (xpPercentage) {
+                    20, 40 -> Priority.LOW
+                    60 -> Priority.MEDIUM
+                    80, 100 -> Priority.HIGH
+                    else -> Priority.MEDIUM
+                }
+
+                // Convert RecurringConfig to task parameters
+                val recurringType = recurringConfig?.let {
+                    when (it.mode) {
+                        com.example.questflow.presentation.components.RecurringMode.DAILY -> "DAILY"
+                        com.example.questflow.presentation.components.RecurringMode.WEEKLY -> "WEEKLY"
+                        com.example.questflow.presentation.components.RecurringMode.MONTHLY -> "MONTHLY"
+                        com.example.questflow.presentation.components.RecurringMode.CUSTOM -> "CUSTOM"
+                    }
+                }
+
+                val recurringInterval = recurringConfig?.let {
+                    when (it.mode) {
+                        com.example.questflow.presentation.components.RecurringMode.DAILY -> it.dailyInterval * 24 * 60
+                        com.example.questflow.presentation.components.RecurringMode.WEEKLY -> 7 * 24 * 60
+                        com.example.questflow.presentation.components.RecurringMode.MONTHLY -> it.monthlyDay * 24 * 60
+                        com.example.questflow.presentation.components.RecurringMode.CUSTOM -> it.customHours * 60 + it.customMinutes
+                    }
+                }
+
+                val recurringDays = recurringConfig?.let {
+                    if (it.mode == com.example.questflow.presentation.components.RecurringMode.WEEKLY) {
+                        it.weeklyDays.map { day -> day.value }.joinToString(",")
+                    } else null
+                }
+
+                // Update the task
+                val updatedTask = existingTask.copy(
+                    title = title,
+                    description = description,
+                    xpPercentage = xpPercentage,
+                    xpReward = newXpReward,
+                    dueDate = dateTime,
+                    priority = priority,
+                    categoryId = categoryId,
+                    isRecurring = isRecurring,
+                    recurringType = recurringType,
+                    recurringInterval = recurringInterval,
+                    recurringDays = recurringDays,
+                    triggerMode = recurringConfig?.triggerMode?.name,
+                    // Reactivate if needed
+                    isCompleted = if (shouldReactivate) false else existingTask.isCompleted
+                )
+                taskRepository.updateTask(updatedTask)
+
+                // Get the calendar link to update
+                val existingLink = calendarLinkRepository.getLinkById(linkId)
+                if (existingLink != null) {
+                    val updatedLink = existingLink.copy(
+                        title = title,
+                        xpPercentage = xpPercentage,
+                        startsAt = dateTime,
+                        endsAt = dateTime.plusHours(1),
+                        categoryId = categoryId,
+                        deleteOnClaim = deleteOnClaim,
+                        deleteOnExpiry = deleteOnExpiry,
+                        isRecurring = isRecurring,
+                        // Reset status and rewarded flag if reactivating
+                        status = if (shouldReactivate) "PENDING" else existingLink.status,
+                        rewarded = if (shouldReactivate) false else existingLink.rewarded
+                    )
+                    calendarLinkRepository.updateLink(updatedLink)
+                }
+
+                // Update the calendar event if it exists
+                if (calendarEventId != null && calendarManager.hasCalendarPermission()) {
+                    val category = categoryId?.let { categoryRepository.getCategoryById(it) }
+                    val eventTitle = if (category != null) {
+                        "${category.emoji} $title"
+                    } else {
+                        "🎯 $title"
+                    }
+
+                    calendarManager.updateTaskEvent(
+                        eventId = calendarEventId,
+                        taskTitle = eventTitle,
+                        taskDescription = description,
+                        startTime = dateTime,
+                        endTime = dateTime.plusHours(1)
+                    )
+                }
+
+                // Reload tasks to reflect changes
+                loadTasks()
+
+            } catch (e: Exception) {
+                android.util.Log.e("TodayViewModel", "Failed to update calendar task", e)
+            }
+        }
+    }
+
     fun toggleTaskCompletion(taskId: Long, isCompleted: Boolean) {
         viewModelScope.launch {
             if (!isCompleted) {
