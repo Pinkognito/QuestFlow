@@ -39,6 +39,7 @@ class CalendarFilterPreferences @Inject constructor(
     companion object {
         private const val KEY_SHOW_COMPLETED = "show_completed"
         private const val KEY_SHOW_OPEN = "show_open"
+        private const val KEY_SHOW_EXPIRED = "show_expired"
         private const val KEY_FILTER_BY_CATEGORY = "filter_by_category"
         private const val KEY_DATE_FILTER_TYPE = "date_filter_type"
         private const val KEY_CUSTOM_START_DATE = "custom_start_date"
@@ -53,6 +54,7 @@ class CalendarFilterPreferences @Inject constructor(
         return CalendarFilterSettings(
             showCompleted = prefs.getBoolean(KEY_SHOW_COMPLETED, true),
             showOpen = prefs.getBoolean(KEY_SHOW_OPEN, true),
+            showExpired = prefs.getBoolean(KEY_SHOW_EXPIRED, false),
             filterByCategory = prefs.getBoolean(KEY_FILTER_BY_CATEGORY, false),
             dateFilterType = DateFilterType.valueOf(
                 prefs.getString(KEY_DATE_FILTER_TYPE, DateFilterType.ALL.name) ?: DateFilterType.ALL.name
@@ -66,6 +68,7 @@ class CalendarFilterPreferences @Inject constructor(
         prefs.edit()
             .putBoolean(KEY_SHOW_COMPLETED, settings.showCompleted)
             .putBoolean(KEY_SHOW_OPEN, settings.showOpen)
+            .putBoolean(KEY_SHOW_EXPIRED, settings.showExpired)
             .putBoolean(KEY_FILTER_BY_CATEGORY, settings.filterByCategory)
             .putString(KEY_DATE_FILTER_TYPE, settings.dateFilterType.name)
             .putLong(KEY_CUSTOM_START_DATE, settings.customRangeStart)
@@ -85,6 +88,12 @@ class CalendarFilterPreferences @Inject constructor(
         get() = _settings.value.showOpen
         set(value) {
             updateSettings(_settings.value.copy(showOpen = value))
+        }
+
+    var showExpired: Boolean
+        get() = _settings.value.showExpired
+        set(value) {
+            updateSettings(_settings.value.copy(showExpired = value))
         }
 
     var filterByCategory: Boolean

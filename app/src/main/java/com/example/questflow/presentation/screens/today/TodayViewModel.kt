@@ -140,7 +140,8 @@ class TodayViewModel @Inject constructor(
         title: String,
         description: String,
         xpPercentage: Int,
-        dateTime: LocalDateTime,
+        startDateTime: LocalDateTime,
+        endDateTime: LocalDateTime,
         addToCalendar: Boolean,
         categoryId: Long? = null,
         deleteOnClaim: Boolean = false,
@@ -164,10 +165,10 @@ class TodayViewModel @Inject constructor(
             val xpReward = calculateXpRewardUseCase(xpPercentage, currentLevel)
 
             // Check if the task is already expired
-            val isExpired = dateTime.plusHours(1) <= LocalDateTime.now()
+            val isExpired = endDateTime <= LocalDateTime.now()
 
             android.util.Log.d("TodayViewModel", "Creating task: $title")
-            android.util.Log.d("TodayViewModel", "  DateTime: $dateTime, IsExpired: $isExpired")
+            android.util.Log.d("TodayViewModel", "  Start: $startDateTime, End: $endDateTime, IsExpired: $isExpired")
             android.util.Log.d("TodayViewModel", "  DeleteOnExpiry: $deleteOnExpiry, AddToCalendar: $addToCalendar")
 
             // Create calendar event if requested - BUT NOT if it's expired and should be deleted on expiry!
@@ -190,8 +191,8 @@ class TodayViewModel @Inject constructor(
                     calendarEventId = calendarManager.createTaskEvent(
                         taskTitle = eventTitle,
                         taskDescription = description,
-                        startTime = dateTime,
-                        endTime = dateTime.plusHours(1),
+                        startTime = startDateTime,
+                        endTime = endDateTime,
                         xpReward = xpReward,
                         xpPercentage = xpPercentage,
                         categoryColor = category?.color
@@ -239,7 +240,7 @@ class TodayViewModel @Inject constructor(
                 title = title,
                 description = description,
                 priority = priority,
-                dueDate = dateTime,
+                dueDate = startDateTime,
                 xpReward = xpReward,
                 xpPercentage = xpPercentage,
                 categoryId = effectiveCategoryId,
@@ -260,8 +261,8 @@ class TodayViewModel @Inject constructor(
                 val linkId = createCalendarLinkUseCase(
                     calendarEventId = calendarEventId,
                     title = title,
-                    startsAt = dateTime,
-                    endsAt = dateTime.plusHours(1),
+                    startsAt = startDateTime,
+                    endsAt = endDateTime,
                     xp = xpReward,
                     xpPercentage = xpPercentage,
                     categoryId = effectiveCategoryId,
@@ -282,8 +283,8 @@ class TodayViewModel @Inject constructor(
                 val linkId = createCalendarLinkUseCase(
                     calendarEventId = System.currentTimeMillis(), // Fake ID
                     title = title,
-                    startsAt = dateTime,
-                    endsAt = dateTime.plusHours(1),
+                    startsAt = startDateTime,
+                    endsAt = endDateTime,
                     xp = xpReward,
                     xpPercentage = xpPercentage,
                     categoryId = effectiveCategoryId,
@@ -298,50 +299,7 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    fun updateCalendarTask(
-        linkId: Long,
-        taskId: Long,
-        title: String,
-        description: String,
-        xpPercentage: Int,
-        dateTime: LocalDateTime,
-        categoryId: Long?,
-        calendarEventId: Long?,
-        shouldReactivate: Boolean = false,
-        addToCalendar: Boolean = true,
-        deleteOnClaim: Boolean = false,
-        deleteOnExpiry: Boolean = false,
-        isRecurring: Boolean = false,
-        recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null
-    ) {
-        viewModelScope.launch {
-            val params = UpdateTaskWithCalendarUseCase.UpdateParams(
-                taskId = taskId,
-                linkId = linkId,
-                title = title,
-                description = description,
-                xpPercentage = xpPercentage,
-                dateTime = dateTime,
-                categoryId = categoryId,
-                shouldReactivate = shouldReactivate,
-                addToCalendar = addToCalendar,
-                deleteOnClaim = deleteOnClaim,
-                deleteOnExpiry = deleteOnExpiry,
-                isRecurring = isRecurring,
-                recurringConfig = recurringConfig
-            )
-
-            when (val result = updateTaskWithCalendarUseCase(params)) {
-                is UpdateTaskWithCalendarUseCase.UpdateResult.Success -> {
-                    android.util.Log.d("TodayViewModel", "Task updated successfully via UseCase")
-                    loadTasks() // Refresh
-                }
-                is UpdateTaskWithCalendarUseCase.UpdateResult.Error -> {
-                    android.util.Log.e("TodayViewModel", "Update failed: ${result.message}", result.throwable)
-                }
-            }
-        }
-    }
+    // NOTE: updateCalendarTask removed - use CalendarXpViewModel.updateCalendarTask instead
 
     fun toggleTaskCompletion(taskId: Long, isCompleted: Boolean) {
         viewModelScope.launch {

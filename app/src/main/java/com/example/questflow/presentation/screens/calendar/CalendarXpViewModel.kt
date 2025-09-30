@@ -175,8 +175,22 @@ class CalendarXpViewModel @Inject constructor(
                 }
             }
             DateFilterType.CUSTOM_RANGE -> {
-                // TODO: Implement custom range
-                filtered
+                val startTimestamp = filterSettings.value.customRangeStart
+                val endTimestamp = filterSettings.value.customRangeEnd
+
+                if (startTimestamp > 0 && endTimestamp > 0) {
+                    val startDateTime = LocalDateTime.ofEpochSecond(startTimestamp, 0, java.time.ZoneOffset.UTC)
+                    val endDateTime = LocalDateTime.ofEpochSecond(endTimestamp, 0, java.time.ZoneOffset.UTC)
+
+                    filtered.filter { link ->
+                        // Task must start within or overlap with the custom range
+                        (link.startsAt >= startDateTime && link.startsAt <= endDateTime) ||
+                        (link.endsAt >= startDateTime && link.endsAt <= endDateTime) ||
+                        (link.startsAt <= startDateTime && link.endsAt >= endDateTime)
+                    }
+                } else {
+                    filtered
+                }
             }
             else -> filtered
         }
@@ -297,7 +311,8 @@ class CalendarXpViewModel @Inject constructor(
         title: String,
         description: String,
         xpPercentage: Int,
-        dateTime: LocalDateTime,
+        startDateTime: LocalDateTime,
+        endDateTime: LocalDateTime,
         categoryId: Long?,
         shouldReactivate: Boolean = false,
         addToCalendar: Boolean = true,
@@ -313,7 +328,8 @@ class CalendarXpViewModel @Inject constructor(
                 title = title,
                 description = description,
                 xpPercentage = xpPercentage,
-                dateTime = dateTime,
+                startDateTime = startDateTime,
+                endDateTime = endDateTime,
                 categoryId = categoryId,
                 shouldReactivate = shouldReactivate,
                 addToCalendar = addToCalendar,

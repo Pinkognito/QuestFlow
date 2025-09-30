@@ -360,14 +360,22 @@ fun EditCalendarTaskDialog(
     }
     var showRecurringDialog by remember { mutableStateOf(false) }
 
-    // Date and time state from existing calendar link
+    // Date and time state - START
     var selectedYear by remember { mutableStateOf(calendarLink.startsAt.year) }
     var selectedMonth by remember { mutableStateOf(calendarLink.startsAt.monthValue) }
     var selectedDay by remember { mutableStateOf(calendarLink.startsAt.dayOfMonth) }
     var selectedHour by remember { mutableStateOf(calendarLink.startsAt.hour) }
     var selectedMinute by remember { mutableStateOf(calendarLink.startsAt.minute) }
 
+    // Date and time state - END
+    var endYear by remember { mutableStateOf(calendarLink.endsAt.year) }
+    var endMonth by remember { mutableStateOf(calendarLink.endsAt.monthValue) }
+    var endDay by remember { mutableStateOf(calendarLink.endsAt.dayOfMonth) }
+    var endHour by remember { mutableStateOf(calendarLink.endsAt.hour) }
+    var endMinute by remember { mutableStateOf(calendarLink.endsAt.minute) }
+
     val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
+    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -547,27 +555,16 @@ fun EditCalendarTaskDialog(
                         }
                     }
 
-                    // Date and Time Selection
+                    // Date and Time Selection - START
                     item {
-                        Text("Termin:", style = MaterialTheme.typography.labelMedium)
-                    }
+                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "📅 $dateTimeText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
 
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Text(
-                                dateTimeText,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-
-                    item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -585,7 +582,6 @@ fun EditCalendarTaskDialog(
                                         selectedMonth - 1,
                                         selectedDay
                                     )
-                                    // Explicitly remove any date restrictions
                                     picker.datePicker.minDate = 0
                                     picker.datePicker.maxDate = Long.MAX_VALUE
                                     picker.show()
@@ -605,6 +601,62 @@ fun EditCalendarTaskDialog(
                                         },
                                         selectedHour,
                                         selectedMinute,
+                                        true
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("🕐 Uhrzeit")
+                            }
+                        }
+                    }
+
+                    // Date and Time Selection - END
+                    item {
+                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "📅 $endDateTimeText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val picker = DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            endYear = year
+                                            endMonth = month + 1
+                                            endDay = dayOfMonth
+                                        },
+                                        endYear,
+                                        endMonth - 1,
+                                        endDay
+                                    )
+                                    picker.datePicker.minDate = 0
+                                    picker.datePicker.maxDate = Long.MAX_VALUE
+                                    picker.show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("📅 Datum")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hourOfDay, minute ->
+                                            endHour = hourOfDay
+                                            endMinute = minute
+                                        },
+                                        endHour,
+                                        endMinute,
                                         true
                                     ).show()
                                 },
@@ -791,9 +843,13 @@ fun EditCalendarTaskDialog(
             TextButton(
                 onClick = {
                     if (taskTitle.isNotBlank()) {
-                        val dateTime = java.time.LocalDateTime.of(
+                        val startDateTime = java.time.LocalDateTime.of(
                             selectedYear, selectedMonth, selectedDay,
                             selectedHour, selectedMinute
+                        )
+                        val endDateTime = java.time.LocalDateTime.of(
+                            endYear, endMonth, endDay,
+                            endHour, endMinute
                         )
 
                         // Check if we need to reactivate the task (only for claimed tasks)
@@ -808,7 +864,8 @@ fun EditCalendarTaskDialog(
                             title = taskTitle,
                             description = taskDescription,
                             xpPercentage = selectedPercentage,
-                            dateTime = dateTime,
+                            startDateTime = startDateTime,
+                            endDateTime = endDateTime,
                             categoryId = taskCategory?.id,
                             shouldReactivate = isReactivating,
                             addToCalendar = addToCalendar, // User's calendar integration checkbox
@@ -851,11 +908,30 @@ fun CalendarFilterDialog(
     onDismiss: () -> Unit,
     onApply: (CalendarFilterSettings) -> Unit
 ) {
+    val context = LocalContext.current
     var showCompleted by remember { mutableStateOf(filterSettings.showCompleted) }
     var showOpen by remember { mutableStateOf(filterSettings.showOpen) }
     var showExpired by remember { mutableStateOf(filterSettings.showExpired) }
     var filterByCategory by remember { mutableStateOf(filterSettings.filterByCategory) }
     var dateFilterType by remember { mutableStateOf(filterSettings.dateFilterType) }
+
+    // Custom date range state
+    var customStartDateTime by remember {
+        mutableStateOf(
+            if (filterSettings.customRangeStart > 0)
+                java.time.LocalDateTime.ofEpochSecond(filterSettings.customRangeStart, 0, java.time.ZoneOffset.UTC)
+            else
+                java.time.LocalDateTime.now()
+        )
+    }
+    var customEndDateTime by remember {
+        mutableStateOf(
+            if (filterSettings.customRangeEnd > 0)
+                java.time.LocalDateTime.ofEpochSecond(filterSettings.customRangeEnd, 0, java.time.ZoneOffset.UTC)
+            else
+                java.time.LocalDateTime.now().plusDays(7)
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -961,6 +1037,131 @@ fun CalendarFilterDialog(
                         }
                     }
                 }
+
+                // Custom Range Date Pickers (only show when CUSTOM_RANGE is selected)
+                if (dateFilterType == DateFilterType.CUSTOM_RANGE) {
+                    Divider()
+
+                    Text(
+                        "Custom Range Start",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        "${customStartDateTime.dayOfMonth}.${customStartDateTime.monthValue}.${customStartDateTime.year} ${customStartDateTime.hour}:${String.format("%02d", customStartDateTime.minute)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val picker = DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        customStartDateTime = customStartDateTime
+                                            .withYear(year)
+                                            .withMonth(month + 1)
+                                            .withDayOfMonth(dayOfMonth)
+                                    },
+                                    customStartDateTime.year,
+                                    customStartDateTime.monthValue - 1,
+                                    customStartDateTime.dayOfMonth
+                                )
+                                picker.datePicker.minDate = 0
+                                picker.datePicker.maxDate = Long.MAX_VALUE
+                                picker.show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("📅 Datum")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                TimePickerDialog(
+                                    context,
+                                    { _, hourOfDay, minute ->
+                                        customStartDateTime = customStartDateTime
+                                            .withHour(hourOfDay)
+                                            .withMinute(minute)
+                                    },
+                                    customStartDateTime.hour,
+                                    customStartDateTime.minute,
+                                    true
+                                ).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("🕐 Uhrzeit")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Custom Range End",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        "${customEndDateTime.dayOfMonth}.${customEndDateTime.monthValue}.${customEndDateTime.year} ${customEndDateTime.hour}:${String.format("%02d", customEndDateTime.minute)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val picker = DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        customEndDateTime = customEndDateTime
+                                            .withYear(year)
+                                            .withMonth(month + 1)
+                                            .withDayOfMonth(dayOfMonth)
+                                    },
+                                    customEndDateTime.year,
+                                    customEndDateTime.monthValue - 1,
+                                    customEndDateTime.dayOfMonth
+                                )
+                                picker.datePicker.minDate = 0
+                                picker.datePicker.maxDate = Long.MAX_VALUE
+                                picker.show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("📅 Datum")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                TimePickerDialog(
+                                    context,
+                                    { _, hourOfDay, minute ->
+                                        customEndDateTime = customEndDateTime
+                                            .withHour(hourOfDay)
+                                            .withMinute(minute)
+                                    },
+                                    customEndDateTime.hour,
+                                    customEndDateTime.minute,
+                                    true
+                                ).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("🕐 Uhrzeit")
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -972,7 +1173,9 @@ fun CalendarFilterDialog(
                             showOpen = showOpen,
                             showExpired = showExpired,
                             filterByCategory = filterByCategory,
-                            dateFilterType = dateFilterType
+                            dateFilterType = dateFilterType,
+                            customRangeStart = customStartDateTime.toEpochSecond(java.time.ZoneOffset.UTC),
+                            customRangeEnd = customEndDateTime.toEpochSecond(java.time.ZoneOffset.UTC)
                         )
                     )
                 }

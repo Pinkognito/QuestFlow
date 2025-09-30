@@ -30,7 +30,7 @@ fun TaskDialog(
     initialTitle: String = "",
     initialDescription: String = "",
     initialPercentage: Int = 60,
-    initialDateTime: LocalDateTime = LocalDateTime.now().plusHours(2),
+    initialDateTime: LocalDateTime = LocalDateTime.now(),
     initialCategoryId: Long? = null,
     initialAddToCalendar: Boolean = true,
     initialDeleteOnClaim: Boolean = false,
@@ -47,7 +47,8 @@ fun TaskDialog(
         title: String,
         description: String,
         xpPercentage: Int,
-        dateTime: LocalDateTime,
+        startDateTime: LocalDateTime,
+        endDateTime: LocalDateTime,
         categoryId: Long?,
         addToCalendar: Boolean,
         deleteOnClaim: Boolean,
@@ -87,14 +88,23 @@ fun TaskDialog(
     // Reactivation state (only for edit mode)
     var shouldReactivate by remember { mutableStateOf(false) }
 
-    // Date and time state
+    // Date and time state - START datetime
     var selectedYear by remember { mutableStateOf(initialDateTime.year) }
     var selectedMonth by remember { mutableStateOf(initialDateTime.monthValue) }
     var selectedDay by remember { mutableStateOf(initialDateTime.dayOfMonth) }
     var selectedHour by remember { mutableStateOf(initialDateTime.hour) }
     var selectedMinute by remember { mutableStateOf(initialDateTime.minute) }
 
+    // END datetime state (default: 1 hour after start)
+    val defaultEndDateTime = initialDateTime.plusHours(1)
+    var endYear by remember { mutableStateOf(defaultEndDateTime.year) }
+    var endMonth by remember { mutableStateOf(defaultEndDateTime.monthValue) }
+    var endDay by remember { mutableStateOf(defaultEndDateTime.dayOfMonth) }
+    var endHour by remember { mutableStateOf(defaultEndDateTime.hour) }
+    var endMinute by remember { mutableStateOf(defaultEndDateTime.minute) }
+
     val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
+    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
 
     // Check if task is claimed (for showing reactivation option)
     val isClaimedTask = calendarLink?.let {
@@ -290,9 +300,9 @@ fun TaskDialog(
                         }
                     }
 
-                    // Date & Time Selection
+                    // Date & Time Selection - START
                     item {
-                        Text("Zeitplanung:", style = MaterialTheme.typography.labelMedium)
+                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         Text(
                             "📅 $dateTimeText",
                             style = MaterialTheme.typography.bodyMedium,
@@ -317,7 +327,6 @@ fun TaskDialog(
                                         selectedMonth - 1,
                                         selectedDay
                                     )
-                                    // Explicitly remove any date restrictions
                                     picker.datePicker.minDate = 0
                                     picker.datePicker.maxDate = Long.MAX_VALUE
                                     picker.show()
@@ -337,6 +346,62 @@ fun TaskDialog(
                                         },
                                         selectedHour,
                                         selectedMinute,
+                                        true
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("🕐 Uhrzeit")
+                            }
+                        }
+                    }
+
+                    // Date & Time Selection - END
+                    item {
+                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "📅 $endDateTimeText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val picker = DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            endYear = year
+                                            endMonth = month + 1
+                                            endDay = dayOfMonth
+                                        },
+                                        endYear,
+                                        endMonth - 1,
+                                        endDay
+                                    )
+                                    picker.datePicker.minDate = 0
+                                    picker.datePicker.maxDate = Long.MAX_VALUE
+                                    picker.show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("📅 Datum")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hourOfDay, minute ->
+                                            endHour = hourOfDay
+                                            endMinute = minute
+                                        },
+                                        endHour,
+                                        endMinute,
                                         true
                                     ).show()
                                 },
@@ -535,15 +600,20 @@ fun TaskDialog(
             TextButton(
                 onClick = {
                     if (taskTitle.isNotBlank()) {
-                        val dateTime = LocalDateTime.of(
+                        val startDateTime = LocalDateTime.of(
                             selectedYear, selectedMonth, selectedDay,
                             selectedHour, selectedMinute
+                        )
+                        val endDateTime = LocalDateTime.of(
+                            endYear, endMonth, endDay,
+                            endHour, endMinute
                         )
                         onConfirm(
                             taskTitle,
                             taskDescription,
                             selectedPercentage,
-                            dateTime,
+                            startDateTime,
+                            endDateTime,
                             taskCategory?.id,
                             addToCalendar,
                             deleteOnClaim,

@@ -282,15 +282,24 @@ fun AddTaskDialog(
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     var taskCategory by remember(selectedCategory) { mutableStateOf(selectedCategory) }
 
-    // Date and time state
+    // Date and time state - START
     val currentDateTime = remember { java.time.LocalDateTime.now() }
     var selectedYear by remember { mutableStateOf(currentDateTime.year) }
     var selectedMonth by remember { mutableStateOf(currentDateTime.monthValue) }
     var selectedDay by remember { mutableStateOf(currentDateTime.dayOfMonth) }
-    var selectedHour by remember { mutableStateOf(14) }
-    var selectedMinute by remember { mutableStateOf(0) }
+    var selectedHour by remember { mutableStateOf(currentDateTime.hour) }
+    var selectedMinute by remember { mutableStateOf(currentDateTime.minute) }
+
+    // Date and time state - END (default: 1 hour after start)
+    val defaultEndDateTime = currentDateTime.plusHours(1)
+    var endYear by remember { mutableStateOf(defaultEndDateTime.year) }
+    var endMonth by remember { mutableStateOf(defaultEndDateTime.monthValue) }
+    var endDay by remember { mutableStateOf(defaultEndDateTime.dayOfMonth) }
+    var endHour by remember { mutableStateOf(defaultEndDateTime.hour) }
+    var endMinute by remember { mutableStateOf(defaultEndDateTime.minute) }
 
     val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
+    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -470,27 +479,16 @@ fun AddTaskDialog(
                         }
                     }
 
-                    // Date and Time Selection
+                    // Date and Time Selection - START
                     item {
-                        Text("Termin:", style = MaterialTheme.typography.labelMedium)
-                    }
+                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "📅 $dateTimeText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
 
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Text(
-                                dateTimeText,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-
-                    item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -508,7 +506,6 @@ fun AddTaskDialog(
                                         selectedMonth - 1,
                                         selectedDay
                                     )
-                                    // Explicitly remove any date restrictions
                                     picker.datePicker.minDate = 0
                                     picker.datePicker.maxDate = Long.MAX_VALUE
                                     picker.show()
@@ -528,6 +525,62 @@ fun AddTaskDialog(
                                         },
                                         selectedHour,
                                         selectedMinute,
+                                        true
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("🕐 Uhrzeit")
+                            }
+                        }
+                    }
+
+                    // Date and Time Selection - END
+                    item {
+                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "📅 $endDateTimeText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val picker = DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            endYear = year
+                                            endMonth = month + 1
+                                            endDay = dayOfMonth
+                                        },
+                                        endYear,
+                                        endMonth - 1,
+                                        endDay
+                                    )
+                                    picker.datePicker.minDate = 0
+                                    picker.datePicker.maxDate = Long.MAX_VALUE
+                                    picker.show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("📅 Datum")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hourOfDay, minute ->
+                                            endHour = hourOfDay
+                                            endMinute = minute
+                                        },
+                                        endHour,
+                                        endMinute,
                                         true
                                     ).show()
                                 },
@@ -679,15 +732,20 @@ fun AddTaskDialog(
             TextButton(
                 onClick = {
                     if (taskTitle.isNotBlank()) {
-                        val dateTime = java.time.LocalDateTime.of(
+                        val startDateTime = java.time.LocalDateTime.of(
                             selectedYear, selectedMonth, selectedDay,
                             selectedHour, selectedMinute
+                        )
+                        val endDateTime = java.time.LocalDateTime.of(
+                            endYear, endMonth, endDay,
+                            endHour, endMinute
                         )
                         viewModel.createTaskWithCalendar(
                             title = taskTitle,
                             description = taskDescription,
                             xpPercentage = selectedPercentage,
-                            dateTime = dateTime,
+                            startDateTime = startDateTime,
+                            endDateTime = endDateTime,
                             addToCalendar = addToCalendar,
                             categoryId = taskCategory?.id,
                             deleteOnClaim = deleteOnClaim,

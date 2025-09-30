@@ -36,7 +36,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         val title: String,
         val description: String,
         val xpPercentage: Int,
-        val dateTime: LocalDateTime,
+        val startDateTime: LocalDateTime,
+        val endDateTime: LocalDateTime,
         val categoryId: Long?,
         val shouldReactivate: Boolean = false,
         val addToCalendar: Boolean = true, // User wants calendar integration
@@ -76,7 +77,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
         // 3. Bestimme Calendar Event Operation
         val now = LocalDateTime.now()
-        val isExpiredNow = params.dateTime.plusHours(1) <= now
+        val isExpiredNow = params.endDateTime <= now
         val wasExpiredByStatus = existingLink.status == "EXPIRED"
         val hadCalendarEvent = existingLink.calendarEventId > 0
 
@@ -97,7 +98,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             eventId = existingLink.calendarEventId,
             title = params.title,
             description = params.description,
-            dateTime = params.dateTime,
+            startDateTime = params.startDateTime,
+            endDateTime = params.endDateTime,
             xpReward = xpReward,
             xpPercentage = params.xpPercentage,
             categoryId = params.categoryId
@@ -134,7 +136,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 description = params.description,
                 xpPercentage = params.xpPercentage,
                 xpReward = xpReward,
-                dueDate = params.dateTime,
+                dueDate = params.startDateTime,
                 priority = priority,
                 categoryId = params.categoryId,
                 isRecurring = params.isRecurring,
@@ -164,8 +166,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
         val updatedLink = existingLink.copy(
             title = params.title,
-            startsAt = params.dateTime,
-            endsAt = params.dateTime.plusHours(1),
+            startsAt = params.startDateTime,
+            endsAt = params.endDateTime,
             xpPercentage = params.xpPercentage,
             categoryId = params.categoryId,
             deleteOnClaim = params.deleteOnClaim,
@@ -319,7 +321,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         eventId: Long,
         title: String,
         description: String,
-        dateTime: LocalDateTime,
+        startDateTime: LocalDateTime,
+        endDateTime: LocalDateTime,
         xpReward: Int,
         xpPercentage: Int,
         categoryId: Long?
@@ -339,9 +342,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             }
 
             CalendarOperation.CREATE -> {
-                android.util.Log.d(TAG, "  Creating event: title=$title, dateTime=$dateTime")
+                android.util.Log.d(TAG, "  Creating event: title=$title, start=$startDateTime, end=$endDateTime")
                 val newEventId = createCalendarEvent(
-                    title, description, dateTime, xpReward, xpPercentage, categoryId
+                    title, description, startDateTime, endDateTime, xpReward, xpPercentage, categoryId
                 )
                 android.util.Log.d(TAG, "  Created event with ID: $newEventId")
                 newEventId
@@ -355,15 +358,15 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     eventId = eventId,
                     taskTitle = eventTitle,
                     taskDescription = description,
-                    startTime = dateTime,
-                    endTime = dateTime.plusHours(1)
+                    startTime = startDateTime,
+                    endTime = endDateTime
                 )
 
                 if (!updateSuccess) {
                     // Event wurde gelöscht (z.B. von Google Calendar weil expired) → CREATE fallback!
                     android.util.Log.w(TAG, "  Update failed, falling back to CREATE")
                     val newEventId = createCalendarEvent(
-                        title, description, dateTime, xpReward, xpPercentage, categoryId
+                        title, description, startDateTime, endDateTime, xpReward, xpPercentage, categoryId
                     )
                     android.util.Log.d(TAG, "  Created new event with ID: $newEventId")
                     newEventId
@@ -377,7 +380,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 android.util.Log.d(TAG, "  Replacing event ID: $eventId")
                 calendarManager.deleteEvent(eventId)
                 val newEventId = createCalendarEvent(
-                    title, description, dateTime, xpReward, xpPercentage, categoryId
+                    title, description, startDateTime, endDateTime, xpReward, xpPercentage, categoryId
                 )
                 android.util.Log.d(TAG, "  Replaced with new event ID: $newEventId")
                 newEventId
@@ -406,7 +409,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
     private suspend fun createCalendarEvent(
         title: String,
         description: String,
-        dateTime: LocalDateTime,
+        startDateTime: LocalDateTime,
+        endDateTime: LocalDateTime,
         xpReward: Int,
         xpPercentage: Int,
         categoryId: Long?
@@ -415,8 +419,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         return calendarManager.createTaskEvent(
             taskTitle = eventTitle,
             taskDescription = description,
-            startTime = dateTime,
-            endTime = dateTime.plusHours(1),
+            startTime = startDateTime,
+            endTime = endDateTime,
             xpReward = xpReward,
             xpPercentage = xpPercentage,
             categoryColor = category?.color
