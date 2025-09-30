@@ -7,8 +7,8 @@ Project-specific guidance for the QuestFlow RPG task management app.
 **QuestFlow** transforms daily tasks into an RPG experience with XP, levels, skills, and rewards.
 
 ### Current Version Info
-- **Database Version**: 5
-- **Last Update**: XP formula changed to total-based (not difference)
+- **Database Version**: 9
+- **Last Update**: Code optimization and cleanup (Jan 2025)
 - **Status**: Fully functional with animations
 - **Git Repository**: Yes (initialized in questflow directory)
 
@@ -67,10 +67,33 @@ val xpReward = (nextLevelTotal * percentage / 100)
 - v2→v3: Added xpPercentage to tasks
 - v3→v4: Added xpPercentage to calendar_links
 - v4→v5: Added meme unlock fields
+- v5→v6: Category system
+- v6→v7: Category XP tracking
+- v7→v8: Skill tree prerequisites
+- v8→v9: Calendar link improvements
 
-## 🐛 Known Issues & Fixes
+## 🔄 Recent Refactorings (Jan 2025)
 
-### Applied Fixes
+### Code Cleanup Completed
+- ✅ Removed duplicate `deleteCalendarEvent` method
+- ✅ Removed debug logging from production code (40+ logs cleaned)
+- ✅ Removed unused `TaskDifficulty` enum
+- ✅ Centralized task update logic via `UpdateTaskWithCalendarUseCase`
+
+## ⚠️ Known Technical Debt
+
+### Performance
+- SyncManager runs every 60s (consider 5-15 min)
+- Large screens need component extraction (CalendarXpScreen 989 lines)
+
+### Code Organization
+- Task dialogs could be consolidated
+- Recurring tasks backend disabled (UI ready)
+- Some entity fields marked for deprecation
+
+## 🐛 Previously Applied Fixes
+
+### Historical Fixes
 - WorkManager initialization conflict resolved
 - Priority enum mapping (HARD→HIGH)
 - Dialog scrollability implemented
@@ -84,10 +107,11 @@ val xpReward = (nextLevelTotal * percentage / 100)
 3. Check logs with `adb logcat | grep -i questflow`
 4. Test XP calculations at different levels
 
-### Debug Points
-- XP calculations logged in `RecordCalendarXpUseCase`
-- Level progressions in `GrantXpUseCase`
-- Animation sizing in `XpBurstAnimation`
+### Important Use Cases
+- `UpdateTaskWithCalendarUseCase` - Centralized task updates with calendar sync
+- `CalculateXpRewardUseCase` - XP calculations based on level and percentage
+- `GrantXpUseCase` - XP granting with skill multipliers
+- `RecordCalendarXpUseCase` - Calendar event XP claiming
 
 ## 👤 User Preferences
 
