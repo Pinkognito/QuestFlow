@@ -86,6 +86,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             wasExpiredByStatus = wasExpiredByStatus,
             hadCalendarEvent = hadCalendarEvent,
             deleteOnExpiry = params.deleteOnExpiry,
+            deleteOnClaim = params.deleteOnClaim,
+            shouldReactivate = params.shouldReactivate,
             existingLink = existingLink
         )
 
@@ -193,43 +195,127 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         wasExpiredByStatus: Boolean,
         hadCalendarEvent: Boolean,
         deleteOnExpiry: Boolean,
+        deleteOnClaim: Boolean,
+        shouldReactivate: Boolean,
         existingLink: CalendarEventLinkEntity
     ): CalendarOperation {
+        val wasClaimed = existingLink.rewarded
+
+        android.util.Log.d(TAG, "=== Calendar Operation Decision ===")
+        android.util.Log.d(TAG, "  addToCalendar=$addToCalendar, isExpiredNow=$isExpiredNow")
+        android.util.Log.d(TAG, "  wasExpiredByStatus=$wasExpiredByStatus, hadCalendarEvent=$hadCalendarEvent")
+        android.util.Log.d(TAG, "  deleteOnExpiry=$deleteOnExpiry, deleteOnClaim=$deleteOnClaim, shouldReactivate=$shouldReactivate")
+        android.util.Log.d(TAG, "  existingLink.deleteOnExpiry=${existingLink.deleteOnExpiry}, existingLink.deleteOnClaim=${existingLink.deleteOnClaim}")
+        android.util.Log.d(TAG, "  wasClaimed=$wasClaimed")
+
         // Wenn User Calendar-Integration NICHT will → DELETE falls Event existiert
         if (!addToCalendar && hadCalendarEvent) {
+            android.util.Log.d(TAG, "  Decision: DELETE (user disabled calendar)")
             return CalendarOperation.DELETE
         }
 
         // Wenn User Calendar-Integration NICHT will und kein Event → NONE
         if (!addToCalendar && !hadCalendarEvent) {
+            android.util.Log.d(TAG, "  Decision: NONE (user disabled, no event)")
             return CalendarOperation.NONE
         }
 
         // Ab hier: addToCalendar = true (User WILL Calendar-Integration)
-        return when {
-            // Case 1: Expired + deleteOnExpiry ON → DELETE
-            isExpiredNow && deleteOnExpiry && hadCalendarEvent -> CalendarOperation.DELETE
+        val operation = when {
+            // === ABSOLUTE HIGHEST PRIORITY: REACTIVATION (überschreibt alles!) ===
 
-            // Case 2: War expired, jetzt future → REPLACE (altes löschen, neues erstellen)
-            wasExpiredByStatus && !isExpiredNow && hadCalendarEvent -> CalendarOperation.REPLACE
+            // Case 0: Reactivation → CREATE wenn kein Event (wichtig für deleteOnClaim!)
+            shouldReactivate && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (REACTIVATION, no event)")
+                CalendarOperation.CREATE
+            }
 
-            // Case 2b: War expired, jetzt future, kein Event → CREATE
-            wasExpiredByStatus && !isExpiredNow && !hadCalendarEvent -> CalendarOperation.CREATE
+            // Case 0b: Reactivation → UPDATE wenn Event existiert
+            shouldReactivate && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: UPDATE (REACTIVATION, has event)")
+                CalendarOperation.UPDATE
+            }
 
-            // Case 3: deleteOnExpiry war ON, jetzt OFF → CREATE wenn kein Event
-            isExpiredNow && !deleteOnExpiry && existingLink.deleteOnExpiry && !hadCalendarEvent -> CalendarOperation.CREATE
+            // === HIGHEST PRIORITY: DELETE WINS (wenn irgendeine Delete-Bedingung erfüllt ist) ===
 
-            // Case 4: Normal update (nur wenn Event existiert!)
-            !isExpiredNow && hadCalendarEvent -> CalendarOperation.UPDATE
+            // Case PRIO-1: Task ist geclaimed UND deleteOnClaim ist ON → DELETE (egal ob expired oder nicht!)
+            wasClaimed && deleteOnClaim && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: DELETE PRIORITY (claimed with deleteOnClaim ON)")
+                CalendarOperation.DELETE
+            }
 
-            // Case 5: Nicht expired, aber kein Event → CREATE
-            !isExpiredNow && !hadCalendarEvent -> CalendarOperation.CREATE
+            // Case PRIO-2: Task ist expired UND deleteOnExpiry ist ON → DELETE
+            isExpiredNow && deleteOnExpiry && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: DELETE PRIORITY (expired with deleteOnExpiry ON)")
+                CalendarOperation.DELETE
+            }
 
-            // Case 6: Expired, deleteOnExpiry OFF, aber kein Event → CREATE
-            isExpiredNow && !deleteOnExpiry && !hadCalendarEvent -> CalendarOperation.CREATE
+            // === TOGGLE-ÄNDERUNGEN ===
 
-            else -> CalendarOperation.NONE
+            // Case 0c: deleteOnClaim wurde OFF geschaltet, Task IST geclaimed, kein Event → CREATE
+            wasClaimed && !deleteOnClaim && existingLink.deleteOnClaim && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (deleteOnClaim toggled off, was claimed)")
+                CalendarOperation.CREATE
+            }
+
+            // === EXPIRY CASES ===
+
+            // Case 1: War NOT expired, jetzt expired, deleteOnExpiry ON → DELETE (bereits oben abgedeckt durch PRIO-2)
+            !wasExpiredByStatus && isExpiredNow && deleteOnExpiry && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: DELETE (became expired with deleteOnExpiry)")
+                CalendarOperation.DELETE
+            }
+
+            // Case 3: War expired, jetzt future → REPLACE (altes löschen, neues erstellen)
+            wasExpiredByStatus && !isExpiredNow && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: REPLACE (was expired, now future)")
+                CalendarOperation.REPLACE
+            }
+
+            // Case 4: War expired, jetzt future, kein Event → CREATE
+            wasExpiredByStatus && !isExpiredNow && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (was expired, now future, no event)")
+                CalendarOperation.CREATE
+            }
+
+            // Case 5: deleteOnExpiry war ON, jetzt OFF → CREATE wenn kein Event
+            isExpiredNow && !deleteOnExpiry && existingLink.deleteOnExpiry && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (deleteOnExpiry toggled off)")
+                CalendarOperation.CREATE
+            }
+
+            // Case 6: Normal update für NICHT expired tasks (nur wenn Event existiert!)
+            !isExpiredNow && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: UPDATE (not expired, has event)")
+                CalendarOperation.UPDATE
+            }
+
+            // Case 7: Nicht expired, aber kein Event → CREATE
+            !isExpiredNow && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (not expired, no event)")
+                CalendarOperation.CREATE
+            }
+
+            // Case 8: Expired, deleteOnExpiry OFF, HAT Event → UPDATE (!!!)
+            isExpiredNow && !deleteOnExpiry && hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: UPDATE (expired but deleteOnExpiry OFF, has event)")
+                CalendarOperation.UPDATE
+            }
+
+            // Case 9: Expired, deleteOnExpiry OFF, kein Event → CREATE
+            isExpiredNow && !deleteOnExpiry && !hadCalendarEvent -> {
+                android.util.Log.d(TAG, "  Decision: CREATE (expired, deleteOnExpiry OFF, no event)")
+                CalendarOperation.CREATE
+            }
+
+            else -> {
+                android.util.Log.d(TAG, "  Decision: NONE (no matching case)")
+                CalendarOperation.NONE
+            }
         }
+
+        android.util.Log.d(TAG, "=== Final Operation: $operation ===")
+        return operation
     }
 
     // === HELPER: Execute Calendar Operation ===
@@ -244,18 +330,22 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         xpPercentage: Int,
         categoryId: Long?
     ): Long? {
+        android.util.Log.d(TAG, "=== Executing Calendar Operation: $operation ===")
+
         if (!calendarManager.hasCalendarPermission()) {
             android.util.Log.w(TAG, "  No calendar permission, skipping operation")
             return null
         }
 
-        return when (operation) {
+        val result = when (operation) {
             CalendarOperation.DELETE -> {
+                android.util.Log.d(TAG, "  Deleting event ID: $eventId")
                 calendarManager.deleteEvent(eventId)
                 null // Kein Event mehr
             }
 
             CalendarOperation.CREATE -> {
+                android.util.Log.d(TAG, "  Creating event: title=$title, dateTime=$dateTime")
                 val category = categoryId?.let { categoryRepository.getCategoryById(it) }
                 val eventTitle = if (category != null) {
                     "${category.emoji} $title"
@@ -263,7 +353,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     "🎯 $title"
                 }
 
-                calendarManager.createTaskEvent(
+                val newEventId = calendarManager.createTaskEvent(
                     taskTitle = eventTitle,
                     taskDescription = description,
                     startTime = dateTime,
@@ -272,9 +362,12 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     xpPercentage = xpPercentage,
                     categoryColor = category?.color
                 )
+                android.util.Log.d(TAG, "  Created event with ID: $newEventId")
+                newEventId
             }
 
             CalendarOperation.UPDATE -> {
+                android.util.Log.d(TAG, "  Updating event ID: $eventId")
                 val category = categoryId?.let { categoryRepository.getCategoryById(it) }
                 val eventTitle = if (category != null) {
                     "${category.emoji} $title"
@@ -282,17 +375,36 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     "🎯 $title"
                 }
 
-                calendarManager.updateTaskEvent(
+                val updateSuccess = calendarManager.updateTaskEvent(
                     eventId = eventId,
                     taskTitle = eventTitle,
                     taskDescription = description,
                     startTime = dateTime,
                     endTime = dateTime.plusHours(1)
                 )
-                eventId // Gleiche ID
+
+                if (!updateSuccess) {
+                    // Event wurde gelöscht (z.B. von Google Calendar weil expired) → CREATE fallback!
+                    android.util.Log.w(TAG, "  Update failed, falling back to CREATE")
+                    val newEventId = calendarManager.createTaskEvent(
+                        taskTitle = eventTitle,
+                        taskDescription = description,
+                        startTime = dateTime,
+                        endTime = dateTime.plusHours(1),
+                        xpReward = xpReward,
+                        xpPercentage = xpPercentage,
+                        categoryColor = category?.color
+                    )
+                    android.util.Log.d(TAG, "  Created new event with ID: $newEventId")
+                    newEventId
+                } else {
+                    android.util.Log.d(TAG, "  Updated event ID: $eventId")
+                    eventId // Gleiche ID
+                }
             }
 
             CalendarOperation.REPLACE -> {
+                android.util.Log.d(TAG, "  Replacing event ID: $eventId")
                 // 1. Delete old event
                 calendarManager.deleteEvent(eventId)
 
@@ -304,7 +416,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     "🎯 $title"
                 }
 
-                calendarManager.createTaskEvent(
+                val newEventId = calendarManager.createTaskEvent(
                     taskTitle = eventTitle,
                     taskDescription = description,
                     startTime = dateTime,
@@ -313,12 +425,18 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                     xpPercentage = xpPercentage,
                     categoryColor = category?.color
                 )
+                android.util.Log.d(TAG, "  Replaced with new event ID: $newEventId")
+                newEventId
             }
 
             CalendarOperation.NONE -> {
+                android.util.Log.d(TAG, "  No operation needed, keeping event ID: $eventId")
                 eventId // Keine Änderung
             }
         }
+
+        android.util.Log.d(TAG, "=== Calendar Operation Complete, returning ID: $result ===")
+        return result
     }
 
     // === HELPER: Status & Priority ===
