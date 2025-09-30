@@ -88,6 +88,9 @@ dependencies {
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.5.0")
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     

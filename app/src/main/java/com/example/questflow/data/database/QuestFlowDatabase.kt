@@ -14,13 +14,15 @@ import com.example.questflow.data.database.entity.*
         CalendarEventLinkEntity::class,
         MemeEntity::class,
         MemeUnlockEntity::class,
+        CollectionItemEntity::class,
+        CollectionUnlockEntity::class,
         SkillNodeEntity::class,
         SkillEdgeEntity::class,
         SkillUnlockEntity::class,
         CategoryEntity::class,
         CategoryXpTransactionEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,6 +32,7 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun xpTransactionDao(): XpTransactionDao
     abstract fun calendarEventLinkDao(): CalendarEventLinkDao
     abstract fun memeDao(): MemeDao
+    abstract fun collectionDao(): CollectionDao
     abstract fun skillDao(): SkillDao
     abstract fun categoryDao(): CategoryDao
 

@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.Star, contentDescription = "Collection") },
-                                label = { Text("Memes") },
+                                label = { Text("Collection") },
                                 selected = currentRoute == "collection",
                                 onClick = {
                                     navController.navigate("collection") {

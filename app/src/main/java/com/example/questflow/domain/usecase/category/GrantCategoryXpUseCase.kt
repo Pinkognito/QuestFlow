@@ -7,7 +7,8 @@ import javax.inject.Inject
 import kotlin.math.pow
 
 class GrantCategoryXpUseCase @Inject constructor(
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val collectionRepository: com.example.questflow.data.repository.CollectionRepository
 ) {
     suspend operator fun invoke(
         categoryId: Long,
@@ -73,6 +74,21 @@ class GrantCategoryXpUseCase @Inject constructor(
         Log.d("GrantCategoryXpUseCase",
             "Level progress: $previousLevel → $newLevel, Total XP: $previousTotalXp → $newTotalXp")
 
+        // Handle level-up rewards: unlock collection items
+        val unlockedCollectionItems = mutableListOf<String>()
+        if (levelsGained > 0) {
+            Log.d("GrantCategoryXpUseCase", "Category level up! Gained $levelsGained levels. Unlocking collection items...")
+
+            repeat(levelsGained) {
+                // Unlock collection item for this category
+                val collectionItem = collectionRepository.unlockNextItem(newLevel, categoryId = categoryId)
+                collectionItem?.let {
+                    unlockedCollectionItems.add(it.name)
+                    Log.d("GrantCategoryXpUseCase", "Unlocked collection item: ${it.name} (category: $categoryId)")
+                }
+            }
+        }
+
         return XpGrantResult(
             categoryId = categoryId,
             categoryName = category.name,
@@ -84,7 +100,8 @@ class GrantCategoryXpUseCase @Inject constructor(
             newTotalXp = newTotalXp,
             currentLevelXp = currentLevelXp,
             xpNeededForCurrentLevel = xpNeededForCurrentLevel,
-            skillPointsGained = levelsGained
+            skillPointsGained = levelsGained,
+            unlockedCollectionItems = unlockedCollectionItems
         )
     }
 
@@ -103,6 +120,7 @@ class GrantCategoryXpUseCase @Inject constructor(
         val newTotalXp: Int,
         val currentLevelXp: Int,
         val xpNeededForCurrentLevel: Int,
-        val skillPointsGained: Int
+        val skillPointsGained: Int,
+        val unlockedCollectionItems: List<String> = emptyList()
     )
 }

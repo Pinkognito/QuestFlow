@@ -7,7 +7,8 @@ import androidx.navigation.compose.composable
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.screens.today.TodayScreen
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
-import com.example.questflow.presentation.screens.collection.MemeCollectionScreen
+import com.example.questflow.presentation.screens.collection.CollectionScreen
+import com.example.questflow.presentation.screens.collection.CollectionManageScreen
 import com.example.questflow.presentation.screens.skilltree.SkillTreeScreen
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
 
@@ -33,9 +34,15 @@ fun QuestFlowNavHost(
             )
         }
         composable("collection") {
-            MemeCollectionScreen(
+            CollectionScreen(
                 appViewModel = appViewModel,
                 navController = navController
+            )
+        }
+        composable("collection_manage") {
+            CollectionManageScreen(
+                navController = navController,
+                appViewModel = appViewModel
             )
         }
         composable("skill_tree") {
