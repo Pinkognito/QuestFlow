@@ -60,7 +60,10 @@ class CompleteTaskUseCase @Inject constructor(
             genResult to null
         }
 
-        // Process recurring task if applicable - temporarily disabled
+        // TODO: Recurring tasks feature
+        // UI and data structures are ready (RecurringConfigDialog, entity fields)
+        // Backend processing is disabled pending full implementation
+        // When enabled, uncomment below to create next recurring instance:
         /*
         if (task.isRecurring) {
             processRecurringTasksUseCase(taskId)
