@@ -12,6 +12,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.questflow.domain.usecase.LevelCurve
 
+/**
+ * @deprecated Replaced by AnimatedXpLevelBadge which provides XP animations and level-up effects.
+ * This static version is no longer used in the app. Will be removed in future version.
+ */
+@Deprecated(
+    message = "Use AnimatedXpLevelBadge instead for animated XP updates",
+    replaceWith = ReplaceWith("AnimatedXpLevelBadge(level, xp, modifier = modifier, isCategory = isCategory)")
+)
 @Composable
 fun XpLevelBadge(
     level: Int,
