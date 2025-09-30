@@ -260,12 +260,6 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             // === EXPIRY CASES ===
 
-            // Case 1: War NOT expired, jetzt expired, deleteOnExpiry ON → DELETE (bereits oben abgedeckt durch PRIO-2)
-            !wasExpiredByStatus && isExpiredNow && deleteOnExpiry && hadCalendarEvent -> {
-                android.util.Log.d(TAG, "  Decision: DELETE (became expired with deleteOnExpiry)")
-                CalendarOperation.DELETE
-            }
-
             // Case 3: War expired, jetzt future → REPLACE (altes löschen, neues erstellen)
             wasExpiredByStatus && !isExpiredNow && hadCalendarEvent -> {
                 android.util.Log.d(TAG, "  Decision: REPLACE (was expired, now future)")
@@ -346,21 +340,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             CalendarOperation.CREATE -> {
                 android.util.Log.d(TAG, "  Creating event: title=$title, dateTime=$dateTime")
-                val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                val eventTitle = if (category != null) {
-                    "${category.emoji} $title"
-                } else {
-                    "🎯 $title"
-                }
-
-                val newEventId = calendarManager.createTaskEvent(
-                    taskTitle = eventTitle,
-                    taskDescription = description,
-                    startTime = dateTime,
-                    endTime = dateTime.plusHours(1),
-                    xpReward = xpReward,
-                    xpPercentage = xpPercentage,
-                    categoryColor = category?.color
+                val newEventId = createCalendarEvent(
+                    title, description, dateTime, xpReward, xpPercentage, categoryId
                 )
                 android.util.Log.d(TAG, "  Created event with ID: $newEventId")
                 newEventId
@@ -368,12 +349,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             CalendarOperation.UPDATE -> {
                 android.util.Log.d(TAG, "  Updating event ID: $eventId")
-                val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                val eventTitle = if (category != null) {
-                    "${category.emoji} $title"
-                } else {
-                    "🎯 $title"
-                }
+                val (eventTitle, _) = buildEventTitle(title, categoryId)
 
                 val updateSuccess = calendarManager.updateTaskEvent(
                     eventId = eventId,
@@ -386,14 +362,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 if (!updateSuccess) {
                     // Event wurde gelöscht (z.B. von Google Calendar weil expired) → CREATE fallback!
                     android.util.Log.w(TAG, "  Update failed, falling back to CREATE")
-                    val newEventId = calendarManager.createTaskEvent(
-                        taskTitle = eventTitle,
-                        taskDescription = description,
-                        startTime = dateTime,
-                        endTime = dateTime.plusHours(1),
-                        xpReward = xpReward,
-                        xpPercentage = xpPercentage,
-                        categoryColor = category?.color
+                    val newEventId = createCalendarEvent(
+                        title, description, dateTime, xpReward, xpPercentage, categoryId
                     )
                     android.util.Log.d(TAG, "  Created new event with ID: $newEventId")
                     newEventId
@@ -405,25 +375,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             CalendarOperation.REPLACE -> {
                 android.util.Log.d(TAG, "  Replacing event ID: $eventId")
-                // 1. Delete old event
                 calendarManager.deleteEvent(eventId)
-
-                // 2. Create new event
-                val category = categoryId?.let { categoryRepository.getCategoryById(it) }
-                val eventTitle = if (category != null) {
-                    "${category.emoji} $title"
-                } else {
-                    "🎯 $title"
-                }
-
-                val newEventId = calendarManager.createTaskEvent(
-                    taskTitle = eventTitle,
-                    taskDescription = description,
-                    startTime = dateTime,
-                    endTime = dateTime.plusHours(1),
-                    xpReward = xpReward,
-                    xpPercentage = xpPercentage,
-                    categoryColor = category?.color
+                val newEventId = createCalendarEvent(
+                    title, description, dateTime, xpReward, xpPercentage, categoryId
                 )
                 android.util.Log.d(TAG, "  Replaced with new event ID: $newEventId")
                 newEventId
@@ -437,6 +391,36 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
         android.util.Log.d(TAG, "=== Calendar Operation Complete, returning ID: $result ===")
         return result
+    }
+
+    private suspend fun buildEventTitle(title: String, categoryId: Long?): Pair<String, com.example.questflow.data.database.entity.CategoryEntity?> {
+        val category = categoryId?.let { categoryRepository.getCategoryById(it) }
+        val eventTitle = if (category != null) {
+            "${category.emoji} $title"
+        } else {
+            "🎯 $title"
+        }
+        return Pair(eventTitle, category)
+    }
+
+    private suspend fun createCalendarEvent(
+        title: String,
+        description: String,
+        dateTime: LocalDateTime,
+        xpReward: Int,
+        xpPercentage: Int,
+        categoryId: Long?
+    ): Long? {
+        val (eventTitle, category) = buildEventTitle(title, categoryId)
+        return calendarManager.createTaskEvent(
+            taskTitle = eventTitle,
+            taskDescription = description,
+            startTime = dateTime,
+            endTime = dateTime.plusHours(1),
+            xpReward = xpReward,
+            xpPercentage = xpPercentage,
+            categoryColor = category?.color
+        )
     }
 
     // === HELPER: Status & Priority ===
