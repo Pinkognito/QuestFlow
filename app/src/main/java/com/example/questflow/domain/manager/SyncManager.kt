@@ -24,6 +24,10 @@ class SyncManager @Inject constructor(
     private var syncJob: Job? = null
     private val syncScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    companion object {
+        private const val SYNC_INTERVAL_MS = 300_000L // 5 minutes (300 seconds)
+    }
+
     fun startPeriodicSync() {
         stopPeriodicSync()
 
@@ -33,9 +37,9 @@ class SyncManager @Inject constructor(
             // Initial sync on startup
             performSync(forceFullCheck = false)
 
-            // Then sync every minute
+            // Then sync every 5 minutes
             while (isActive) {
-                delay(60_000) // 1 minute
+                delay(SYNC_INTERVAL_MS)
                 performSync(forceFullCheck = false)
             }
         }
