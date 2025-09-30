@@ -260,19 +260,35 @@ class CalendarManager @Inject constructor(
         startTime: LocalDateTime,
         endTime: LocalDateTime = startTime.plusHours(1)
     ): Boolean = withContext(Dispatchers.IO) {
-        android.util.Log.d("CalendarManager", "=== updateTaskEvent CALLED ===")
-        android.util.Log.d("CalendarManager", "  eventId: $eventId")
-        android.util.Log.d("CalendarManager", "  title: $taskTitle")
-        android.util.Log.d("CalendarManager", "  startTime: $startTime")
-        android.util.Log.d("CalendarManager", "  endTime: $endTime")
+        android.util.Log.e("CalendarManager", "=== updateTaskEvent CALLED ===")
+        android.util.Log.e("CalendarManager", "  eventId: $eventId")
+        android.util.Log.e("CalendarManager", "  title: $taskTitle")
+        android.util.Log.e("CalendarManager", "  startTime: $startTime")
+        android.util.Log.e("CalendarManager", "  endTime: $endTime")
 
         if (!hasCalendarPermission()) {
-            android.util.Log.d("CalendarManager", "  NO PERMISSION - returning false")
+            android.util.Log.e("CalendarManager", "  NO PERMISSION - returning false")
+            return@withContext false
+        }
+
+        // Check if event exists first
+        val eventExists = try {
+            getCalendarEvent(eventId) != null
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarManager", "  Event check failed: ${e.message}")
+            false
+        }
+
+        if (!eventExists) {
+            android.util.Log.e("CalendarManager", "  EVENT DOES NOT EXIST - cannot update!")
             return@withContext false
         }
 
         val startMillis = startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val endMillis = endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        android.util.Log.e("CalendarManager", "  startMillis: $startMillis")
+        android.util.Log.e("CalendarManager", "  endMillis: $endMillis")
 
         val values = ContentValues().apply {
             put(CalendarContract.Events.TITLE, taskTitle)
@@ -283,8 +299,8 @@ class CalendarManager @Inject constructor(
 
         val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
         val rows = context.contentResolver.update(uri, values, null, null)
-        android.util.Log.d("CalendarManager", "  UPDATE RESULT: $rows rows updated")
-        android.util.Log.d("CalendarManager", "=== updateTaskEvent DONE ===")
+        android.util.Log.e("CalendarManager", "  UPDATE RESULT: $rows rows updated")
+        android.util.Log.e("CalendarManager", "=== updateTaskEvent DONE ===")
         rows > 0
     }
 }
