@@ -212,11 +212,6 @@ class CollectionManageViewModel @Inject constructor(
             }
         }
     }
-
-    fun resetState() {
-        Log.d(TAG, "Resetting state")
-        _uiState.value = CollectionManageUiState()
-    }
 }
 
 data class CollectionManageUiState(

@@ -38,7 +38,8 @@ val xpReward = (nextLevelTotal * percentage / 100)
 ### ViewModels
 - `TodayViewModel` - Main task management
 - `CalendarXpViewModel` - Calendar XP claims
-- `MemeCollectionViewModel` - Meme rewards
+- `CollectionViewModel` - Collection item display
+- `CollectionManageViewModel` - Collection item uploads
 - `SkillTreeViewModel` - Skill progression
 
 ### Important Use Cases
@@ -56,7 +57,8 @@ val xpReward = (nextLevelTotal * percentage / 100)
 
 ### Completed Features
 - ✅ XP animations with dynamic text sizing
-- ✅ Meme collection system (50 memes)
+- ✅ User-uploadable Collection system (replaced 50 predefined memes)
+- ✅ Category-specific collections with file storage
 - ✅ XpLevelBadge in all screen TopBars
 - ✅ Calendar integration with XP claiming
 - ✅ German/English mixed UI
@@ -66,11 +68,12 @@ val xpReward = (nextLevelTotal * percentage / 100)
 - v1→v2: Added gamification tables
 - v2→v3: Added xpPercentage to tasks
 - v3→v4: Added xpPercentage to calendar_links
-- v4→v5: Added meme unlock fields
+- v4→v5: Added meme unlock fields (legacy)
 - v5→v6: Category system
 - v6→v7: Category XP tracking
 - v7→v8: Skill tree prerequisites
 - v8→v9: Calendar link improvements
+- v9→v10: Collection system with file storage
 
 ## 🔄 Recent Refactorings (Jan 2025)
 

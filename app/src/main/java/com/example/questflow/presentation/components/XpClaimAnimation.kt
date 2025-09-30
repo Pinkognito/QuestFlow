@@ -266,11 +266,11 @@ fun XpBurstAnimation(
                     color = MaterialTheme.colorScheme.tertiary
                 )
 
-                // Show unlocked memes
+                // Show unlocked collection items
                 if (unlockedMemes.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Neue Memes freigeschaltet!",
+                        text = "Neue Collection Items freigeschaltet!",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.secondary
                     )
