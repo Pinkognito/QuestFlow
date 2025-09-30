@@ -251,8 +251,6 @@ class CalendarManager @Inject constructor(
         rows > 0
     }
 
-    suspend fun deleteCalendarEvent(eventId: Long): Boolean = deleteEvent(eventId)
-
     suspend fun updateTaskEvent(
         eventId: Long,
         taskTitle: String,

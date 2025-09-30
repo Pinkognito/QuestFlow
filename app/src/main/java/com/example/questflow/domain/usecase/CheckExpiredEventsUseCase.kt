@@ -63,7 +63,7 @@ class CheckExpiredEventsUseCase @Inject constructor(
                 // Delete from calendar if configured
                 if (expiredLink.deleteOnExpiry && calendarManager.hasCalendarPermission()) {
                     try {
-                        calendarManager.deleteCalendarEvent(expiredLink.calendarEventId)
+                        calendarManager.deleteEvent(expiredLink.calendarEventId)
                         deletedCount++
                         Log.d("CheckExpiredEvents", "Deleted expired calendar event: ${expiredLink.title}")
                     } catch (e: Exception) {

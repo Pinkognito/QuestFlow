@@ -38,7 +38,7 @@ class RecordCalendarXpUseCase @Inject constructor(
         // Delete calendar event if deleteOnClaim flag is set
         if (link.deleteOnClaim) {
             try {
-                calendarManager.deleteCalendarEvent(link.calendarEventId)
+                calendarManager.deleteEvent(link.calendarEventId)
                 android.util.Log.d("RecordCalendarXp", "Deleted calendar event ${link.calendarEventId} after claiming XP")
             } catch (e: Exception) {
                 android.util.Log.e("RecordCalendarXp", "Failed to delete calendar event: ${e.message}")

@@ -301,7 +301,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         return when (operation) {
             CalendarOperation.DELETE -> {
                 android.util.Log.d(TAG, "  Executing DELETE for event ID: $eventId")
-                val deleted = calendarManager.deleteCalendarEvent(eventId)
+                val deleted = calendarManager.deleteEvent(eventId)
                 android.util.Log.d(TAG, "  DELETE result: $deleted")
                 null // Kein Event mehr
             }
@@ -351,7 +351,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             CalendarOperation.REPLACE -> {
                 android.util.Log.d(TAG, "  Executing REPLACE for event ID: $eventId")
                 // 1. Delete old event
-                val deleted = calendarManager.deleteCalendarEvent(eventId)
+                val deleted = calendarManager.deleteEvent(eventId)
                 android.util.Log.d(TAG, "  REPLACE: Old event deleted: $deleted")
 
                 // 2. Create new event
