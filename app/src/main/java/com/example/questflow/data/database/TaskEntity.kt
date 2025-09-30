@@ -34,14 +34,6 @@ data class TaskEntity(
     val parentTaskId: Long? = null // Reference to parent recurring task
 )
 
-enum class TaskDifficulty {
-    TRIVIAL,    // 20% of level XP requirement
-    EASY,       // 40% of level XP requirement
-    MEDIUM,     // 60% of level XP requirement
-    HARD,       // 80% of level XP requirement
-    EPIC        // 100% of level XP requirement
-}
-
 enum class RecurringType {
     DAILY,      // Every X days
     WEEKLY,     // Specific weekdays

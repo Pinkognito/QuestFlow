@@ -1,6 +1,5 @@
 package com.example.questflow.domain.usecase
 
-import com.example.questflow.data.database.TaskDifficulty
 import com.example.questflow.data.database.entity.XpSource
 import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
