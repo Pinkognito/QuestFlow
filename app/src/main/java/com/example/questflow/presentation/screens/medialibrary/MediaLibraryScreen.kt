@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -30,9 +31,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.questflow.data.database.entity.MediaLibraryEntity
 import com.example.questflow.data.database.entity.MediaType
 import com.example.questflow.presentation.AppViewModel
+import com.example.questflow.presentation.components.MediaDetailsDialog
+import com.example.questflow.presentation.components.MediaViewerDialog
 import com.example.questflow.presentation.components.QuestFlowTopBar
 import java.io.File
-import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,17 +49,38 @@ fun MediaLibraryScreen(
     val categories by appViewModel.categories.collectAsState()
     val globalStats by appViewModel.globalStats.collectAsState()
 
-    var selectedMediaType by remember { mutableStateOf(MediaType.IMAGE) }
+    var selectedFilter by remember { mutableStateOf<MediaType?>(null) } // null = Alle
     var showDeleteDialog by remember { mutableStateOf<MediaLibraryEntity?>(null) }
+    var showUploadMenu by remember { mutableStateOf(false) }
+    var showMediaViewer by remember { mutableStateOf<MediaLibraryEntity?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Image picker
-    val imagePickerLauncher = rememberLauncherForActivityResult(
+    // Single file picker
+    val singleFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
+            // Let repository auto-detect media type from MIME type
             viewModel.uploadMedia(context, it, MediaType.IMAGE)
+        }
+    }
+
+    // Multiple files picker
+    val multipleFilesPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.uploadMultipleMedia(context, uris)
+        }
+    }
+
+    // ZIP file picker
+    val zipFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.uploadFromZip(context, it)
         }
     }
 
@@ -83,15 +106,73 @@ fun MediaLibraryScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    when (selectedMediaType) {
-                        MediaType.IMAGE, MediaType.GIF -> imagePickerLauncher.launch("image/*")
-                        MediaType.AUDIO -> { /* TODO: Audio picker */ }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Upload options menu
+                if (showUploadMenu) {
+                    // ZIP Upload
+                    SmallFloatingActionButton(
+                        onClick = {
+                            showUploadMenu = false
+                            zipFilePicker.launch("application/zip")
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("ZIP", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    // Multiple Files Upload
+                    SmallFloatingActionButton(
+                        onClick = {
+                            showUploadMenu = false
+                            multipleFilesPicker.launch("*/*")
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Mehrere", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    // Single File Upload
+                    SmallFloatingActionButton(
+                        onClick = {
+                            showUploadMenu = false
+                            singleFilePicker.launch("*/*")
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Einzeln", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Datei hochladen")
+
+                // Main FAB
+                FloatingActionButton(
+                    onClick = { showUploadMenu = !showUploadMenu }
+                ) {
+                    Icon(
+                        if (showUploadMenu) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = "Upload"
+                    )
+                }
             }
         }
     ) { paddingValues ->
@@ -100,28 +181,51 @@ fun MediaLibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Media type tabs
-            TabRow(
-                selectedTabIndex = when (selectedMediaType) {
-                    MediaType.IMAGE -> 0
-                    MediaType.GIF -> 1
-                    MediaType.AUDIO -> 2
-                }
+            // Filter chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Tab(
-                    selected = selectedMediaType == MediaType.IMAGE,
-                    onClick = { selectedMediaType = MediaType.IMAGE },
-                    text = { Text("Bilder") }
+                // Alle Filter
+                FilterChip(
+                    selected = selectedFilter == null,
+                    onClick = { selectedFilter = null },
+                    label = { Text("Alle") },
+                    leadingIcon = if (selectedFilter == null) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
                 )
-                Tab(
-                    selected = selectedMediaType == MediaType.GIF,
-                    onClick = { selectedMediaType = MediaType.GIF },
-                    text = { Text("GIFs") }
+
+                // Bilder Filter
+                FilterChip(
+                    selected = selectedFilter == MediaType.IMAGE,
+                    onClick = { selectedFilter = MediaType.IMAGE },
+                    label = { Text("Bilder") },
+                    leadingIcon = if (selectedFilter == MediaType.IMAGE) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
                 )
-                Tab(
-                    selected = selectedMediaType == MediaType.AUDIO,
-                    onClick = { selectedMediaType = MediaType.AUDIO },
-                    text = { Text("Audio") }
+
+                // GIFs Filter
+                FilterChip(
+                    selected = selectedFilter == MediaType.GIF,
+                    onClick = { selectedFilter = MediaType.GIF },
+                    label = { Text("GIFs") },
+                    leadingIcon = if (selectedFilter == MediaType.GIF) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
+                )
+
+                // Audio Filter
+                FilterChip(
+                    selected = selectedFilter == MediaType.AUDIO,
+                    onClick = { selectedFilter = MediaType.AUDIO },
+                    label = { Text("Audio") },
+                    leadingIcon = if (selectedFilter == MediaType.AUDIO) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
                 )
             }
 
@@ -129,7 +233,7 @@ fun MediaLibraryScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
@@ -146,7 +250,7 @@ fun MediaLibraryScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "${formatFileSize(uiState.totalSize)}",
+                        text = formatFileSize(uiState.totalSize),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -154,7 +258,11 @@ fun MediaLibraryScreen(
             }
 
             // Media grid
-            val filteredMedia = uiState.allMedia.filter { it.mediaType == selectedMediaType }
+            val filteredMedia = if (selectedFilter == null) {
+                uiState.allMedia
+            } else {
+                uiState.allMedia.filter { it.mediaType == selectedFilter }
+            }
 
             if (filteredMedia.isEmpty()) {
                 Box(
@@ -174,13 +282,16 @@ fun MediaLibraryScreen(
                             tint = MaterialTheme.colorScheme.outline
                         )
                         Text(
-                            text = "Keine ${
-                                when (selectedMediaType) {
+                            text = if (selectedFilter == null) {
+                                "Keine Dateien vorhanden"
+                            } else {
+                                "Keine ${when (selectedFilter) {
                                     MediaType.IMAGE -> "Bilder"
                                     MediaType.GIF -> "GIFs"
                                     MediaType.AUDIO -> "Audio-Dateien"
-                                }
-                            } vorhanden",
+                                    else -> "Dateien"
+                                }} vorhanden"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -202,7 +313,8 @@ fun MediaLibraryScreen(
                     items(filteredMedia) { media ->
                         MediaGridItem(
                             media = media,
-                            onDelete = { showDeleteDialog = media }
+                            onDelete = { showDeleteDialog = media },
+                            onClick = { showMediaViewer = media }
                         )
                     }
                 }
@@ -239,12 +351,34 @@ fun MediaLibraryScreen(
             }
         )
     }
+
+    // Media viewer dialog
+    showMediaViewer?.let { media ->
+        MediaViewerDialog(
+            media = media,
+            onDismiss = { showMediaViewer = null },
+            onShowDetails = {
+                showMediaViewer = null
+                viewModel.loadMediaDetails(media.id)
+            }
+        )
+    }
+
+    // Media details dialog
+    uiState.selectedMediaWithUsage?.let { mediaWithUsage ->
+        MediaDetailsDialog(
+            media = mediaWithUsage.media,
+            usages = mediaWithUsage.usages,
+            onDismiss = { viewModel.clearMediaDetails() }
+        )
+    }
 }
 
 @Composable
 fun MediaGridItem(
     media: MediaLibraryEntity,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onClick: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -253,23 +387,20 @@ fun MediaGridItem(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { onClick() }
     ) {
         when (media.mediaType) {
             MediaType.IMAGE, MediaType.GIF -> {
                 Image(
                     painter = rememberAsyncImagePainter(model = File(media.filePath)),
                     contentDescription = media.fileName,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { showMenu = true },
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
             }
             MediaType.AUDIO -> {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { showMenu = true },
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -282,12 +413,32 @@ fun MediaGridItem(
             }
         }
 
+        // Media type badge
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(4.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Text(
+                text = when (media.mediaType) {
+                    MediaType.IMAGE -> "IMG"
+                    MediaType.GIF -> "GIF"
+                    MediaType.AUDIO -> "AUD"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+
         // File info overlay
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomStart)
-                .background(Color.Black.copy(alpha = 0.6f))
+                .background(Color.Black.copy(alpha = 0.7f))
                 .padding(4.dp)
         ) {
             Text(
@@ -299,7 +450,7 @@ fun MediaGridItem(
             )
         }
 
-        // More menu
+        // More menu button
         IconButton(
             onClick = { showMenu = true },
             modifier = Modifier
@@ -311,7 +462,7 @@ fun MediaGridItem(
                 contentDescription = "Mehr",
                 tint = Color.White,
                 modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
                     .padding(4.dp)
             )
         }
@@ -320,6 +471,16 @@ fun MediaGridItem(
             expanded = showMenu,
             onDismissRequest = { showMenu = false }
         ) {
+            DropdownMenuItem(
+                text = { Text("Anzeigen") },
+                onClick = {
+                    showMenu = false
+                    onClick()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                }
+            )
             DropdownMenuItem(
                 text = { Text("Löschen") },
                 onClick = {
@@ -338,6 +499,6 @@ fun formatFileSize(bytes: Long): String {
     return when {
         bytes < 1024 -> "$bytes B"
         bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
+        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
     }
 }

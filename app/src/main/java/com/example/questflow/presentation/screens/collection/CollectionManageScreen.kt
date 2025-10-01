@@ -29,19 +29,13 @@ fun CollectionManageScreen(
 
     var showSnackbar by remember { mutableStateOf(false) }
     var snackbarMessage by remember { mutableStateOf("") }
+    var showMediaPicker by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Set initial category from appViewModel
     LaunchedEffect(selectedCategory) {
         viewModel.setCategoryId(selectedCategory?.id)
-    }
-
-    // Single image picker
-    val singleImagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.setSelectedImageUri(it) }
     }
 
     // Multiple images picker
@@ -122,17 +116,18 @@ fun CollectionManageScreen(
             when (uiState.uploadMode) {
                 UploadMode.SINGLE -> {
                     Button(
-                        onClick = { singleImagePicker.launch("image/*") },
+                        onClick = { showMediaPicker = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (uiState.selectedImageUri != null) "Image Selected" else "Select Image")
+                        Text(if (uiState.selectedMediaLibraryId != null) "Bild ausgewählt" else "Bild aus Mediathek wählen")
                     }
 
-                    if (uiState.selectedImageUri != null) {
+                    if (uiState.selectedMediaLibraryId != null) {
                         Text(
-                            "Selected: ${uiState.selectedImageUri}",
+                            "Bild ausgewählt aus Mediathek",
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -319,7 +314,7 @@ fun CollectionManageScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isUploading && when (uiState.uploadMode) {
-                    UploadMode.SINGLE -> uiState.selectedImageUri != null && uiState.name.isNotBlank()
+                    UploadMode.SINGLE -> uiState.selectedMediaLibraryId != null && uiState.name.isNotBlank()
                     UploadMode.MULTIPLE -> uiState.selectedImageUris.isNotEmpty() && uiState.name.isNotBlank()
                     UploadMode.ZIP -> uiState.selectedZipUri != null && uiState.name.isNotBlank()
                 }
@@ -331,9 +326,9 @@ fun CollectionManageScreen(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Uploading...")
+                    Text("Wird hinzugefügt...")
                 } else {
-                    Text("Add to Collection")
+                    Text("Zu Collection hinzufügen")
                 }
             }
 
@@ -346,5 +341,16 @@ fun CollectionManageScreen(
                 )
             }
         }
+    }
+
+    // Media Picker Dialog
+    if (showMediaPicker) {
+        com.example.questflow.presentation.components.MediaPickerDialog(
+            onDismiss = { showMediaPicker = false },
+            onMediaSelected = { media ->
+                viewModel.setSelectedMediaLibraryId(media.id)
+                showMediaPicker = false
+            }
+        )
     }
 }

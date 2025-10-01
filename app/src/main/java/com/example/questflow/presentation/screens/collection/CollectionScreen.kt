@@ -143,6 +143,7 @@ fun CollectionScreen(
                         CollectionItemCard(
                             item = itemWithUnlock.item,
                             isUnlocked = itemWithUnlock.isUnlocked,
+                            mediaFilePath = itemWithUnlock.mediaFilePath,
                             onClick = {
                                 if (itemWithUnlock.isUnlocked) {
                                     viewModel.selectItem(itemWithUnlock.item)
@@ -169,6 +170,7 @@ fun CollectionScreen(
 fun CollectionItemCard(
     item: CollectionItemEntity,
     isUnlocked: Boolean,
+    mediaFilePath: String?,
     onClick: () -> Unit
 ) {
     Card(
@@ -190,8 +192,10 @@ fun CollectionItemCard(
             contentAlignment = Alignment.Center
         ) {
             if (isUnlocked) {
+                // Use mediaFilePath if available, otherwise fall back to legacy imageUri
+                val imagePath = mediaFilePath ?: item.imageUri
                 AsyncImage(
-                    model = item.imageUri,
+                    model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
                     contentDescription = item.name,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop

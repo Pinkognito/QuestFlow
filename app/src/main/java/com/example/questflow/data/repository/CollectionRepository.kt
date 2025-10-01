@@ -2,22 +2,26 @@ package com.example.questflow.data.repository
 
 import android.util.Log
 import com.example.questflow.data.database.dao.CollectionDao
+import com.example.questflow.data.database.dao.MediaLibraryDao
 import com.example.questflow.data.database.entity.CollectionItemEntity
 import com.example.questflow.data.database.entity.CollectionUnlockEntity
 import com.example.questflow.data.manager.FileStorageManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import java.time.LocalDateTime
 import javax.inject.Inject
 
 data class CollectionItemWithUnlock(
     val item: CollectionItemEntity,
     val isUnlocked: Boolean,
-    val unlockedAt: LocalDateTime? = null
+    val unlockedAt: LocalDateTime? = null,
+    val mediaFilePath: String? = null  // NEW: Actual file path from media library
 )
 
 class CollectionRepository @Inject constructor(
     private val collectionDao: CollectionDao,
+    private val mediaLibraryDao: MediaLibraryDao,
     private val fileStorageManager: FileStorageManager
 ) {
     companion object {
@@ -38,9 +42,31 @@ class CollectionRepository @Inject constructor(
                 CollectionItemWithUnlock(
                     item = item,
                     isUnlocked = unlock != null,
-                    unlockedAt = unlock?.unlockedAt
+                    unlockedAt = unlock?.unlockedAt,
+                    mediaFilePath = null // Will be populated asynchronously
                 )
             }
+        }.map { itemsWithUnlock ->
+            // For each item, fetch the media file path asynchronously
+            itemsWithUnlock.map { itemWithUnlock ->
+                val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
+                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+            }
+        }
+    }
+
+    /**
+     * Helper to get media file path from mediaLibraryId
+     */
+    private suspend fun getMediaFilePath(item: CollectionItemEntity): String? {
+        return if (item.mediaLibraryId.isNotBlank()) {
+            // New system: Use mediaLibraryId to get file path
+            mediaLibraryDao.getMediaById(item.mediaLibraryId)?.filePath
+        } else if (item.imageUri.isNotBlank()) {
+            // Legacy system: Use imageUri directly
+            item.imageUri
+        } else {
+            null
         }
     }
 
@@ -58,8 +84,14 @@ class CollectionRepository @Inject constructor(
                 CollectionItemWithUnlock(
                     item = item,
                     isUnlocked = unlock != null,
-                    unlockedAt = unlock?.unlockedAt
+                    unlockedAt = unlock?.unlockedAt,
+                    mediaFilePath = null
                 )
+            }
+        }.map { itemsWithUnlock ->
+            itemsWithUnlock.map { itemWithUnlock ->
+                val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
+                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
             }
         }
     }
@@ -78,8 +110,14 @@ class CollectionRepository @Inject constructor(
                 CollectionItemWithUnlock(
                     item = item,
                     isUnlocked = unlock != null,
-                    unlockedAt = unlock?.unlockedAt
+                    unlockedAt = unlock?.unlockedAt,
+                    mediaFilePath = null
                 )
+            }
+        }.map { itemsWithUnlock ->
+            itemsWithUnlock.map { itemWithUnlock ->
+                val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
+                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
             }
         }
     }
@@ -102,9 +140,15 @@ class CollectionRepository @Inject constructor(
                     CollectionItemWithUnlock(
                         item = item,
                         isUnlocked = unlock != null,
-                        unlockedAt = unlock?.unlockedAt
+                        unlockedAt = unlock?.unlockedAt,
+                        mediaFilePath = null
                     )
                 }
+        }.map { itemsWithUnlock ->
+            itemsWithUnlock.map { itemWithUnlock ->
+                val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
+                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+            }
         }
     }
 
@@ -114,17 +158,18 @@ class CollectionRepository @Inject constructor(
     suspend fun addCollectionItem(
         name: String,
         description: String,
-        imageUri: String,
+        mediaLibraryId: String,
         rarity: String,
         requiredLevel: Int,
         categoryId: Long?
     ): Long {
-        Log.d(TAG, "Adding collection item: $name (category: $categoryId)")
+        Log.d(TAG, "Adding collection item: $name (category: $categoryId, mediaLibraryId: $mediaLibraryId)")
 
         val item = CollectionItemEntity(
             name = name,
             description = description,
-            imageUri = imageUri,
+            mediaLibraryId = mediaLibraryId,
+            imageUri = "", // Deprecated field, kept for migration compatibility
             rarity = rarity,
             requiredLevel = requiredLevel,
             categoryId = categoryId,
@@ -146,15 +191,14 @@ class CollectionRepository @Inject constructor(
     }
 
     /**
-     * Delete a collection item and its associated image
+     * Delete a collection item (without deleting media library reference)
+     * Media library files are managed separately and can be reused
      */
     suspend fun deleteCollectionItem(item: CollectionItemEntity) {
         Log.d(TAG, "Deleting collection item: ${item.id}")
 
-        // Delete the image file
-        fileStorageManager.deleteImage(item.imageUri)
-
         // Delete from database (cascade will remove unlock)
+        // Note: We do NOT delete the media library file, as it may be referenced by other collection items
         collectionDao.deleteCollectionItem(item)
     }
 

@@ -10,8 +10,6 @@ import com.example.questflow.data.repository.MediaLibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
 import javax.inject.Inject
 
 @HiltViewModel
@@ -49,48 +47,37 @@ class MediaLibraryViewModel @Inject constructor(
     fun uploadMedia(context: Context, uri: Uri, mediaType: MediaType) {
         viewModelScope.launch {
             try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                if (inputStream == null) {
-                    _uiState.value = _uiState.value.copy(notification = "Fehler beim Lesen der Datei")
-                    return@launch
-                }
-
                 // Get file info
                 val contentResolver = context.contentResolver
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
                 val fileName = uri.lastPathSegment ?: "unknown_${System.currentTimeMillis()}"
 
-                // Create internal storage directory
-                val mediaDir = File(context.filesDir, "media_library")
-                if (!mediaDir.exists()) {
-                    mediaDir.mkdirs()
+                // Auto-detect media type from MIME type
+                val detectedMediaType = when {
+                    mimeType.startsWith("image/gif") -> MediaType.GIF
+                    mimeType.startsWith("image/") -> MediaType.IMAGE
+                    mimeType.startsWith("audio/") -> MediaType.AUDIO
+                    else -> mediaType // Fallback to provided type
                 }
 
-                // Generate unique filename
-                val uniqueFileName = "${System.currentTimeMillis()}_$fileName"
-                val destFile = File(mediaDir, uniqueFileName)
-
-                // Copy file
-                FileOutputStream(destFile).use { output ->
-                    inputStream.copyTo(output)
-                }
-                inputStream.close()
-
-                // Add to database
-                val mediaId = mediaLibraryRepository.addMedia(
+                // Use repository to handle file storage and database entry
+                val mediaId = mediaLibraryRepository.addMediaFromUri(
+                    uri = uri,
                     fileName = fileName,
-                    filePath = destFile.absolutePath,
-                    mediaType = mediaType,
-                    fileSize = destFile.length(),
+                    mediaType = detectedMediaType,
                     mimeType = mimeType
                 )
 
-                _uiState.value = _uiState.value.copy(
-                    notification = "Datei erfolgreich hochgeladen"
-                )
-
-                // Reload stats
-                loadStats()
+                if (mediaId != null) {
+                    _uiState.value = _uiState.value.copy(
+                        notification = "Datei erfolgreich hochgeladen"
+                    )
+                    loadStats()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        notification = "Fehler beim Hochladen der Datei"
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     notification = "Fehler beim Hochladen: ${e.message}"
@@ -99,24 +86,49 @@ class MediaLibraryViewModel @Inject constructor(
         }
     }
 
+    fun uploadMultipleMedia(context: Context, uris: List<Uri>) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(notification = "Lade ${uris.size} Dateien hoch...")
+
+                val addedIds = mediaLibraryRepository.addMultipleMediaFromUris(uris)
+
+                _uiState.value = _uiState.value.copy(
+                    notification = "${addedIds.size} von ${uris.size} Dateien erfolgreich hochgeladen"
+                )
+                loadStats()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Bulk-Upload: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun uploadFromZip(context: Context, zipUri: Uri) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = _uiState.value.copy(notification = "Extrahiere ZIP-Datei...")
+
+                // Extract and save files
+                val savedFiles = mediaLibraryRepository.extractAndSaveZip(zipUri)
+
+                _uiState.value = _uiState.value.copy(
+                    notification = "${savedFiles.size} Dateien aus ZIP extrahiert und hochgeladen"
+                )
+                loadStats()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim ZIP-Upload: ${e.message}"
+                )
+            }
+        }
+    }
+
     fun deleteMedia(context: Context, media: MediaLibraryEntity) {
         viewModelScope.launch {
             try {
-                // Delete file from storage
-                val file = File(media.filePath)
-                if (file.exists()) {
-                    file.delete()
-                }
-
-                // Delete thumbnail if exists
-                media.thumbnailPath?.let { thumbnailPath ->
-                    val thumbnailFile = File(thumbnailPath)
-                    if (thumbnailFile.exists()) {
-                        thumbnailFile.delete()
-                    }
-                }
-
-                // Delete from database
+                // Repository handles file and database deletion
                 mediaLibraryRepository.deleteMedia(media)
 
                 _uiState.value = _uiState.value.copy(
@@ -136,11 +148,38 @@ class MediaLibraryViewModel @Inject constructor(
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = null)
     }
+
+    fun loadMediaDetails(mediaId: String) {
+        viewModelScope.launch {
+            try {
+                val mediaWithUsage = mediaLibraryRepository.getMediaWithUsage(mediaId)
+                _uiState.value = _uiState.value.copy(
+                    selectedMediaWithUsage = mediaWithUsage?.let {
+                        MediaWithUsage(it.media, it.usages)
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Laden der Details: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun clearMediaDetails() {
+        _uiState.value = _uiState.value.copy(selectedMediaWithUsage = null)
+    }
 }
 
 data class MediaLibraryUiState(
     val allMedia: List<MediaLibraryEntity> = emptyList(),
     val mediaCount: Int = 0,
     val totalSize: Long = 0,
-    val notification: String? = null
+    val notification: String? = null,
+    val selectedMediaWithUsage: MediaWithUsage? = null
+)
+
+data class MediaWithUsage(
+    val media: MediaLibraryEntity,
+    val usages: List<com.example.questflow.data.database.entity.MediaUsageEntity>
 )

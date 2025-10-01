@@ -2,12 +2,15 @@ package com.example.questflow.domain.usecase.collection
 
 import android.net.Uri
 import android.util.Log
+import com.example.questflow.data.database.entity.MediaUsageType
 import com.example.questflow.data.manager.FileStorageManager
 import com.example.questflow.data.repository.CollectionRepository
+import com.example.questflow.data.repository.MediaLibraryRepository
 import javax.inject.Inject
 
 class AddCollectionItemsUseCase @Inject constructor(
     private val collectionRepository: CollectionRepository,
+    private val mediaLibraryRepository: MediaLibraryRepository,
     private val fileStorageManager: FileStorageManager
 ) {
     companion object {
@@ -15,7 +18,46 @@ class AddCollectionItemsUseCase @Inject constructor(
     }
 
     /**
-     * Add a single image to collection
+     * Add a single collection item with media library reference
+     */
+    suspend fun addSingleItem(
+        mediaLibraryId: String,
+        name: String,
+        description: String,
+        rarity: String,
+        requiredLevel: Int,
+        categoryId: Long?
+    ): Result {
+        Log.d(TAG, "Adding single collection item: $name with mediaLibraryId: $mediaLibraryId")
+
+        try {
+            val itemId = collectionRepository.addCollectionItem(
+                name = name,
+                description = description,
+                mediaLibraryId = mediaLibraryId,
+                rarity = rarity,
+                requiredLevel = requiredLevel,
+                categoryId = categoryId
+            )
+
+            // Track media usage
+            mediaLibraryRepository.trackUsage(
+                mediaId = mediaLibraryId,
+                usageType = MediaUsageType.COLLECTION_ITEM,
+                referenceId = itemId,
+                categoryId = categoryId
+            )
+
+            Log.d(TAG, "Successfully added collection item with ID: $itemId and tracked usage")
+            return Result.Success(1)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add collection item", e)
+            return Result.Error("Failed to add collection item: ${e.message}")
+        }
+    }
+
+    /**
+     * Add a single image to collection (legacy method - still used for bulk operations)
      */
     suspend fun addSingleImage(
         uri: Uri,
@@ -36,7 +78,7 @@ class AddCollectionItemsUseCase @Inject constructor(
         val itemId = collectionRepository.addCollectionItem(
             name = name,
             description = description,
-            imageUri = savedUri,
+            mediaLibraryId = "", // Legacy: empty for old workflow
             rarity = rarity,
             requiredLevel = requiredLevel,
             categoryId = categoryId
@@ -70,7 +112,7 @@ class AddCollectionItemsUseCase @Inject constructor(
                 collectionRepository.addCollectionItem(
                     name = "$baseNamePrefix ${index + 1}",
                     description = "",
-                    imageUri = savedUri,
+                    mediaLibraryId = "", // Legacy: empty for old workflow
                     rarity = rarity,
                     requiredLevel = startRequiredLevel + index,
                     categoryId = categoryId
@@ -113,7 +155,7 @@ class AddCollectionItemsUseCase @Inject constructor(
                 collectionRepository.addCollectionItem(
                     name = "$baseNamePrefix ${index + 1}",
                     description = "",
-                    imageUri = savedUri,
+                    mediaLibraryId = "", // Legacy: empty for old workflow
                     rarity = rarity,
                     requiredLevel = startRequiredLevel + index,
                     categoryId = categoryId

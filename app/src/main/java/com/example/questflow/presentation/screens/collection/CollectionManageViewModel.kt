@@ -54,6 +54,10 @@ class CollectionManageViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedImageUri = uri)
     }
 
+    fun setSelectedMediaLibraryId(mediaId: String?) {
+        _uiState.value = _uiState.value.copy(selectedMediaLibraryId = mediaId)
+    }
+
     fun setSelectedImageUris(uris: List<Uri>) {
         _uiState.value = _uiState.value.copy(selectedImageUris = uris)
     }
@@ -64,11 +68,11 @@ class CollectionManageViewModel @Inject constructor(
 
     fun uploadSingleImage(onComplete: (Boolean, String) -> Unit) {
         val state = _uiState.value
-        val uri = state.selectedImageUri
+        val mediaLibraryId = state.selectedMediaLibraryId
 
-        if (uri == null) {
-            Log.w(TAG, "No image URI selected")
-            onComplete(false, "No image selected")
+        if (mediaLibraryId == null) {
+            Log.w(TAG, "No media selected from library")
+            onComplete(false, "No media selected")
             return
         }
 
@@ -82,10 +86,10 @@ class CollectionManageViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Uploading single image: ${state.name}")
+                Log.d(TAG, "Adding collection item: ${state.name} with mediaLibraryId: $mediaLibraryId")
 
-                val result = addCollectionItemsUseCase.addSingleImage(
-                    uri = uri,
+                val result = addCollectionItemsUseCase.addSingleItem(
+                    mediaLibraryId = mediaLibraryId,
                     name = state.name,
                     description = state.description,
                     rarity = state.rarity,
@@ -95,18 +99,18 @@ class CollectionManageViewModel @Inject constructor(
 
                 when (result) {
                     is AddCollectionItemsUseCase.Result.Success -> {
-                        Log.d(TAG, "Successfully uploaded single image")
+                        Log.d(TAG, "Successfully added collection item")
                         _uiState.value = state.copy(isUploading = false)
                         onComplete(true, "Successfully added collection item")
                     }
                     is AddCollectionItemsUseCase.Result.Error -> {
-                        Log.e(TAG, "Failed to upload: ${result.message}")
+                        Log.e(TAG, "Failed to add: ${result.message}")
                         _uiState.value = state.copy(isUploading = false)
                         onComplete(false, result.message)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error uploading single image", e)
+                Log.e(TAG, "Error adding collection item", e)
                 _uiState.value = state.copy(isUploading = false)
                 onComplete(false, "Error: ${e.message}")
             }
@@ -221,6 +225,7 @@ data class CollectionManageUiState(
     val rarity: String = "COMMON",
     val requiredLevel: Int = 1,
     val categoryId: Long? = null,
+    val selectedMediaLibraryId: String? = null, // NEW: Reference to media library
     val selectedImageUri: Uri? = null,
     val selectedImageUris: List<Uri> = emptyList(),
     val selectedZipUri: Uri? = null,

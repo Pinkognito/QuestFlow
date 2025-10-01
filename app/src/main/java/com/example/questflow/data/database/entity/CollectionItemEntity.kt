@@ -14,6 +14,7 @@ import java.time.LocalDateTime
             childColumns = ["categoryId"],
             onDelete = ForeignKey.CASCADE
         )
+        // Note: No foreign key for mediaLibraryId because it can be empty (legacy items)
     ]
 )
 data class CollectionItemEntity(
@@ -21,7 +22,8 @@ data class CollectionItemEntity(
     val id: Long = 0,
     val name: String,
     val description: String = "",
-    val imageUri: String, // Local file URI
+    val mediaLibraryId: String = "", // Reference to MediaLibraryEntity (empty for legacy items)
+    val imageUri: String = "", // DEPRECATED: Legacy field for migration
     val rarity: String = "COMMON",
     val requiredLevel: Int = 1,
     val categoryId: Long? = null, // null = global collection
