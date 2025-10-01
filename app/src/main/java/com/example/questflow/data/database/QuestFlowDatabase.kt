@@ -22,7 +22,7 @@ import com.example.questflow.data.database.entity.*
         CategoryEntity::class,
         CategoryXpTransactionEntity::class
     ],
-    version = 10,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

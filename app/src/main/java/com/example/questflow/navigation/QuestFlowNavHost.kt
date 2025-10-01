@@ -9,7 +9,7 @@ import com.example.questflow.presentation.screens.today.TodayScreen
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
 import com.example.questflow.presentation.screens.collection.CollectionScreen
 import com.example.questflow.presentation.screens.collection.CollectionManageScreen
-import com.example.questflow.presentation.screens.skilltree.SkillTreeScreen
+import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementScreen
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
 
 @Composable
@@ -46,7 +46,7 @@ fun QuestFlowNavHost(
             )
         }
         composable("skill_tree") {
-            SkillTreeScreen(
+            SkillTreeManagementScreen(
                 appViewModel = appViewModel,
                 navController = navController
             )

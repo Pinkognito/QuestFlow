@@ -8,5 +8,7 @@ import java.time.LocalDateTime
 data class SkillUnlockEntity(
     @PrimaryKey
     val nodeId: String,
-    val unlockedAt: LocalDateTime = LocalDateTime.now()
+    val investedPoints: Int = 1,
+    val unlockedAt: LocalDateTime = LocalDateTime.now(),
+    val lastInvestedAt: LocalDateTime = LocalDateTime.now()
 )

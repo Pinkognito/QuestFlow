@@ -32,9 +32,19 @@ fun SkillTreeScreen(
     val globalStats by appViewModel.globalStats.collectAsState()
     var selectedNodeId by remember { mutableStateOf<String?>(null) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     // Sync category with viewmodel
     LaunchedEffect(selectedCategory) {
         viewModel.updateSelectedCategory(selectedCategory?.id)
+    }
+
+    // Show notification snackbar
+    LaunchedEffect(uiState.notification) {
+        uiState.notification?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearNotification()
+        }
     }
 
     Scaffold(
@@ -48,7 +58,8 @@ fun SkillTreeScreen(
                 level = globalStats?.level ?: 1,
                 totalXp = globalStats?.xp ?: 0
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -95,20 +106,19 @@ fun SkillTreeScreen(
                         skillNode = skillNode,
                         isSelected = selectedNodeId == skillNode.node.id,
                         canAfford = uiState.availablePoints >= 1,
-                        onNodeClick = { selectedNodeId = skillNode.node.id },
-                        onUnlock = {
-                            viewModel.unlockSkill(skillNode.node.id)
-                            selectedNodeId = null
+                        onNodeClick = {
+                            selectedNodeId = if (selectedNodeId == skillNode.node.id) null else skillNode.node.id
+                        },
+                        onInvest = {
+                            viewModel.investSkillPoint(skillNode.node.id)
+                        },
+                        onRefund = {
+                            viewModel.refundSkillPoint(skillNode.node.id)
                         }
                     )
                 }
             }
         }
-    }
-
-    // Show notification
-    uiState.notification?.let { message ->
-        // In production, you'd show a Snackbar here
     }
 }
 
@@ -119,21 +129,28 @@ fun SkillNodeCard(
     isSelected: Boolean,
     canAfford: Boolean,
     onNodeClick: () -> Unit,
-    onUnlock: () -> Unit
+    onInvest: () -> Unit,
+    onRefund: () -> Unit
 ) {
-    val icon = when (skillNode.node.type) {
-        SkillType.XP_MULT -> Icons.Default.Star
-        SkillType.STREAK_GUARD -> Icons.Default.Lock
-        SkillType.EXTRA_MEME -> Icons.Default.Favorite
+    val icon = when (skillNode.node.effectType) {
+        com.example.questflow.data.database.entity.SkillEffectType.XP_MULTIPLIER -> Icons.Default.Star
+        com.example.questflow.data.database.entity.SkillEffectType.STREAK_PROTECTION -> Icons.Default.Lock
+        com.example.questflow.data.database.entity.SkillEffectType.EXTRA_COLLECTION_UNLOCK -> Icons.Default.Favorite
+        com.example.questflow.data.database.entity.SkillEffectType.SKILL_POINT_GAIN -> Icons.Default.Add
+        else -> Icons.Default.Star
     }
+
+    val isMaxed = skillNode.currentInvestment >= skillNode.node.maxInvestment
+    val canInvest = skillNode.isAvailable && canAfford && !isMaxed
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        onClick = if (!skillNode.isUnlocked && skillNode.isAvailable) onNodeClick else { {} },
+        onClick = onNodeClick,
         colors = CardDefaults.cardColors(
             containerColor = when {
-                skillNode.isUnlocked -> MaterialTheme.colorScheme.primaryContainer
-                skillNode.isAvailable -> MaterialTheme.colorScheme.secondaryContainer
+                isMaxed -> MaterialTheme.colorScheme.primaryContainer
+                skillNode.isUnlocked -> MaterialTheme.colorScheme.secondaryContainer
+                skillNode.isAvailable -> MaterialTheme.colorScheme.tertiaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             }
         )
@@ -152,8 +169,9 @@ fun SkillNodeCard(
                     contentDescription = null,
                     modifier = Modifier.size(32.dp),
                     tint = when {
-                        skillNode.isUnlocked -> MaterialTheme.colorScheme.primary
-                        skillNode.isAvailable -> MaterialTheme.colorScheme.secondary
+                        isMaxed -> MaterialTheme.colorScheme.primary
+                        skillNode.isUnlocked -> MaterialTheme.colorScheme.secondary
+                        skillNode.isAvailable -> MaterialTheme.colorScheme.tertiary
                         else -> MaterialTheme.colorScheme.outline
                     }
                 )
@@ -161,29 +179,62 @@ fun SkillNodeCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = skillNode.node.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = skillNode.node.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${skillNode.currentInvestment}/${skillNode.node.maxInvestment}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isMaxed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     Text(
                         text = skillNode.node.description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (!skillNode.isUnlocked) {
+
+                    // Show effect calculation
+                    val currentEffect = skillNode.node.baseValue + (skillNode.node.scalingPerPoint * skillNode.currentInvestment)
+                    val nextEffect = skillNode.node.baseValue + (skillNode.node.scalingPerPoint * (skillNode.currentInvestment + 1))
+
+                    if (skillNode.currentInvestment > 0) {
                         Text(
-                            text = "Cost: 1 Skill Point",
+                            text = "Aktueller Effekt: +${currentEffect.toInt()}%",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
+
+                    if (!isMaxed && skillNode.isAvailable) {
+                        Text(
+                            text = "Nächster Level: +${nextEffect.toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+
+                    if (!skillNode.isAvailable && skillNode.prerequisitesInfo.isNotEmpty()) {
+                        Text(
+                            text = "Benötigt: ${skillNode.prerequisitesInfo}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
 
-                if (skillNode.isUnlocked) {
+                if (isMaxed) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Unlocked",
+                        contentDescription = "Maxed",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 } else if (!skillNode.isAvailable) {
@@ -195,14 +246,34 @@ fun SkillNodeCard(
                 }
             }
 
-            if (isSelected && skillNode.isAvailable && !skillNode.isUnlocked) {
+            if (isSelected && skillNode.isAvailable) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onUnlock,
-                    enabled = canAfford,
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Unlock Skill")
+                    if (skillNode.currentInvestment > 0) {
+                        OutlinedButton(
+                            onClick = onRefund,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Clear, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Refund")
+                        }
+                    }
+
+                    if (!isMaxed) {
+                        Button(
+                            onClick = onInvest,
+                            enabled = canInvest,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Invest (1 SP)")
+                        }
+                    }
                 }
             }
         }

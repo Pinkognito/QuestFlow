@@ -20,12 +20,29 @@ class GrantXpUseCase @Inject constructor(
         source: XpSource,
         referenceId: Long? = null
     ): GrantXpResult {
-        // Calculate multiplied amount
-        val multiplier = skillRepository.getActiveXpMultiplier()
-        val amount = (amountRaw * multiplier).toInt().coerceAtLeast(1)
+        // Calculate all applicable multipliers
+        var totalMultiplier = 1.0f
 
-        // Debug logging
-        android.util.Log.d("GrantXpUseCase", "Raw XP: $amountRaw, Multiplier: $multiplier, Final XP: $amount")
+        // Base XP multiplier from skills
+        val xpMultBonus = skillRepository.calculateTotalEffect(com.example.questflow.data.database.entity.SkillEffectType.XP_MULTIPLIER)
+        totalMultiplier += xpMultBonus / 100f
+
+        // Source-specific bonuses
+        when (source) {
+            XpSource.TASK, XpSource.SUBTASK -> {
+                val taskBonus = skillRepository.calculateTotalEffect(com.example.questflow.data.database.entity.SkillEffectType.TASK_XP_BONUS)
+                totalMultiplier += taskBonus / 100f
+            }
+            XpSource.CALENDAR -> {
+                val calendarBonus = skillRepository.calculateTotalEffect(com.example.questflow.data.database.entity.SkillEffectType.CALENDAR_XP_BONUS)
+                totalMultiplier += calendarBonus / 100f
+            }
+            else -> {}
+        }
+
+        val amount = (amountRaw * totalMultiplier).toInt().coerceAtLeast(1)
+
+        android.util.Log.d("GrantXpUseCase", "Raw XP: $amountRaw, Total Multiplier: $totalMultiplier, Final XP: $amount")
 
         // Record transaction
         xpTransactionRepository.recordTransaction(source, amount, referenceId)
@@ -42,7 +59,15 @@ class GrantXpUseCase @Inject constructor(
         }
 
         val gainedLevels = newLevel - beforeLevel
-        val newPoints = currentStats.points + gainedLevels
+
+        // Calculate skill points gained (base + bonus from skills)
+        val baseSkillPoints = gainedLevels
+        val skillPointBonus = skillRepository.calculateTotalEffect(com.example.questflow.data.database.entity.SkillEffectType.SKILL_POINT_GAIN).toInt()
+        val totalSkillPointsGained = baseSkillPoints + skillPointBonus
+
+        android.util.Log.d("GrantXpUseCase", "Skill Points: base=$baseSkillPoints, bonus=$skillPointBonus, total=$totalSkillPointsGained")
+
+        val newPoints = currentStats.points + totalSkillPointsGained
 
         // Update stats
         statsRepository.updateStats(
@@ -83,8 +108,8 @@ class GrantXpUseCase @Inject constructor(
                 }
             }
 
-            // Extra meme if skill is unlocked
-            if (skillRepository.hasUnlockedPerk(SkillType.EXTRA_MEME)) {
+            // Extra meme/collection if EXTRA_COLLECTION_UNLOCK skill is active
+            if (skillRepository.hasEffectActive(com.example.questflow.data.database.entity.SkillEffectType.EXTRA_COLLECTION_UNLOCK)) {
                 val extraMeme = memeRepository.unlockNextMeme(newLevel)
                 extraMeme?.let { unlockedMemes.add("${it.name} (Bonus!)") }
 
@@ -103,7 +128,7 @@ class GrantXpUseCase @Inject constructor(
             previousLevel = beforeLevel,
             newLevel = newLevel,
             levelsGained = gainedLevels,
-            skillPointsGained = gainedLevels,
+            skillPointsGained = totalSkillPointsGained,
             unlockedMemes = unlockedMemes,
             unlockedCollectionItems = unlockedCollectionItems
         )

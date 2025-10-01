@@ -8,5 +8,6 @@ import androidx.room.Entity
 )
 data class SkillEdgeEntity(
     val parentId: String,
-    val childId: String
+    val childId: String,
+    val minParentInvestment: Int = 1  // Wie viele Punkte müssen im Parent investiert sein
 )

@@ -2,62 +2,222 @@ package com.example.questflow.data.repository
 
 import com.example.questflow.data.database.dao.SkillDao
 import com.example.questflow.data.database.entity.SkillNodeEntity
+import com.example.questflow.data.database.entity.SkillEdgeEntity
 import com.example.questflow.data.database.entity.SkillType
+import com.example.questflow.data.database.entity.SkillEffectType
 import com.example.questflow.data.database.entity.SkillUnlockEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 data class SkillNodeWithStatus(
     val node: SkillNodeEntity,
     val isUnlocked: Boolean,
-    val isAvailable: Boolean
+    val isAvailable: Boolean,
+    val currentInvestment: Int = 0,
+    val prerequisitesInfo: String = ""
 )
 
 class SkillRepository @Inject constructor(
-    private val skillDao: SkillDao
+    val skillDao: SkillDao // Public for direct edge access in ViewModel
 ) {
-    fun getSkillTreeStatus(): Flow<List<SkillNodeWithStatus>> {
+    fun getSkillTreeStatus(categoryId: Long? = null): Flow<List<SkillNodeWithStatus>> {
+        val nodesFlow = when (categoryId) {
+            null -> skillDao.getGlobalNodes()
+            else -> skillDao.getNodesByCategory(categoryId)
+        }
+
         return combine(
-            skillDao.getAllNodes(),
+            nodesFlow,
             skillDao.getAllEdges(),
             skillDao.getAllUnlocks()
         ) { nodes, edges, unlocks ->
-            val unlockedIds = unlocks.map { it.nodeId }.toSet()
+            val unlocksMap = unlocks.associateBy { it.nodeId }
+
             nodes.map { node ->
-                val parents = edges.filter { it.childId == node.id }.map { it.parentId }
-                val isUnlocked = unlockedIds.contains(node.id)
-                val isAvailable = parents.isEmpty() || parents.all { unlockedIds.contains(it) }
+                val parentEdges = edges.filter { it.childId == node.id }
+                val unlock = unlocksMap[node.id]
+                val isUnlocked = unlock != null
+
+                // Check prerequisites
+                val prerequisitesMet = parentEdges.all { edge ->
+                    val parentUnlock = unlocksMap[edge.parentId]
+                    parentUnlock != null && parentUnlock.investedPoints >= edge.minParentInvestment
+                }
+
+                val isAvailable = parentEdges.isEmpty() || prerequisitesMet
+
+                // Build prerequisites info
+                val prereqInfo = if (parentEdges.isNotEmpty()) {
+                    parentEdges.joinToString(", ") { edge ->
+                        val parentNode = nodes.find { it.id == edge.parentId }
+                        val parentInvestment = unlocksMap[edge.parentId]?.investedPoints ?: 0
+                        "${parentNode?.title ?: edge.parentId}: $parentInvestment/${edge.minParentInvestment}"
+                    }
+                } else ""
+
                 SkillNodeWithStatus(
                     node = node,
                     isUnlocked = isUnlocked,
-                    isAvailable = isAvailable
+                    isAvailable = isAvailable,
+                    currentInvestment = unlock?.investedPoints ?: 0,
+                    prerequisitesInfo = prereqInfo
                 )
             }
         }
     }
 
-    suspend fun unlockNode(nodeId: String): Boolean {
-        val parents = skillDao.getParentEdges(nodeId)
-        val unlocks = skillDao.getUnlockedNodes()
-        val unlockedIds = unlocks.map { it.id }.toSet()
+    // === Node CRUD ===
+    suspend fun createSkillNode(node: SkillNodeEntity) {
+        skillDao.insertNode(node)
+    }
 
-        val canUnlock = parents.isEmpty() || parents.all { unlockedIds.contains(it.parentId) }
+    suspend fun updateSkillNode(node: SkillNodeEntity) {
+        skillDao.updateNode(node)
+    }
 
-        return if (canUnlock) {
-            skillDao.unlockNode(SkillUnlockEntity(nodeId = nodeId))
-            true
-        } else {
-            false
+    suspend fun deleteSkillNode(nodeId: String) {
+        skillDao.deleteAllEdgesForNode(nodeId)
+        skillDao.deleteUnlock(nodeId)
+        skillDao.deleteNode(nodeId)
+    }
+
+    suspend fun getSkillNode(nodeId: String): SkillNodeEntity? {
+        return skillDao.getNodeById(nodeId)
+    }
+
+    // === Edge CRUD ===
+    suspend fun createSkillEdge(parentId: String, childId: String, minParentInvestment: Int = 1) {
+        skillDao.insertEdge(SkillEdgeEntity(parentId, childId, minParentInvestment))
+    }
+
+    suspend fun deleteSkillEdge(parentId: String, childId: String) {
+        skillDao.deleteEdge(parentId, childId)
+    }
+
+    suspend fun getParentEdges(nodeId: String): List<SkillEdgeEntity> {
+        return skillDao.getParentEdges(nodeId)
+    }
+
+    suspend fun getChildEdges(nodeId: String): List<SkillEdgeEntity> {
+        return skillDao.getChildEdges(nodeId)
+    }
+
+    // === Investment Logic ===
+    suspend fun investSkillPoint(nodeId: String): InvestmentResult {
+        val node = skillDao.getNodeById(nodeId)
+            ?: return InvestmentResult(false, "Skill not found")
+
+        val unlock = skillDao.getUnlock(nodeId)
+        val currentInvestment = unlock?.investedPoints ?: 0
+
+        // Check if already at max
+        if (currentInvestment >= node.maxInvestment) {
+            return InvestmentResult(false, "Skill already at maximum")
         }
+
+        // Check prerequisites
+        val parentEdges = skillDao.getParentEdges(nodeId)
+        val prerequisitesMet = parentEdges.all { edge ->
+            val parentUnlock = skillDao.getUnlock(edge.parentId)
+            parentUnlock != null && parentUnlock.investedPoints >= edge.minParentInvestment
+        }
+
+        if (!prerequisitesMet) {
+            return InvestmentResult(false, "Prerequisites not met")
+        }
+
+        // Invest point
+        val newInvestment = currentInvestment + 1
+        val newUnlock = SkillUnlockEntity(
+            nodeId = nodeId,
+            investedPoints = newInvestment,
+            unlockedAt = unlock?.unlockedAt ?: LocalDateTime.now(),
+            lastInvestedAt = LocalDateTime.now()
+        )
+        skillDao.insertOrUpdateUnlock(newUnlock)
+
+        return InvestmentResult(
+            success = true,
+            newInvestment = newInvestment,
+            maxInvestment = node.maxInvestment
+        )
     }
 
+    suspend fun refundSkillPoint(nodeId: String): InvestmentResult {
+        val unlock = skillDao.getUnlock(nodeId)
+            ?: return InvestmentResult(false, "Skill not invested")
+
+        val currentInvestment = unlock.investedPoints
+
+        if (currentInvestment <= 0) {
+            return InvestmentResult(false, "No points invested")
+        }
+
+        // Check if any children depend on this skill
+        val childEdges = skillDao.getChildEdges(nodeId)
+        val hasBlockingChildren = childEdges.any { edge ->
+            val childUnlock = skillDao.getUnlock(edge.childId)
+            childUnlock != null && edge.minParentInvestment >= currentInvestment
+        }
+
+        if (hasBlockingChildren) {
+            return InvestmentResult(false, "Cannot refund: other skills depend on this investment")
+        }
+
+        // Refund point
+        val newInvestment = currentInvestment - 1
+        if (newInvestment == 0) {
+            skillDao.deleteUnlock(nodeId)
+        } else {
+            skillDao.insertOrUpdateUnlock(unlock.copy(investedPoints = newInvestment))
+        }
+
+        return InvestmentResult(
+            success = true,
+            newInvestment = newInvestment,
+            refunded = true
+        )
+    }
+
+    // === Effect Calculation ===
+    suspend fun calculateTotalEffect(effectType: SkillEffectType): Float {
+        val nodes = skillDao.getUnlockedNodesByEffectType(effectType)
+
+        return nodes.sumOf { node ->
+            val investment = skillDao.getInvestedPoints(node.id) ?: 0
+            (node.baseValue + node.scalingPerPoint * investment).toDouble()
+        }.toFloat()
+    }
+
+    suspend fun hasEffectActive(effectType: SkillEffectType): Boolean {
+        return skillDao.getUnlockedNodesByEffectType(effectType).isNotEmpty()
+    }
+
+    // === Legacy Compatibility ===
+    @Deprecated("Use calculateTotalEffect(SkillEffectType.XP_MULTIPLIER) instead")
     suspend fun getActiveXpMultiplier(): Float {
-        val xpMultNodes = skillDao.getUnlockedNodesByType(SkillType.XP_MULT)
-        return xpMultNodes.fold(1.0f) { acc, node -> acc * node.value }
+        // Legacy: Returns multiplier as factor (e.g., 1.15 for +15%)
+        val totalBonus = calculateTotalEffect(SkillEffectType.XP_MULTIPLIER)
+        return 1.0f + (totalBonus / 100f)
     }
 
+    @Deprecated("Use hasEffectActive instead")
     suspend fun hasUnlockedPerk(type: SkillType): Boolean {
         return skillDao.getUnlockedNodesByType(type).isNotEmpty()
     }
+
+    @Deprecated("Use investSkillPoint instead")
+    suspend fun unlockNode(nodeId: String): Boolean {
+        return investSkillPoint(nodeId).success
+    }
 }
+
+data class InvestmentResult(
+    val success: Boolean,
+    val message: String? = null,
+    val newInvestment: Int? = null,
+    val maxInvestment: Int? = null,
+    val refunded: Boolean = false
+)
