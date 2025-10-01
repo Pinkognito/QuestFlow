@@ -123,7 +123,8 @@ class SkillTreeViewModel @Inject constructor(
         baseValue: Float,
         scalingPerPoint: Float,
         maxInvestment: Int,
-        colorHex: String
+        colorHex: String,
+        iconMediaId: String? = null
     ) {
         viewModelScope.launch {
             val result = manageSkillNodeUseCase.createSkill(
@@ -137,6 +138,7 @@ class SkillTreeViewModel @Inject constructor(
                 positionX = 80f + ((uiState.value.skills.size % 4) * 100f),
                 positionY = 80f + ((uiState.value.skills.size / 4) * 120f),
                 colorHex = colorHex,
+                iconMediaId = iconMediaId,
                 categoryId = selectedCategoryId
             )
 
@@ -157,6 +159,7 @@ class SkillTreeViewModel @Inject constructor(
         scalingPerPoint: Float,
         maxInvestment: Int,
         colorHex: String,
+        iconMediaId: String? = null,
         parentSkills: List<Pair<String, Int>>
     ) {
         viewModelScope.launch {
@@ -171,6 +174,7 @@ class SkillTreeViewModel @Inject constructor(
                 positionX = 80f + ((uiState.value.skills.size % 4) * 100f),
                 positionY = 80f + ((uiState.value.skills.size / 4) * 120f),
                 colorHex = colorHex,
+                iconMediaId = iconMediaId,
                 categoryId = selectedCategoryId
             )
 
@@ -222,7 +226,8 @@ class SkillTreeViewModel @Inject constructor(
         baseValue: Float,
         scalingPerPoint: Float,
         maxInvestment: Int,
-        colorHex: String
+        colorHex: String,
+        iconMediaId: String? = null
     ) {
         viewModelScope.launch {
             val node = skillRepository.getSkillNode(nodeId) ?: return@launch
@@ -232,7 +237,8 @@ class SkillTreeViewModel @Inject constructor(
                 baseValue = baseValue,
                 scalingPerPoint = scalingPerPoint,
                 maxInvestment = maxInvestment,
-                colorHex = colorHex
+                colorHex = colorHex,
+                iconMediaId = iconMediaId
             )
             val result = manageSkillNodeUseCase.updateSkill(updated)
             val notification = if (result.success) {

@@ -22,6 +22,7 @@ data class SkillNodeEntity(
 
     // Visual customization
     val colorHex: String = "#FFD700",
+    val iconMediaId: String? = null, // Reference to MediaLibraryEntity
 
     // Legacy compatibility
     @Deprecated("Use effectType instead")

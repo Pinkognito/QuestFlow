@@ -1,9 +1,19 @@
 package com.example.questflow.presentation.screens.skilltree
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,10 +22,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.questflow.data.database.entity.SkillEffectType
+import java.io.File
 
 data class SkillEffectTemplate(
     val type: SkillEffectType,
@@ -390,12 +404,16 @@ fun SkillCreatorDialog(
                         Spacer(Modifier.height(12.dp))
                     }
 
-                    // Color Picker
-                    OutlinedTextField(
-                        value = colorHex,
-                        onValueChange = { colorHex = it },
-                        label = { Text("Farbe (Hex)") },
-                        placeholder = { Text("#FFD700") },
+                    // Color & Icon Picker
+                    Text(
+                        text = "Aussehen",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+
+                    ColorPickerField(
+                        colorHex = colorHex,
+                        onColorChange = { colorHex = it },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -725,6 +743,204 @@ fun ParentSkillPickerDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Bestätigen")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Predefined color palette
+private val SKILL_COLORS = listOf(
+    "#FFD700", // Gold
+    "#FF6B6B", // Red
+    "#4ECDC4", // Turquoise
+    "#45B7D1", // Blue
+    "#96CEB4", // Green
+    "#FFEAA7", // Yellow
+    "#DFE6E9", // Light Gray
+    "#A29BFE", // Purple
+    "#FD79A8", // Pink
+    "#FDCB6E", // Orange
+    "#E17055", // Dark Orange
+    "#00B894", // Emerald
+    "#0984E3", // Ocean Blue
+    "#6C5CE7", // Violet
+    "#B2BEC3"  // Gray
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ColorPickerField(
+    colorHex: String,
+    onColorChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showColorPicker by remember { mutableStateOf(false) }
+    var useCustomColor by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        // Color preview button
+        OutlinedButton(
+            onClick = { showColorPicker = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(
+                        try {
+                            Color(android.graphics.Color.parseColor(colorHex))
+                        } catch (e: Exception) {
+                            Color.Gray
+                        }
+                    )
+                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(colorHex)
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.Edit, contentDescription = null)
+        }
+
+        // Color picker dialog
+        if (showColorPicker) {
+            Dialog(onDismissRequest = { showColorPicker = false }) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 500.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Farbe wählen",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Predefined colors grid
+                        Text(
+                            text = "Vordefinierte Farben",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(5),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(SKILL_COLORS) { color ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(color)))
+                                        .border(
+                                            width = if (colorHex.uppercase() == color.uppercase()) 3.dp else 1.dp,
+                                            color = if (colorHex.uppercase() == color.uppercase())
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.outline,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            onColorChange(color)
+                                            useCustomColor = false
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (colorHex.uppercase() == color.uppercase()) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Ausgewählt",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Custom color section
+                        Text(
+                            text = "Eigene Farbe",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = if (useCustomColor) colorHex else "",
+                                onValueChange = {
+                                    onColorChange(it)
+                                    useCustomColor = true
+                                },
+                                label = { Text("Hex-Code") },
+                                placeholder = { Text("#FFD700") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                try {
+                                                    if (useCustomColor && colorHex.isNotEmpty()) {
+                                                        Color(android.graphics.Color.parseColor(colorHex))
+                                                    } else {
+                                                        Color.Gray
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Color.Gray
+                                                }
+                                            )
+                                    )
+                                }
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            TextButton(
+                                onClick = { showColorPicker = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Abbrechen")
+                            }
+
+                            Button(
+                                onClick = { showColorPicker = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Fertig")
+                            }
+                        }
                     }
                 }
             }

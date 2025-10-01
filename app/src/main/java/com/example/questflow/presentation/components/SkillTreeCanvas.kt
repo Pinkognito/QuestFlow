@@ -18,15 +18,25 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.questflow.data.database.entity.SkillEdgeEntity
 import com.example.questflow.data.repository.SkillNodeWithStatus
 import kotlin.math.sqrt
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun SkillTreeCanvas(
@@ -39,6 +49,7 @@ fun SkillTreeCanvas(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
     val nodeRadius = with(density) { 30.dp.toPx() } // Reduced from 40dp to 30dp
     val skillPositions = remember(skills) {
         mutableStateMapOf<String, Offset>().apply {
@@ -138,19 +149,31 @@ fun SkillTreeCanvas(
                         else -> Color(0xFF9E9E9E) // Gray - locked
                     }
 
+                    // Calculate direction from parent to child
+                    val dx = childPos.x - parentPos.x
+                    val dy = childPos.y - parentPos.y
+                    val distance = sqrt(dx * dx + dy * dy)
+                    val angle = atan2(dy, dx)
+
+                    // Calculate start and end points (offset by node radius)
+                    val startX = parentPos.x + nodeRadius * cos(angle)
+                    val startY = parentPos.y + nodeRadius * sin(angle)
+                    val endX = childPos.x - nodeRadius * cos(angle)
+                    val endY = childPos.y - nodeRadius * sin(angle)
+
                     // Draw curved line
                     val path = Path().apply {
-                        moveTo(parentPos.x, parentPos.y)
+                        moveTo(startX, startY)
 
                         // Calculate control point for bezier curve
-                        val midX = (parentPos.x + childPos.x) / 2
-                        val midY = (parentPos.y + childPos.y) / 2
-                        val controlX = midX + (childPos.y - parentPos.y) * 0.2f
-                        val controlY = midY - (childPos.x - parentPos.x) * 0.2f
+                        val midX = (startX + endX) / 2
+                        val midY = (startY + endY) / 2
+                        val controlX = midX + (endY - startY) * 0.2f
+                        val controlY = midY - (endX - startX) * 0.2f
 
                         quadraticBezierTo(
                             controlX, controlY,
-                            childPos.x, childPos.y
+                            endX, endY
                         )
                     }
 
@@ -160,24 +183,65 @@ fun SkillTreeCanvas(
                         style = Stroke(width = 4.dp.toPx())
                     )
 
-                    // Draw investment requirement label
-                    if (edge.minParentInvestment > 1) {
-                        val midX = (parentPos.x + childPos.x) / 2
-                        val midY = (parentPos.y + childPos.y) / 2
+                    // Draw arrow at the end
+                    val arrowSize = 15.dp.toPx()
+                    // Calculate arrow angle from the last segment
+                    val arrowAngle = angle
 
-                        // Draw background circle for text
-                        drawCircle(
-                            color = Color.White,
-                            radius = 15.dp.toPx(),
-                            center = Offset(midX, midY)
+                    val arrowPath = Path().apply {
+                        moveTo(endX, endY)
+                        lineTo(
+                            (endX - arrowSize * cos(arrowAngle - 0.4)).toFloat(),
+                            (endY - arrowSize * sin(arrowAngle - 0.4)).toFloat()
                         )
-                        drawCircle(
-                            color = lineColor,
-                            radius = 15.dp.toPx(),
-                            center = Offset(midX, midY),
-                            style = Stroke(width = 2.dp.toPx())
+                        moveTo(endX, endY)
+                        lineTo(
+                            (endX - arrowSize * cos(arrowAngle + 0.4)).toFloat(),
+                            (endY - arrowSize * sin(arrowAngle + 0.4)).toFloat()
                         )
                     }
+
+                    drawPath(
+                        path = arrowPath,
+                        color = lineColor,
+                        style = Stroke(width = 4.dp.toPx())
+                    )
+
+                    // Draw investment requirement label at midpoint
+                    val midX = (parentPos.x + childPos.x) / 2
+                    val midY = (parentPos.y + childPos.y) / 2
+
+                    // Draw background circle for requirement number
+                    drawCircle(
+                        color = Color.White,
+                        radius = 16.dp.toPx(),
+                        center = Offset(midX, midY)
+                    )
+                    drawCircle(
+                        color = lineColor,
+                        radius = 16.dp.toPx(),
+                        center = Offset(midX, midY),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+
+                    // Draw requirement number
+                    val requirementText = edge.minParentInvestment.toString()
+                    val textLayoutResult = textMeasurer.measure(
+                        text = requirementText,
+                        style = TextStyle(
+                            color = lineColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+
+                    drawText(
+                        textLayoutResult = textLayoutResult,
+                        topLeft = Offset(
+                            midX - textLayoutResult.size.width / 2,
+                            midY - textLayoutResult.size.height / 2
+                        )
+                    )
                 }
             }
 

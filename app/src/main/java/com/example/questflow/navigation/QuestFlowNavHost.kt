@@ -11,6 +11,7 @@ import com.example.questflow.presentation.screens.collection.CollectionScreen
 import com.example.questflow.presentation.screens.collection.CollectionManageScreen
 import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementScreen
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
+import com.example.questflow.presentation.screens.medialibrary.MediaLibraryScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -55,6 +56,12 @@ fun QuestFlowNavHost(
             CategoriesScreen(
                 appViewModel = appViewModel,
                 onBackClick = { navController.navigateUp() }
+            )
+        }
+        composable("media_library") {
+            MediaLibraryScreen(
+                appViewModel = appViewModel,
+                navController = navController
             )
         }
     }

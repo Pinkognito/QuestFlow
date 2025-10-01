@@ -32,6 +32,7 @@ fun SkillTreeManagementScreen(
     var showSkillLinker by remember { mutableStateOf(false) }
     var showSkillDetails by remember { mutableStateOf(false) }
     var showSkillEditor by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     var editMode by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -191,7 +192,10 @@ fun SkillTreeManagementScreen(
                     editMode = editMode,
                     onSkillClick = { skillId ->
                         selectedSkillId = if (selectedSkillId == skillId) null else skillId
-                        if (!editMode) {
+                        if (editMode) {
+                            // In edit mode, show edit actions immediately
+                        } else {
+                            // In normal mode, show skill details
                             showSkillDetails = true
                         }
                     },
@@ -238,12 +242,44 @@ fun SkillTreeManagementScreen(
                             showSkillLinker = true
                         },
                         onDelete = {
-                            viewModel.deleteSkill(skill.node.id)
-                            selectedSkillId = null
+                            showDeleteConfirmation = true
                         }
                     )
                 }
             }
+        }
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteConfirmation && selectedSkillId != null) {
+        val selectedSkill = uiState.skills.find { it.node.id == selectedSkillId }
+        selectedSkill?.let { skill ->
+            // Find all skills that depend on this skill
+            val dependentSkills = uiState.skills.filter { otherSkill ->
+                edges.any { edge ->
+                    edge.parentId == skill.node.id && edge.childId == otherSkill.node.id
+                }
+            }
+
+            DeleteSkillConfirmationDialog(
+                skill = skill,
+                dependentSkills = dependentSkills,
+                onDismiss = {
+                    showDeleteConfirmation = false
+                },
+                onConfirm = { deleteWithDependents ->
+                    if (deleteWithDependents) {
+                        // Delete all dependent skills first
+                        dependentSkills.forEach { dependentSkill ->
+                            viewModel.deleteSkill(dependentSkill.node.id)
+                        }
+                    }
+                    // Delete the main skill
+                    viewModel.deleteSkill(skill.node.id)
+                    showDeleteConfirmation = false
+                    selectedSkillId = null
+                }
+            )
         }
     }
 
@@ -253,7 +289,7 @@ fun SkillTreeManagementScreen(
             availableSkills = uiState.skills,
             onDismiss = { showSkillCreator = false },
             onCreateSkill = { title, desc, effect, base, scaling, maxInv, color, parentSkills ->
-                viewModel.createSkillWithParents(title, desc, effect, base, scaling, maxInv, color, parentSkills)
+                viewModel.createSkillWithParents(title, desc, effect, base, scaling, maxInv, color, null, parentSkills)
                 showSkillCreator = false
             }
         )
@@ -450,4 +486,113 @@ fun SkillEditActionsBottomSheet(
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+@Composable
+fun DeleteSkillConfirmationDialog(
+    skill: com.example.questflow.data.repository.SkillNodeWithStatus,
+    dependentSkills: List<com.example.questflow.data.repository.SkillNodeWithStatus>,
+    onDismiss: () -> Unit,
+    onConfirm: (deleteWithDependents: Boolean) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text("Skill löschen?")
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Möchtest du den Skill \"${skill.node.title}\" wirklich löschen?",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                if (dependentSkills.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+
+                    Text(
+                        text = "Folgende Skills sind abhängig von diesem Skill:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    dependentSkills.forEach { dependentSkill ->
+                        Row(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = dependentSkill.node.title,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = "Wenn du fortfährst, werden alle abhängigen Skills ebenfalls gelöscht!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
+                if (skill.currentInvestment > 0) {
+                    Spacer(Modifier.height(12.dp))
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = "Du hast ${skill.currentInvestment} Punkte in diesen Skill investiert. Diese Punkte werden zurückerstattet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(dependentSkills.isNotEmpty()) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text(if (dependentSkills.isNotEmpty()) "Alle löschen" else "Löschen")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Abbrechen")
+            }
+        }
+    )
 }

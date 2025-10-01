@@ -131,6 +131,16 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Star, contentDescription = "Mediathek") },
+                                label = { Text("Media") },
+                                selected = currentRoute == "media_library",
+                                onClick = {
+                                    navController.navigate("media_library") {
+                                        popUpTo("today")
+                                    }
+                                }
+                            )
                         }
                     }
                 ) { paddingValues ->

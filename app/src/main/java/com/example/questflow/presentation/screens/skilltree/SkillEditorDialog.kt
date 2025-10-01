@@ -180,11 +180,15 @@ fun SkillEditorDialog(
                     Spacer(Modifier.height(12.dp))
 
                     // Color Picker
-                    OutlinedTextField(
-                        value = colorHex,
-                        onValueChange = { colorHex = it },
-                        label = { Text("Farbe (Hex)") },
-                        placeholder = { Text("#FFD700") },
+                    Text(
+                        text = "Aussehen",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+
+                    ColorPickerField(
+                        colorHex = colorHex,
+                        onColorChange = { colorHex = it },
                         modifier = Modifier.fillMaxWidth()
                     )
 

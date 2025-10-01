@@ -20,6 +20,7 @@ class ManageSkillNodeUseCase @Inject constructor(
         positionX: Float = 0f,
         positionY: Float = 0f,
         colorHex: String = "#FFD700",
+        iconMediaId: String? = null,
         categoryId: Long? = null
     ): ManageSkillResult {
         if (title.isBlank()) {
@@ -42,7 +43,8 @@ class ManageSkillNodeUseCase @Inject constructor(
             positionX = positionX,
             positionY = positionY,
             categoryId = categoryId,
-            colorHex = colorHex
+            colorHex = colorHex,
+            iconMediaId = iconMediaId
         )
 
         skillRepository.createSkillNode(node)
@@ -62,30 +64,43 @@ class ManageSkillNodeUseCase @Inject constructor(
         return ManageSkillResult(true, nodeId = node.id)
     }
 
-    suspend fun deleteSkill(nodeId: String): ManageSkillResult {
-        // Check if any skills depend on this skill
+    suspend fun deleteSkill(nodeId: String, forceDelete: Boolean = false): ManageSkillResult {
+        if (!forceDelete) {
+            // Check if any skills depend on this skill
+            val allEdges = mutableListOf<com.example.questflow.data.database.entity.SkillEdgeEntity>()
+            skillRepository.skillDao.getAllEdges().collect { edges ->
+                allEdges.addAll(edges)
+            }
+
+            val hasDependents = allEdges.any { it.parentId == nodeId }
+
+            if (hasDependents) {
+                val dependentSkills = mutableListOf<String>()
+                allEdges.filter { it.parentId == nodeId }.forEach { edge ->
+                    val skillNode = skillRepository.getSkillNode(edge.childId)
+                    if (skillNode != null) {
+                        dependentSkills.add(skillNode.title)
+                    }
+                }
+
+                return ManageSkillResult(
+                    success = false,
+                    message = "Kann nicht gelöscht werden: Folgende Skills hängen davon ab: ${dependentSkills.joinToString(", ")}"
+                )
+            }
+        }
+
+        // Delete all edges where this skill is the parent or child
         val allEdges = mutableListOf<com.example.questflow.data.database.entity.SkillEdgeEntity>()
         skillRepository.skillDao.getAllEdges().collect { edges ->
             allEdges.addAll(edges)
         }
 
-        val hasDependents = allEdges.any { it.parentId == nodeId }
-
-        if (hasDependents) {
-            val dependentSkills = mutableListOf<String>()
-            allEdges.filter { it.parentId == nodeId }.forEach { edge ->
-                val skillNode = skillRepository.getSkillNode(edge.childId)
-                if (skillNode != null) {
-                    dependentSkills.add(skillNode.title)
-                }
-            }
-
-            return ManageSkillResult(
-                success = false,
-                message = "Kann nicht gelöscht werden: Folgende Skills hängen davon ab: ${dependentSkills.joinToString(", ")}"
-            )
+        allEdges.filter { it.parentId == nodeId || it.childId == nodeId }.forEach { edge ->
+            skillRepository.deleteSkillEdge(edge.parentId, edge.childId)
         }
 
+        // Delete the skill node
         skillRepository.deleteSkillNode(nodeId)
         return ManageSkillResult(true)
     }
