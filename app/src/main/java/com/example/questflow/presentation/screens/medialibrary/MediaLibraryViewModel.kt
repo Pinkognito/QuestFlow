@@ -44,7 +44,14 @@ class MediaLibraryViewModel @Inject constructor(
         }
     }
 
-    fun uploadMedia(context: Context, uri: Uri, mediaType: MediaType) {
+    fun uploadMedia(
+        context: Context,
+        uri: Uri,
+        mediaType: MediaType,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
+    ) {
         viewModelScope.launch {
             try {
                 // Get file info
@@ -65,7 +72,10 @@ class MediaLibraryViewModel @Inject constructor(
                     uri = uri,
                     fileName = fileName,
                     mediaType = detectedMediaType,
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    displayName = displayName,
+                    description = description,
+                    tags = tags
                 )
 
                 if (mediaId != null) {
@@ -86,12 +96,23 @@ class MediaLibraryViewModel @Inject constructor(
         }
     }
 
-    fun uploadMultipleMedia(context: Context, uris: List<Uri>) {
+    fun uploadMultipleMedia(
+        context: Context,
+        uris: List<Uri>,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
+    ) {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(notification = "Lade ${uris.size} Dateien hoch...")
 
-                val addedIds = mediaLibraryRepository.addMultipleMediaFromUris(uris)
+                val addedIds = mediaLibraryRepository.addMultipleMediaFromUris(
+                    uris = uris,
+                    displayName = displayName,
+                    description = description,
+                    tags = tags
+                )
 
                 _uiState.value = _uiState.value.copy(
                     notification = "${addedIds.size} von ${uris.size} Dateien erfolgreich hochgeladen"
@@ -105,13 +126,24 @@ class MediaLibraryViewModel @Inject constructor(
         }
     }
 
-    fun uploadFromZip(context: Context, zipUri: Uri) {
+    fun uploadFromZip(
+        context: Context,
+        zipUri: Uri,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
+    ) {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(notification = "Extrahiere ZIP-Datei...")
 
                 // Extract and save files
-                val savedFiles = mediaLibraryRepository.extractAndSaveZip(zipUri)
+                val savedFiles = mediaLibraryRepository.extractAndSaveZip(
+                    zipUri = zipUri,
+                    displayName = displayName,
+                    description = description,
+                    tags = tags
+                )
 
                 _uiState.value = _uiState.value.copy(
                     notification = "${savedFiles.size} Dateien aus ZIP extrahiert und hochgeladen"
@@ -120,6 +152,31 @@ class MediaLibraryViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     notification = "Fehler beim ZIP-Upload: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun updateMediaMetadata(
+        mediaId: String,
+        displayName: String,
+        description: String,
+        tags: String
+    ) {
+        viewModelScope.launch {
+            try {
+                mediaLibraryRepository.updateMediaMetadata(
+                    mediaId = mediaId,
+                    displayName = displayName,
+                    description = description,
+                    tags = tags
+                )
+                _uiState.value = _uiState.value.copy(
+                    notification = "Metadaten erfolgreich aktualisiert"
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Aktualisieren: ${e.message}"
                 )
             }
         }

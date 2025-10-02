@@ -42,4 +42,42 @@ interface MediaLibraryDao {
 
     @Query("SELECT SUM(fileSize) FROM media_library")
     suspend fun getTotalMediaSize(): Long
+
+    /**
+     * Search media by query string (searches in displayName, fileName, description, and tags)
+     * Uses partial matching with LIKE operator
+     */
+    @Query("""
+        SELECT * FROM media_library
+        WHERE displayName LIKE '%' || :query || '%'
+           OR fileName LIKE '%' || :query || '%'
+           OR description LIKE '%' || :query || '%'
+           OR tags LIKE '%' || :query || '%'
+        ORDER BY uploadedAt DESC
+    """)
+    fun searchMedia(query: String): Flow<List<MediaLibraryEntity>>
+
+    /**
+     * Search media by query and filter by media type
+     */
+    @Query("""
+        SELECT * FROM media_library
+        WHERE (displayName LIKE '%' || :query || '%'
+           OR fileName LIKE '%' || :query || '%'
+           OR description LIKE '%' || :query || '%'
+           OR tags LIKE '%' || :query || '%')
+           AND mediaType = :type
+        ORDER BY uploadedAt DESC
+    """)
+    fun searchMediaByType(query: String, type: MediaType): Flow<List<MediaLibraryEntity>>
+
+    /**
+     * Get media filtered by date range
+     */
+    @Query("""
+        SELECT * FROM media_library
+        WHERE uploadedAt >= :startDate AND uploadedAt <= :endDate
+        ORDER BY uploadedAt DESC
+    """)
+    fun getMediaByDateRange(startDate: Long, endDate: Long): Flow<List<MediaLibraryEntity>>
 }

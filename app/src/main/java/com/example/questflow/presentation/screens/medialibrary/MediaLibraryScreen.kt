@@ -8,9 +8,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +56,16 @@ fun MediaLibraryScreen(
     var showUploadMenu by remember { mutableStateOf(false) }
     var showMediaViewer by remember { mutableStateOf<MediaLibraryEntity?>(null) }
 
+    // State for metadata dialog
+    var showMetadataDialog by remember { mutableStateOf(false) }
+    var pendingUploadUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingUploadUris by remember { mutableStateOf<List<Uri>?>(null) }
+    var pendingZipUri by remember { mutableStateOf<Uri?>(null) }
+
+    // State for editing metadata
+    var showEditMetadataDialog by remember { mutableStateOf(false) }
+    var mediaToEdit by remember { mutableStateOf<MediaLibraryEntity?>(null) }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Single file picker
@@ -61,8 +73,8 @@ fun MediaLibraryScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            // Let repository auto-detect media type from MIME type
-            viewModel.uploadMedia(context, it, MediaType.IMAGE)
+            pendingUploadUri = it
+            showMetadataDialog = true
         }
     }
 
@@ -71,7 +83,8 @@ fun MediaLibraryScreen(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            viewModel.uploadMultipleMedia(context, uris)
+            pendingUploadUris = uris
+            showMetadataDialog = true
         }
     }
 
@@ -80,7 +93,8 @@ fun MediaLibraryScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            viewModel.uploadFromZip(context, it)
+            pendingZipUri = it
+            showMetadataDialog = true
         }
     }
 
@@ -181,6 +195,29 @@ fun MediaLibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Search bar
+            var searchQuery by remember { mutableStateOf("") }
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("Nach Name, Tags oder Beschreibung suchen...") },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Suche löschen")
+                        }
+                    }
+                },
+                singleLine = true
+            )
+
             // Filter chips
             Row(
                 modifier = Modifier
@@ -229,6 +266,51 @@ fun MediaLibraryScreen(
                 )
             }
 
+            // Tags filter
+            val availableTags = remember(uiState.allMedia) {
+                uiState.allMedia
+                    .flatMap { it.tags.split(",") }
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .sorted()
+            }
+
+            var selectedTag by remember { mutableStateOf<String?>(null) }
+
+            if (availableTags.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Nach Tag filtern:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedTag == null,
+                                onClick = { selectedTag = null },
+                                label = { Text("Alle Tags") }
+                            )
+                        }
+                        items(availableTags.take(10)) { tag ->
+                            FilterChip(
+                                selected = selectedTag == tag,
+                                onClick = { selectedTag = tag },
+                                label = { Text(tag) }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Storage info
             Card(
                 modifier = Modifier
@@ -257,11 +339,32 @@ fun MediaLibraryScreen(
                 }
             }
 
-            // Media grid
-            val filteredMedia = if (selectedFilter == null) {
-                uiState.allMedia
-            } else {
-                uiState.allMedia.filter { it.mediaType == selectedFilter }
+            // Media grid with filtering
+            val filteredMedia = remember(uiState.allMedia, selectedFilter, searchQuery, selectedTag) {
+                var media = uiState.allMedia
+
+                // Apply type filter
+                if (selectedFilter != null) {
+                    media = media.filter { it.mediaType == selectedFilter }
+                }
+
+                // Apply search query (partial string matching)
+                if (searchQuery.isNotBlank()) {
+                    val query = searchQuery.lowercase()
+                    media = media.filter { item ->
+                        item.displayName.lowercase().contains(query) ||
+                        item.fileName.lowercase().contains(query) ||
+                        item.description.lowercase().contains(query) ||
+                        item.tags.lowercase().contains(query)
+                    }
+                }
+
+                // Apply tag filter
+                if (selectedTag != null) {
+                    media = media.filter { it.tags.contains(selectedTag!!) }
+                }
+
+                media
             }
 
             if (filteredMedia.isEmpty()) {
@@ -314,7 +417,11 @@ fun MediaLibraryScreen(
                         MediaGridItem(
                             media = media,
                             onDelete = { showDeleteDialog = media },
-                            onClick = { showMediaViewer = media }
+                            onClick = { showMediaViewer = media },
+                            onEdit = {
+                                mediaToEdit = media
+                                showEditMetadataDialog = true
+                            }
                         )
                     }
                 }
@@ -372,13 +479,96 @@ fun MediaLibraryScreen(
             onDismiss = { viewModel.clearMediaDetails() }
         )
     }
+
+    // Metadata dialog for upload
+    if (showMetadataDialog) {
+        com.example.questflow.presentation.components.MediaMetadataDialog(
+            title = when {
+                pendingUploadUri != null -> "Metadaten für Datei hinzufügen"
+                pendingUploadUris != null -> "Metadaten für ${pendingUploadUris?.size} Dateien hinzufügen"
+                pendingZipUri != null -> "Metadaten für ZIP-Inhalt hinzufügen"
+                else -> "Metadaten hinzufügen"
+            },
+            confirmText = "Hochladen",
+            onDismiss = {
+                showMetadataDialog = false
+                pendingUploadUri = null
+                pendingUploadUris = null
+                pendingZipUri = null
+            },
+            onConfirm = { metadata ->
+                when {
+                    pendingUploadUri != null -> {
+                        viewModel.uploadMedia(
+                            context = context,
+                            uri = pendingUploadUri!!,
+                            mediaType = MediaType.IMAGE,
+                            displayName = metadata.displayName,
+                            description = metadata.description,
+                            tags = metadata.tags
+                        )
+                    }
+                    pendingUploadUris != null -> {
+                        viewModel.uploadMultipleMedia(
+                            context = context,
+                            uris = pendingUploadUris!!,
+                            displayName = metadata.displayName,
+                            description = metadata.description,
+                            tags = metadata.tags
+                        )
+                    }
+                    pendingZipUri != null -> {
+                        viewModel.uploadFromZip(
+                            context = context,
+                            zipUri = pendingZipUri!!,
+                            displayName = metadata.displayName,
+                            description = metadata.description,
+                            tags = metadata.tags
+                        )
+                    }
+                }
+                showMetadataDialog = false
+                pendingUploadUri = null
+                pendingUploadUris = null
+                pendingZipUri = null
+            }
+        )
+    }
+
+    // Edit metadata dialog
+    if (showEditMetadataDialog && mediaToEdit != null) {
+        com.example.questflow.presentation.components.MediaMetadataDialog(
+            initialMetadata = com.example.questflow.presentation.components.MediaMetadata(
+                displayName = mediaToEdit!!.displayName,
+                description = mediaToEdit!!.description,
+                tags = mediaToEdit!!.tags
+            ),
+            title = "Metadaten bearbeiten",
+            confirmText = "Speichern",
+            onDismiss = {
+                showEditMetadataDialog = false
+                mediaToEdit = null
+            },
+            onConfirm = { metadata ->
+                viewModel.updateMediaMetadata(
+                    mediaId = mediaToEdit!!.id,
+                    displayName = metadata.displayName,
+                    description = metadata.description,
+                    tags = metadata.tags
+                )
+                showEditMetadataDialog = false
+                mediaToEdit = null
+            }
+        )
+    }
 }
 
 @Composable
 fun MediaGridItem(
     media: MediaLibraryEntity,
     onDelete: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onEdit: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -479,6 +669,16 @@ fun MediaGridItem(
                 },
                 leadingIcon = {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Informationen bearbeiten") },
+                onClick = {
+                    showMenu = false
+                    onEdit()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null)
                 }
             )
             DropdownMenuItem(

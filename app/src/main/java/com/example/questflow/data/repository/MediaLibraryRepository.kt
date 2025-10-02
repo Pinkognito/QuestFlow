@@ -64,20 +64,71 @@ class MediaLibraryRepository @Inject constructor(
     }
 
     /**
+     * Update media metadata (displayName, description, tags)
+     */
+    suspend fun updateMediaMetadata(
+        mediaId: String,
+        displayName: String? = null,
+        description: String? = null,
+        tags: String? = null
+    ) {
+        try {
+            val media = getMediaById(mediaId)
+            if (media == null) {
+                Log.w(TAG, "Cannot update metadata: Media $mediaId not found")
+                return
+            }
+
+            val updatedMedia = media.copy(
+                displayName = displayName ?: media.displayName,
+                description = description ?: media.description,
+                tags = tags ?: media.tags
+            )
+
+            mediaLibraryDao.updateMedia(updatedMedia)
+            Log.d(TAG, "✅ [METADATA_UPDATE] Updated metadata for media $mediaId - displayName: '${updatedMedia.displayName}', description: '${updatedMedia.description}', tags: '${updatedMedia.tags}'")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ [METADATA_UPDATE] Failed to update metadata for media $mediaId", e)
+        }
+    }
+
+    /**
+     * Search media with partial string matching
+     */
+    fun searchMedia(query: String): Flow<List<MediaLibraryEntity>> {
+        Log.d(TAG, "🔍 [SEARCH] Searching media with query: '$query'")
+        return mediaLibraryDao.searchMedia(query)
+    }
+
+    fun searchMediaByType(query: String, type: MediaType): Flow<List<MediaLibraryEntity>> {
+        Log.d(TAG, "🔍 [SEARCH] Searching media by type $type with query: '$query'")
+        return mediaLibraryDao.searchMediaByType(query, type)
+    }
+
+    fun getMediaByDateRange(startDate: Long, endDate: Long): Flow<List<MediaLibraryEntity>> {
+        Log.d(TAG, "🔍 [SEARCH] Getting media by date range: $startDate - $endDate")
+        return mediaLibraryDao.getMediaByDateRange(startDate, endDate)
+    }
+
+    /**
      * Add media from URI - handles file storage and database entry
      */
     suspend fun addMediaFromUri(
         uri: Uri,
         fileName: String,
         mediaType: MediaType,
-        mimeType: String
+        mimeType: String,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
     ): String? {
         try {
-            Log.d(TAG, "Adding media from URI: $uri, fileName: $fileName")
+            Log.d(TAG, "📤 [UPLOAD] Adding media from URI: $uri, fileName: $fileName")
+            Log.d(TAG, "📤 [UPLOAD] Metadata - displayName: '$displayName', description: '$description', tags: '$tags'")
 
             // Save file to media library storage
             val (filePath, fileSize) = fileStorageManager.saveToMediaLibrary(uri) ?: run {
-                Log.e(TAG, "Failed to save file to storage")
+                Log.e(TAG, "❌ [UPLOAD] Failed to save file to storage")
                 return null
             }
 
@@ -91,14 +142,17 @@ class MediaLibraryRepository @Inject constructor(
                 uploadedAt = System.currentTimeMillis(),
                 fileSize = fileSize,
                 mimeType = mimeType,
-                thumbnailPath = null
+                thumbnailPath = null,
+                displayName = displayName,
+                description = description,
+                tags = tags
             )
 
             mediaLibraryDao.insertMedia(media)
-            Log.d(TAG, "Media added successfully with ID: $id")
+            Log.d(TAG, "✅ [UPLOAD] Media added successfully with ID: $id")
             return id
         } catch (e: Exception) {
-            Log.e(TAG, "Error adding media from URI", e)
+            Log.e(TAG, "❌ [UPLOAD] Error adding media from URI", e)
             return null
         }
     }
@@ -112,7 +166,10 @@ class MediaLibraryRepository @Inject constructor(
         mediaType: MediaType,
         fileSize: Long,
         mimeType: String,
-        thumbnailPath: String? = null
+        thumbnailPath: String? = null,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
     ): String {
         val id = UUID.randomUUID().toString()
         val media = MediaLibraryEntity(
@@ -123,10 +180,13 @@ class MediaLibraryRepository @Inject constructor(
             uploadedAt = System.currentTimeMillis(),
             fileSize = fileSize,
             mimeType = mimeType,
-            thumbnailPath = thumbnailPath
+            thumbnailPath = thumbnailPath,
+            displayName = displayName,
+            description = description,
+            tags = tags
         )
         mediaLibraryDao.insertMedia(media)
-        Log.d(TAG, "Media added manually with ID: $id")
+        Log.d(TAG, "📤 [UPLOAD] Media added manually with ID: $id")
         return id
     }
 
@@ -219,7 +279,15 @@ class MediaLibraryRepository @Inject constructor(
     /**
      * Add multiple media from URIs (bulk upload)
      */
-    suspend fun addMultipleMediaFromUris(uris: List<Uri>): List<String> {
+    suspend fun addMultipleMediaFromUris(
+        uris: List<Uri>,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
+    ): List<String> {
+        Log.d(TAG, "📤 [BULK_UPLOAD] Starting bulk upload of ${uris.size} files")
+        Log.d(TAG, "📤 [BULK_UPLOAD] Shared metadata - displayName: '$displayName', description: '$description', tags: '$tags'")
+
         val addedIds = mutableListOf<String>()
 
         uris.forEach { uri ->
@@ -240,30 +308,42 @@ class MediaLibraryRepository @Inject constructor(
                     uri = uri,
                     fileName = fileName,
                     mediaType = mediaType,
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    displayName = displayName,
+                    description = description,
+                    tags = tags
                 )
 
                 if (mediaId != null) {
                     addedIds.add(mediaId)
-                    Log.d(TAG, "Added media: $fileName (type: $mediaType)")
+                    Log.d(TAG, "✅ [BULK_UPLOAD] Added media: $fileName (type: $mediaType)")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to add media from URI: $uri", e)
+                Log.e(TAG, "❌ [BULK_UPLOAD] Failed to add media from URI: $uri", e)
             }
         }
 
-        Log.d(TAG, "Bulk upload complete: ${addedIds.size}/${uris.size} files added")
+        Log.d(TAG, "✅ [BULK_UPLOAD] Bulk upload complete: ${addedIds.size}/${uris.size} files added")
         return addedIds
     }
 
     /**
      * Extract and save files from ZIP
      */
-    suspend fun extractAndSaveZip(zipUri: Uri): List<String> {
+    suspend fun extractAndSaveZip(
+        zipUri: Uri,
+        displayName: String = "",
+        description: String = "",
+        tags: String = ""
+    ): List<String> {
+        Log.d(TAG, "📦 [ZIP_UPLOAD] Starting ZIP extraction from: $zipUri")
+        Log.d(TAG, "📦 [ZIP_UPLOAD] Shared metadata - displayName: '$displayName', description: '$description', tags: '$tags'")
+
         val addedIds = mutableListOf<String>()
 
         try {
             val savedFiles = fileStorageManager.extractZipToMediaLibrary(zipUri)
+            Log.d(TAG, "📦 [ZIP_UPLOAD] Extracted ${savedFiles.size} files from ZIP")
 
             savedFiles.forEach { (filePath, fileSize) ->
                 try {
@@ -282,18 +362,22 @@ class MediaLibraryRepository @Inject constructor(
                         filePath = filePath,
                         mediaType = mediaType,
                         fileSize = fileSize,
-                        mimeType = mimeType
+                        mimeType = mimeType,
+                        displayName = displayName,
+                        description = description,
+                        tags = tags
                     )
 
                     addedIds.add(id)
+                    Log.d(TAG, "✅ [ZIP_UPLOAD] Added file from ZIP: $fileName")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to add media from ZIP file: $filePath", e)
+                    Log.e(TAG, "❌ [ZIP_UPLOAD] Failed to add media from ZIP file: $filePath", e)
                 }
             }
 
-            Log.d(TAG, "ZIP extraction complete: ${addedIds.size} files added")
+            Log.d(TAG, "✅ [ZIP_UPLOAD] ZIP extraction complete: ${addedIds.size} files added")
         } catch (e: Exception) {
-            Log.e(TAG, "Error extracting ZIP", e)
+            Log.e(TAG, "❌ [ZIP_UPLOAD] Error extracting ZIP", e)
         }
 
         return addedIds

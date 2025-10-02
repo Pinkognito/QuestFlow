@@ -56,7 +56,16 @@ fun MediaDetailsDialog(
                                 fontWeight = FontWeight.Bold
                             )
 
-                            DetailRow("Name", media.fileName)
+                            if (media.displayName.isNotBlank()) {
+                                DetailRow("Anzeigename", media.displayName)
+                            }
+                            DetailRow("Dateiname", media.fileName)
+                            if (media.description.isNotBlank()) {
+                                DetailRow("Beschreibung", media.description)
+                            }
+                            if (media.tags.isNotBlank()) {
+                                DetailRow("Tags", media.tags)
+                            }
                             DetailRow("Typ", when (media.mediaType) {
                                 com.example.questflow.data.database.entity.MediaType.IMAGE -> "Bild"
                                 com.example.questflow.data.database.entity.MediaType.GIF -> "GIF"
