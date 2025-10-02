@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -66,6 +67,14 @@ fun MediaLibraryScreen(
     var showEditMetadataDialog by remember { mutableStateOf(false) }
     var mediaToEdit by remember { mutableStateOf<MediaLibraryEntity?>(null) }
 
+    // Multi-select state
+    var isSelectMode by remember { mutableStateOf(false) }
+    var selectedMediaIds by remember { mutableStateOf(setOf<String>()) }
+    var showCollectionTransferDialog by remember { mutableStateOf(false) }
+
+    // Category filter
+    var selectedCategoryFilter by remember { mutableStateOf<Long?>(null) }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Single file picker
@@ -108,24 +117,77 @@ fun MediaLibraryScreen(
 
     Scaffold(
         topBar = {
-            QuestFlowTopBar(
-                title = "Mediathek",
-                selectedCategory = selectedCategory,
-                categories = categories,
-                onCategorySelected = appViewModel::selectCategory,
-                onManageCategoriesClick = { navController.navigate("categories") },
-                level = globalStats?.level ?: 1,
-                totalXp = globalStats?.xp ?: 0
-            )
+            if (isSelectMode) {
+                TopAppBar(
+                    title = { Text("${selectedMediaIds.size} ausgewählt") },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSelectMode = false
+                            selectedMediaIds = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Abbrechen")
+                        }
+                    },
+                    actions = {
+                        // Select All / Deselect All
+                        IconButton(onClick = {
+                            selectedMediaIds = if (selectedMediaIds.isNotEmpty()) {
+                                emptySet()
+                            } else {
+                                // Will be populated when filteredMedia is available
+                                selectedMediaIds
+                            }
+                        }) {
+                            Icon(
+                                if (selectedMediaIds.isEmpty()) Icons.Default.CheckCircle else Icons.Default.Clear,
+                                contentDescription = if (selectedMediaIds.isEmpty()) "Alle auswählen" else "Alle abwählen"
+                            )
+                        }
+                        // Add to Collection
+                        IconButton(
+                            onClick = { showCollectionTransferDialog = true },
+                            enabled = selectedMediaIds.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Zu Collection hinzufügen")
+                        }
+                    }
+                )
+            } else {
+                QuestFlowTopBar(
+                    title = "Mediathek",
+                    selectedCategory = selectedCategory,
+                    categories = categories,
+                    onCategorySelected = appViewModel::selectCategory,
+                    onManageCategoriesClick = { navController.navigate("categories") },
+                    level = globalStats?.level ?: 1,
+                    totalXp = globalStats?.xp ?: 0
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Upload options menu
-                if (showUploadMenu) {
+            if (!isSelectMode) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Select Mode FAB
+                    SmallFloatingActionButton(
+                        onClick = { isSelectMode = true },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text("Auswählen", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    // Upload options menu
+                    if (showUploadMenu) {
                     // ZIP Upload
                     SmallFloatingActionButton(
                         onClick = {
@@ -178,14 +240,15 @@ fun MediaLibraryScreen(
                     }
                 }
 
-                // Main FAB
-                FloatingActionButton(
-                    onClick = { showUploadMenu = !showUploadMenu }
-                ) {
-                    Icon(
-                        if (showUploadMenu) Icons.Default.Close else Icons.Default.Add,
-                        contentDescription = "Upload"
-                    )
+                    // Main FAB
+                    FloatingActionButton(
+                        onClick = { showUploadMenu = !showUploadMenu }
+                    ) {
+                        Icon(
+                            if (showUploadMenu) Icons.Default.Close else Icons.Default.Add,
+                            contentDescription = "Upload"
+                        )
+                    }
                 }
             }
         }
@@ -264,6 +327,46 @@ fun MediaLibraryScreen(
                         { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     } else null
                 )
+            }
+
+            // Category filter
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Nach Kategorie filtern:",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = selectedCategoryFilter == null,
+                            onClick = { selectedCategoryFilter = null },
+                            label = { Text("Alle") }
+                        )
+                    }
+                    items(categories) { category ->
+                        FilterChip(
+                            selected = selectedCategoryFilter == category.id,
+                            onClick = { selectedCategoryFilter = category.id },
+                            label = {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(category.emoji)
+                                    Text(category.name)
+                                }
+                            }
+                        )
+                    }
+                }
             }
 
             // Tags filter
@@ -416,8 +519,28 @@ fun MediaLibraryScreen(
                     items(filteredMedia) { media ->
                         MediaGridItem(
                             media = media,
+                            isSelectMode = isSelectMode,
+                            isSelected = selectedMediaIds.contains(media.id),
+                            onSelect = {
+                                selectedMediaIds = if (selectedMediaIds.contains(media.id)) {
+                                    selectedMediaIds - media.id
+                                } else {
+                                    selectedMediaIds + media.id
+                                }
+                            },
                             onDelete = { showDeleteDialog = media },
-                            onClick = { showMediaViewer = media },
+                            onClick = {
+                                if (isSelectMode) {
+                                    // Toggle selection in select mode
+                                    selectedMediaIds = if (selectedMediaIds.contains(media.id)) {
+                                        selectedMediaIds - media.id
+                                    } else {
+                                        selectedMediaIds + media.id
+                                    }
+                                } else {
+                                    showMediaViewer = media
+                                }
+                            },
                             onEdit = {
                                 mediaToEdit = media
                                 showEditMetadataDialog = true
@@ -475,12 +598,37 @@ fun MediaLibraryScreen(
     }
 
     // Media details dialog
+    var showUsageManagement by remember { mutableStateOf(false) }
+
     uiState.selectedMediaWithUsage?.let { mediaWithUsage ->
-        MediaDetailsDialog(
-            media = mediaWithUsage.media,
-            usages = mediaWithUsage.usages,
-            onDismiss = { viewModel.clearMediaDetails() }
-        )
+        if (showUsageManagement) {
+            com.example.questflow.presentation.components.UsageManagementDialog(
+                mediaFileName = mediaWithUsage.media.displayName.ifBlank { mediaWithUsage.media.fileName },
+                usages = mediaWithUsage.usages,
+                categories = mediaWithUsage.categories,
+                onDismiss = {
+                    showUsageManagement = false
+                },
+                onDeleteUsage = { usage ->
+                    viewModel.deleteUsage(usage)
+                },
+                onEditCollectionItem = { referenceId, categoryId ->
+                    // TODO: Navigate to collection item edit screen
+                    showUsageManagement = false
+                    viewModel.clearMediaDetails()
+                }
+            )
+        } else {
+            MediaDetailsDialog(
+                media = mediaWithUsage.media,
+                usages = mediaWithUsage.usages,
+                categories = mediaWithUsage.categories,
+                onDismiss = { viewModel.clearMediaDetails() },
+                onManageUsages = {
+                    showUsageManagement = true
+                }
+            )
+        }
     }
 
     // Metadata dialog for upload
@@ -564,11 +712,35 @@ fun MediaLibraryScreen(
             }
         )
     }
+
+    // Collection Transfer Dialog
+    if (showCollectionTransferDialog && selectedMediaIds.isNotEmpty()) {
+        com.example.questflow.presentation.components.CollectionTransferDialog(
+            mediaCount = selectedMediaIds.size,
+            categories = categories,
+            onDismiss = { showCollectionTransferDialog = false },
+            onConfirm = { categoryId, name, description, rarity ->
+                viewModel.addMediaToCollection(
+                    mediaIds = selectedMediaIds.toList(),
+                    categoryId = categoryId,
+                    name = name,
+                    description = description,
+                    rarity = rarity
+                )
+                showCollectionTransferDialog = false
+                isSelectMode = false
+                selectedMediaIds = emptySet()
+            }
+        )
+    }
 }
 
 @Composable
 fun MediaGridItem(
     media: MediaLibraryEntity,
+    isSelectMode: Boolean = false,
+    isSelected: Boolean = false,
+    onSelect: () -> Unit = {},
     onDelete: () -> Unit,
     onClick: () -> Unit,
     onEdit: () -> Unit,
@@ -581,6 +753,17 @@ fun MediaGridItem(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .then(
+                if (isSelectMode && isSelected) {
+                    Modifier.border(
+                        width = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .clickable { onClick() }
     ) {
         when (media.mediaType) {
@@ -644,21 +827,37 @@ fun MediaGridItem(
             )
         }
 
-        // More menu button
-        IconButton(
-            onClick = { showMenu = true },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(32.dp)
-        ) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = "Mehr",
-                tint = Color.White,
+        // Selection indicator or More menu button
+        if (isSelectMode) {
+            if (isSelected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = "Ausgewählt",
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(32.dp)
+                        .background(Color.White, CircleShape),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        } else {
+            // More menu button
+            IconButton(
+                onClick = { showMenu = true },
                 modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .padding(4.dp)
-            )
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = "Mehr",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        .padding(4.dp)
+                )
+            }
         }
 
         DropdownMenu(

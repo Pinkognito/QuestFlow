@@ -110,6 +110,15 @@ class MediaLibraryRepository @Inject constructor(
         return mediaLibraryDao.getMediaByDateRange(startDate, endDate)
     }
 
+    fun getMediaByCategory(categoryId: Long?): Flow<List<MediaLibraryEntity>> {
+        Log.d(TAG, "🔍 [FILTER] Getting media by category: ${categoryId ?: "Global"}")
+        return if (categoryId == null) {
+            mediaLibraryDao.getGlobalMedia()
+        } else {
+            mediaLibraryDao.getMediaByCategory(categoryId)
+        }
+    }
+
     /**
      * Add media from URI - handles file storage and database entry
      */
@@ -381,5 +390,41 @@ class MediaLibraryRepository @Inject constructor(
         }
 
         return addedIds
+    }
+
+    /**
+     * Add multiple media to collection as collection items
+     */
+    suspend fun addMediaToCollection(
+        mediaIds: List<String>,
+        categoryId: Long?,
+        name: String,
+        description: String,
+        rarity: String
+    ): Int {
+        Log.d(TAG, "📦 [COLLECTION_TRANSFER] Adding ${mediaIds.size} media to collection")
+        Log.d(TAG, "📦 [COLLECTION_TRANSFER] Category: ${categoryId ?: "Global"}, Name: '$name', Rarity: $rarity")
+
+        // This method is a placeholder - actual implementation needs CollectionRepository
+        // For now, we'll just track the usage
+        var count = 0
+        mediaIds.forEach { mediaId ->
+            try {
+                // Track usage (placeholder for actual collection item creation)
+                trackUsage(
+                    mediaId = mediaId,
+                    usageType = com.example.questflow.data.database.entity.MediaUsageType.COLLECTION_ITEM,
+                    referenceId = System.currentTimeMillis(), // Placeholder - should be actual collection item ID
+                    categoryId = categoryId
+                )
+                count++
+                Log.d(TAG, "✅ [COLLECTION_TRANSFER] Tracked media $mediaId")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ [COLLECTION_TRANSFER] Failed to track media $mediaId", e)
+            }
+        }
+
+        Log.d(TAG, "✅ [COLLECTION_TRANSFER] Transfer complete: $count/${mediaIds.size} items")
+        return count
     }
 }

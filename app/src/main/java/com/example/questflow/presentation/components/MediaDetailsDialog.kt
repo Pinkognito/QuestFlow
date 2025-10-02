@@ -24,7 +24,9 @@ import java.util.*
 fun MediaDetailsDialog(
     media: MediaLibraryEntity,
     usages: List<MediaUsageEntity>,
-    onDismiss: () -> Unit
+    categories: Map<Long, String> = emptyMap(),
+    onDismiss: () -> Unit,
+    onManageUsages: (() -> Unit)? = null
 ) {
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.GERMAN) }
 
@@ -156,10 +158,12 @@ fun MediaDetailsDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 usage.categoryId?.let { catId ->
+                                    val categoryName = categories[catId] ?: "Unbekannt"
                                     Text(
-                                        text = "Kategorie-ID: $catId",
+                                        text = "Kategorie: $categoryName",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
@@ -169,8 +173,15 @@ fun MediaDetailsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Schließen")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onManageUsages != null && usages.isNotEmpty()) {
+                    Button(onClick = onManageUsages) {
+                        Text("Verwendungen verwalten")
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Schließen")
+                }
             }
         }
     )

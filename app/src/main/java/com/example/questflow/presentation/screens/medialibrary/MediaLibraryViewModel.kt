@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.questflow.data.database.entity.MediaLibraryEntity
 import com.example.questflow.data.database.entity.MediaType
+import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.repository.MediaLibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -14,7 +15,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MediaLibraryViewModel @Inject constructor(
-    private val mediaLibraryRepository: MediaLibraryRepository
+    private val mediaLibraryRepository: MediaLibraryRepository,
+    private val categoryRepository: CategoryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MediaLibraryUiState())
@@ -210,11 +212,21 @@ class MediaLibraryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val mediaWithUsage = mediaLibraryRepository.getMediaWithUsage(mediaId)
-                _uiState.value = _uiState.value.copy(
-                    selectedMediaWithUsage = mediaWithUsage?.let {
-                        MediaWithUsage(it.media, it.usages)
-                    }
-                )
+                if (mediaWithUsage != null) {
+                    // Get all categories to map IDs to names
+                    val allCategories = categoryRepository.getAllCategories().first()
+                    val categoryMap = allCategories.associate { it.id to it.name }
+
+                    _uiState.value = _uiState.value.copy(
+                        selectedMediaWithUsage = MediaWithUsageAndCategories(
+                            media = mediaWithUsage.media,
+                            usages = mediaWithUsage.usages,
+                            categories = categoryMap
+                        )
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(selectedMediaWithUsage = null)
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     notification = "Fehler beim Laden der Details: ${e.message}"
@@ -226,6 +238,54 @@ class MediaLibraryViewModel @Inject constructor(
     fun clearMediaDetails() {
         _uiState.value = _uiState.value.copy(selectedMediaWithUsage = null)
     }
+
+    fun addMediaToCollection(
+        mediaIds: List<String>,
+        categoryId: Long?,
+        name: String,
+        description: String,
+        rarity: String
+    ) {
+        viewModelScope.launch {
+            try {
+                val count = mediaLibraryRepository.addMediaToCollection(
+                    mediaIds = mediaIds,
+                    categoryId = categoryId,
+                    name = name,
+                    description = description,
+                    rarity = rarity
+                )
+                _uiState.value = _uiState.value.copy(
+                    notification = "$count ${if (count == 1) "Item" else "Items"} zur Collection hinzugefügt"
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Hinzufügen: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun deleteUsage(usage: com.example.questflow.data.database.entity.MediaUsageEntity) {
+        viewModelScope.launch {
+            try {
+                mediaLibraryRepository.removeUsageTracking(
+                    mediaId = usage.mediaLibraryId,
+                    usageType = usage.usageType,
+                    referenceId = usage.referenceId
+                )
+                _uiState.value = _uiState.value.copy(
+                    notification = "Verwendung entfernt"
+                )
+                // Reload details
+                loadMediaDetails(usage.mediaLibraryId)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Entfernen: ${e.message}"
+                )
+            }
+        }
+    }
 }
 
 data class MediaLibraryUiState(
@@ -233,10 +293,16 @@ data class MediaLibraryUiState(
     val mediaCount: Int = 0,
     val totalSize: Long = 0,
     val notification: String? = null,
-    val selectedMediaWithUsage: MediaWithUsage? = null
+    val selectedMediaWithUsage: MediaWithUsageAndCategories? = null
 )
 
 data class MediaWithUsage(
     val media: MediaLibraryEntity,
     val usages: List<com.example.questflow.data.database.entity.MediaUsageEntity>
+)
+
+data class MediaWithUsageAndCategories(
+    val media: MediaLibraryEntity,
+    val usages: List<com.example.questflow.data.database.entity.MediaUsageEntity>,
+    val categories: Map<Long, String> // categoryId -> categoryName
 )

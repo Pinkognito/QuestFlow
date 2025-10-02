@@ -80,4 +80,26 @@ interface MediaLibraryDao {
         ORDER BY uploadedAt DESC
     """)
     fun getMediaByDateRange(startDate: Long, endDate: Long): Flow<List<MediaLibraryEntity>>
+
+    /**
+     * Get media used in a specific category
+     */
+    @Query("""
+        SELECT DISTINCT ml.* FROM media_library ml
+        INNER JOIN media_usage mu ON ml.id = mu.mediaLibraryId
+        WHERE mu.categoryId = :categoryId
+        ORDER BY ml.uploadedAt DESC
+    """)
+    fun getMediaByCategory(categoryId: Long): Flow<List<MediaLibraryEntity>>
+
+    /**
+     * Get global media (no category filter)
+     */
+    @Query("""
+        SELECT DISTINCT ml.* FROM media_library ml
+        INNER JOIN media_usage mu ON ml.id = mu.mediaLibraryId
+        WHERE mu.categoryId IS NULL
+        ORDER BY ml.uploadedAt DESC
+    """)
+    fun getGlobalMedia(): Flow<List<MediaLibraryEntity>>
 }
