@@ -61,6 +61,7 @@ fun MediaLibraryScreen(
 
     var selectedFilter by remember { mutableStateOf<MediaType?>(null) } // null = Alle
     var showDeleteDialog by remember { mutableStateOf<MediaLibraryEntity?>(null) }
+    var showMultiDeleteDialog by remember { mutableStateOf(false) }
     var showUploadMenu by remember { mutableStateOf(false) }
     var showMediaViewer by remember { mutableStateOf<MediaLibraryEntity?>(null) }
 
@@ -146,6 +147,20 @@ fun MediaLibraryScreen(
                         }
                     },
                     actions = {
+                        // Delete selected
+                        IconButton(
+                            onClick = { showMultiDeleteDialog = true },
+                            enabled = selectedMediaIds.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Ausgewählte löschen")
+                        }
+                        // Add to Collection
+                        IconButton(
+                            onClick = { showCollectionTransferDialog = true },
+                            enabled = selectedMediaIds.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Zu Collection hinzufügen")
+                        }
                         // Select All / Deselect All
                         IconButton(onClick = {
                             selectedMediaIds = if (selectedMediaIds.isNotEmpty()) {
@@ -159,13 +174,6 @@ fun MediaLibraryScreen(
                                 if (selectedMediaIds.isEmpty()) Icons.Default.CheckCircle else Icons.Default.Clear,
                                 contentDescription = if (selectedMediaIds.isEmpty()) "Alle auswählen" else "Alle abwählen"
                             )
-                        }
-                        // Add to Collection
-                        IconButton(
-                            onClick = { showCollectionTransferDialog = true },
-                            enabled = selectedMediaIds.isNotEmpty()
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Zu Collection hinzufügen")
                         }
                     }
                 )
@@ -604,7 +612,7 @@ fun MediaLibraryScreen(
         }
     }
 
-    // Delete confirmation dialog
+    // Delete confirmation dialog (single)
     showDeleteDialog?.let { media ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
@@ -628,6 +636,38 @@ fun MediaLibraryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = null }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Delete confirmation dialog (multiple)
+    if (showMultiDeleteDialog && selectedMediaIds.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteDialog = false },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            title = { Text("${selectedMediaIds.size} Dateien löschen?") },
+            text = {
+                Text("Möchtest du ${selectedMediaIds.size} Datei${if (selectedMediaIds.size != 1) "en" else ""} wirklich löschen? Alle zugehörigen Collection Items werden ebenfalls entfernt. Diese Aktion kann nicht rückgängig gemacht werden.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteMultipleMedia(context, selectedMediaIds.toList())
+                        showMultiDeleteDialog = false
+                        isSelectMode = false
+                        selectedMediaIds = emptySet()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Alle löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteDialog = false }) {
                     Text("Abbrechen")
                 }
             }

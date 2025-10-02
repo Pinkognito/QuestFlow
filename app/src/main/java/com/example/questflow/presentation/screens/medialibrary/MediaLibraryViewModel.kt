@@ -204,6 +204,39 @@ class MediaLibraryViewModel @Inject constructor(
         }
     }
 
+    fun deleteMultipleMedia(context: Context, mediaIds: List<String>) {
+        viewModelScope.launch {
+            try {
+                var successCount = 0
+                var errorCount = 0
+
+                mediaIds.forEach { mediaId ->
+                    try {
+                        val media = mediaLibraryRepository.getMediaById(mediaId)
+                        if (media != null) {
+                            mediaLibraryRepository.deleteMedia(media)
+                            successCount++
+                        }
+                    } catch (e: Exception) {
+                        errorCount++
+                    }
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    notification = "$successCount Datei${if (successCount != 1) "en" else ""} gelöscht" +
+                            if (errorCount > 0) " ($errorCount Fehler)" else ""
+                )
+
+                // Reload stats
+                loadStats()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    notification = "Fehler beim Löschen: ${e.message}"
+                )
+            }
+        }
+    }
+
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = null)
     }

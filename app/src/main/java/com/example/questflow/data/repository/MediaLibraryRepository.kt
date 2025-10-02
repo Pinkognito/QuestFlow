@@ -201,21 +201,41 @@ class MediaLibraryRepository @Inject constructor(
     }
 
     /**
-     * Delete media and associated file
+     * Delete media and associated file, including all collection items that reference it
      */
     suspend fun deleteMedia(media: MediaLibraryEntity) {
         try {
-            Log.d(TAG, "Deleting media: ${media.id}")
+            Log.d(TAG, "🗑️ [MEDIA_DELETE] Deleting media: ${media.id}")
+
+            // Get all usages for this media
+            val usages = mediaUsageDao.getUsagesForMediaSync(media.id)
+            Log.d(TAG, "🗑️ [MEDIA_DELETE] Found ${usages.size} usages")
+
+            // Delete all associated collection items
+            usages.forEach { usage ->
+                if (usage.usageType == MediaUsageType.COLLECTION_ITEM) {
+                    try {
+                        val collectionItem = collectionRepository.getItemById(usage.referenceId)
+                        if (collectionItem != null) {
+                            collectionRepository.deleteCollectionItem(collectionItem)
+                            Log.d(TAG, "✅ [MEDIA_DELETE] Deleted CollectionItem ${usage.referenceId}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ [MEDIA_DELETE] Failed to delete CollectionItem ${usage.referenceId}", e)
+                    }
+                }
+            }
 
             // Delete file from storage
             fileStorageManager.deleteMediaLibraryFile(media.filePath)
 
-            // Delete database entry
+            // Delete database entry (cascade will delete usages)
             mediaLibraryDao.deleteMedia(media)
 
-            Log.d(TAG, "Media deleted successfully: ${media.id}")
+            Log.d(TAG, "✅ [MEDIA_DELETE] Media deleted successfully: ${media.id}")
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting media", e)
+            Log.e(TAG, "❌ [MEDIA_DELETE] Error deleting media", e)
+            throw e
         }
     }
 

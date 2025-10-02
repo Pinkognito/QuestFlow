@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -144,6 +145,7 @@ fun CollectionScreen(
                             item = itemWithUnlock.item,
                             isUnlocked = itemWithUnlock.isUnlocked,
                             mediaFilePath = itemWithUnlock.mediaFilePath,
+                            mediaType = itemWithUnlock.mediaType,
                             onClick = {
                                 if (itemWithUnlock.isUnlocked) {
                                     viewModel.selectItem(itemWithUnlock.item)
@@ -155,12 +157,13 @@ fun CollectionScreen(
             }
         }
 
-        // Image Popup Dialog
+        // Media Popup Dialog (Image/GIF/Audio)
         if (uiState.selectedItem != null) {
             val selectedItemWithUnlock = uiState.items.find { it.item.id == uiState.selectedItem!!.id }
-            ImagePopupDialog(
+            MediaPopupDialog(
                 item = uiState.selectedItem!!,
                 mediaFilePath = selectedItemWithUnlock?.mediaFilePath,
+                mediaType = selectedItemWithUnlock?.mediaType,
                 onDismiss = { viewModel.clearSelection() }
             )
         }
@@ -173,6 +176,7 @@ fun CollectionItemCard(
     item: CollectionItemEntity,
     isUnlocked: Boolean,
     mediaFilePath: String?,
+    mediaType: com.example.questflow.data.database.entity.MediaType?,
     onClick: () -> Unit
 ) {
     Card(
@@ -196,12 +200,30 @@ fun CollectionItemCard(
             if (isUnlocked) {
                 // Use mediaFilePath if available, otherwise fall back to legacy imageUri
                 val imagePath = mediaFilePath ?: item.imageUri
-                AsyncImage(
-                    model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
-                    contentDescription = item.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+
+                // Show different content based on media type
+                when (mediaType) {
+                    com.example.questflow.data.database.entity.MediaType.AUDIO -> {
+                        // Audio icon for audio files
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = item.name,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(32.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    else -> {
+                        // Image/GIF
+                        AsyncImage(
+                            model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
+                            contentDescription = item.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
 
                 // Optional: Name overlay at bottom
                 Box(
@@ -242,9 +264,10 @@ fun CollectionItemCard(
 }
 
 @Composable
-fun ImagePopupDialog(
+fun MediaPopupDialog(
     item: CollectionItemEntity,
     mediaFilePath: String?,
+    mediaType: com.example.questflow.data.database.entity.MediaType?,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -280,16 +303,47 @@ fun ImagePopupDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Large image - Use mediaFilePath from Media Library
+                // Large media - Use mediaFilePath from Media Library
                 val imagePath = mediaFilePath ?: item.imageUri
-                AsyncImage(
-                    model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
-                    contentDescription = item.name,
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f),
-                    contentScale = ContentScale.Fit
-                )
+                    contentAlignment = Alignment.Center
+                ) {
+                    when (mediaType) {
+                        com.example.questflow.data.database.entity.MediaType.AUDIO -> {
+                            // Audio player placeholder
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = item.name,
+                                    modifier = Modifier.size(128.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Audio-Datei",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                        else -> {
+                            // Image/GIF
+                            AsyncImage(
+                                model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
+                                contentDescription = item.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 

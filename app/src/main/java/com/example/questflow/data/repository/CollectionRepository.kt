@@ -16,7 +16,8 @@ data class CollectionItemWithUnlock(
     val item: CollectionItemEntity,
     val isUnlocked: Boolean,
     val unlockedAt: LocalDateTime? = null,
-    val mediaFilePath: String? = null  // NEW: Actual file path from media library
+    val mediaFilePath: String? = null,  // Actual file path from media library
+    val mediaType: com.example.questflow.data.database.entity.MediaType? = null  // NEW: Media type for rendering
 )
 
 class CollectionRepository @Inject constructor(
@@ -47,16 +48,20 @@ class CollectionRepository @Inject constructor(
                 )
             }
         }.map { itemsWithUnlock ->
-            // For each item, fetch the media file path asynchronously
+            // For each item, fetch the media file path and type asynchronously
             itemsWithUnlock.map { itemWithUnlock ->
                 val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
-                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+                val mediaType = getMediaType(itemWithUnlock.item)
+                itemWithUnlock.copy(
+                    mediaFilePath = mediaFilePath,
+                    mediaType = mediaType
+                )
             }
         }
     }
 
     /**
-     * Helper to get media file path from mediaLibraryId
+     * Helper to get media file path and type from mediaLibraryId
      */
     private suspend fun getMediaFilePath(item: CollectionItemEntity): String? {
         return if (item.mediaLibraryId.isNotBlank()) {
@@ -65,6 +70,17 @@ class CollectionRepository @Inject constructor(
         } else if (item.imageUri.isNotBlank()) {
             // Legacy system: Use imageUri directly
             item.imageUri
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Helper to get media type from mediaLibraryId
+     */
+    private suspend fun getMediaType(item: CollectionItemEntity): com.example.questflow.data.database.entity.MediaType? {
+        return if (item.mediaLibraryId.isNotBlank()) {
+            mediaLibraryDao.getMediaById(item.mediaLibraryId)?.mediaType
         } else {
             null
         }
@@ -91,7 +107,11 @@ class CollectionRepository @Inject constructor(
         }.map { itemsWithUnlock ->
             itemsWithUnlock.map { itemWithUnlock ->
                 val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
-                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+                val mediaType = getMediaType(itemWithUnlock.item)
+                itemWithUnlock.copy(
+                    mediaFilePath = mediaFilePath,
+                    mediaType = mediaType
+                )
             }
         }
     }
@@ -117,7 +137,11 @@ class CollectionRepository @Inject constructor(
         }.map { itemsWithUnlock ->
             itemsWithUnlock.map { itemWithUnlock ->
                 val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
-                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+                val mediaType = getMediaType(itemWithUnlock.item)
+                itemWithUnlock.copy(
+                    mediaFilePath = mediaFilePath,
+                    mediaType = mediaType
+                )
             }
         }
     }
@@ -147,7 +171,11 @@ class CollectionRepository @Inject constructor(
         }.map { itemsWithUnlock ->
             itemsWithUnlock.map { itemWithUnlock ->
                 val mediaFilePath = getMediaFilePath(itemWithUnlock.item)
-                itemWithUnlock.copy(mediaFilePath = mediaFilePath)
+                val mediaType = getMediaType(itemWithUnlock.item)
+                itemWithUnlock.copy(
+                    mediaFilePath = mediaFilePath,
+                    mediaType = mediaType
+                )
             }
         }
     }
