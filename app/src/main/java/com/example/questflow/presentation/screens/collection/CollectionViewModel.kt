@@ -26,16 +26,24 @@ class CollectionViewModel @Inject constructor(
     val uiState: StateFlow<CollectionUiState> = _uiState.asStateFlow()
 
     private var currentCategoryFilter: Long? = null
+    private var isInitialized = false
 
     init {
-        Log.d(TAG, "CollectionViewModel initialized")
-        loadItems(null) // Start with all items
+        Log.d(TAG, "CollectionViewModel initialized - waiting for category filter")
+        // Don't load items here - wait for setCategoryFilter() call from LaunchedEffect
     }
 
     fun setCategoryFilter(categoryId: Long?) {
-        Log.d(TAG, "Setting category filter: $categoryId")
-        currentCategoryFilter = categoryId
-        loadItems(categoryId)
+        Log.d(TAG, "📂 [CATEGORY_FILTER] Setting category filter: ${categoryId ?: "ALL"}")
+
+        // Only reload if category actually changed or this is first load
+        if (!isInitialized || currentCategoryFilter != categoryId) {
+            currentCategoryFilter = categoryId
+            isInitialized = true
+            loadItems(categoryId)
+        } else {
+            Log.d(TAG, "📂 [CATEGORY_FILTER] Category unchanged, skipping reload")
+        }
     }
 
     private fun loadItems(categoryId: Long?) {

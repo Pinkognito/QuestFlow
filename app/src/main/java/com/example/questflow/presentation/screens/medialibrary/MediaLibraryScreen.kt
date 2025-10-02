@@ -9,10 +9,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -44,7 +46,7 @@ import com.example.questflow.presentation.components.MediaViewerDialog
 import com.example.questflow.presentation.components.QuestFlowTopBar
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MediaLibraryScreen(
     appViewModel: AppViewModel,
@@ -127,6 +129,9 @@ fun MediaLibraryScreen(
         }
     }
 
+    // State for storage info dialog
+    var showStorageInfoDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             if (isSelectMode) {
@@ -172,7 +177,13 @@ fun MediaLibraryScreen(
                     onCategorySelected = appViewModel::selectCategory,
                     onManageCategoriesClick = { navController.navigate("categories") },
                     level = globalStats?.level ?: 1,
-                    totalXp = globalStats?.xp ?: 0
+                    totalXp = globalStats?.xp ?: 0,
+                    actions = {
+                        // Info button for storage stats
+                        IconButton(onClick = { showStorageInfoDialog = true }) {
+                            Icon(Icons.Default.Info, contentDescription = "Speicher-Info")
+                        }
+                    }
                 )
             }
         },
@@ -183,21 +194,6 @@ fun MediaLibraryScreen(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Select Mode FAB
-                    SmallFloatingActionButton(
-                        onClick = { isSelectMode = true },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text("Auswählen", style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-
                     // Upload options menu
                     if (showUploadMenu) {
                     // ZIP Upload
@@ -270,28 +266,48 @@ fun MediaLibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Search bar (always visible)
+            // Search bar (always visible) - Compact version
             var searchQuery by remember { mutableStateOf("") }
             var selectedTag by remember { mutableStateOf<String?>(null) }
 
-            OutlinedTextField(
+            TextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Nach Name, Tags oder Beschreibung suchen...") },
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .height(48.dp),
+                placeholder = {
+                    Text(
+                        "Suchen...",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
                 },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Suche löschen")
+                            Icon(
+                                Icons.Default.Clear,
+                                contentDescription = "Suche löschen",
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 },
-                singleLine = true
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = TextFieldDefaults.colors(
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(24.dp)
             )
 
             // Filter toggle button
@@ -455,34 +471,6 @@ fun MediaLibraryScreen(
                 }
             }
 
-            // Storage info
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Gespeichert: ${uiState.mediaCount} Dateien",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = formatFileSize(uiState.totalSize),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             // Get base media list based on category filter
             val categoryFilteredMedia by remember(selectedCategoryFilter) {
                 if (selectedCategoryFilter != null) {
@@ -601,6 +589,13 @@ fun MediaLibraryScreen(
                             onManageUsages = {
                                 openUsageManagementDirectly = true
                                 viewModel.loadMediaDetails(media.id)
+                            },
+                            onLongPress = {
+                                // Activate select mode and select this item
+                                if (!isSelectMode) {
+                                    isSelectMode = true
+                                    selectedMediaIds = setOf(media.id)
+                                }
                             }
                         )
                     }
@@ -793,8 +788,49 @@ fun MediaLibraryScreen(
             }
         )
     }
+
+    // Storage Info Dialog
+    if (showStorageInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showStorageInfoDialog = false },
+            icon = { Icon(Icons.Default.Info, contentDescription = null) },
+            title = { Text("Mediathek Statistiken") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Gespeicherte Dateien:")
+                        Text(
+                            "${uiState.mediaCount}",
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Gesamtgröße:")
+                        Text(
+                            formatFileSize(uiState.totalSize),
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStorageInfoDialog = false }) {
+                    Text("Schließen")
+                }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaGridItem(
     media: MediaLibraryEntity,
@@ -805,7 +841,8 @@ fun MediaGridItem(
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onShowInfo: () -> Unit,
-    onManageUsages: () -> Unit
+    onManageUsages: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -825,7 +862,10 @@ fun MediaGridItem(
                     Modifier
                 }
             )
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = { onClick() },
+                onLongClick = { onLongPress() }
+            )
     ) {
         when (media.mediaType) {
             MediaType.IMAGE, MediaType.GIF -> {
