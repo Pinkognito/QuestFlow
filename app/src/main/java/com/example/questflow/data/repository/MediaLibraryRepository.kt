@@ -275,15 +275,33 @@ class MediaLibraryRepository @Inject constructor(
     }
 
     /**
-     * Remove usage tracking
+     * Remove usage tracking and delete associated collection item if applicable
      */
     suspend fun removeUsageTracking(
         mediaId: String,
         usageType: MediaUsageType,
         referenceId: Long
     ) {
+        Log.d(TAG, "🗑️ [USAGE_DELETE] Removing usage: $usageType for media $mediaId (ref: $referenceId)")
+
+        // If this is a collection item usage, delete the actual collection item
+        if (usageType == MediaUsageType.COLLECTION_ITEM) {
+            try {
+                val collectionItem = collectionRepository.getItemById(referenceId)
+                if (collectionItem != null) {
+                    collectionRepository.deleteCollectionItem(collectionItem)
+                    Log.d(TAG, "✅ [USAGE_DELETE] Deleted CollectionItem $referenceId")
+                } else {
+                    Log.w(TAG, "⚠️ [USAGE_DELETE] CollectionItem $referenceId not found")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ [USAGE_DELETE] Failed to delete CollectionItem $referenceId", e)
+            }
+        }
+
+        // Remove usage tracking
         mediaUsageDao.deleteUsageByReference(mediaId, usageType, referenceId)
-        Log.d(TAG, "Removed usage tracking: $usageType for media $mediaId (ref: $referenceId)")
+        Log.d(TAG, "✅ [USAGE_DELETE] Removed usage tracking for media $mediaId")
     }
 
     /**
