@@ -421,6 +421,9 @@ fun MediaLibraryScreen(
                             onEdit = {
                                 mediaToEdit = media
                                 showEditMetadataDialog = true
+                            },
+                            onShowInfo = {
+                                viewModel.loadMediaDetails(media.id)
                             }
                         )
                     }
@@ -568,7 +571,8 @@ fun MediaGridItem(
     media: MediaLibraryEntity,
     onDelete: () -> Unit,
     onClick: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onShowInfo: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -669,6 +673,16 @@ fun MediaGridItem(
                 },
                 leadingIcon = {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Informationen anzeigen") },
+                onClick = {
+                    showMenu = false
+                    onShowInfo()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Info, contentDescription = null)
                 }
             )
             DropdownMenuItem(
