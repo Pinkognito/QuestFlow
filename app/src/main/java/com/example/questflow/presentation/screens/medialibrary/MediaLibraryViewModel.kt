@@ -286,6 +286,24 @@ class MediaLibraryViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Get all media (for category filter: null = all)
+     */
+    fun getAllMedia(): Flow<List<MediaLibraryEntity>> {
+        return mediaLibraryRepository.getAllMedia()
+    }
+
+    /**
+     * Get media filtered by category
+     */
+    fun getMediaByCategory(categoryId: Long?): Flow<List<MediaLibraryEntity>> {
+        return if (categoryId == null) {
+            mediaLibraryRepository.getAllMedia()
+        } else {
+            mediaLibraryRepository.getMediaByCategory(categoryId)
+        }
+    }
 }
 
 data class MediaLibraryUiState(

@@ -4,6 +4,11 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +62,10 @@ fun MediaLibraryScreen(
     var showUploadMenu by remember { mutableStateOf(false) }
     var showMediaViewer by remember { mutableStateOf<MediaLibraryEntity?>(null) }
 
+    // Usage management dialog state
+    var showUsageManagement by remember { mutableStateOf(false) }
+    var openUsageManagementDirectly by remember { mutableStateOf(false) }
+
     // State for metadata dialog
     var showMetadataDialog by remember { mutableStateOf(false) }
     var pendingUploadUri by remember { mutableStateOf<Uri?>(null) }
@@ -74,6 +83,9 @@ fun MediaLibraryScreen(
 
     // Category filter
     var selectedCategoryFilter by remember { mutableStateOf<Long?>(null) }
+
+    // Filter expansion state
+    var isFiltersExpanded by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -258,8 +270,9 @@ fun MediaLibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Search bar
+            // Search bar (always visible)
             var searchQuery by remember { mutableStateOf("") }
+            var selectedTag by remember { mutableStateOf<String?>(null) }
 
             OutlinedTextField(
                 value = searchQuery,
@@ -281,134 +294,162 @@ fun MediaLibraryScreen(
                 singleLine = true
             )
 
-            // Filter chips
+            // Filter toggle button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Alle Filter
-                FilterChip(
-                    selected = selectedFilter == null,
-                    onClick = { selectedFilter = null },
-                    label = { Text("Alle") },
-                    leadingIcon = if (selectedFilter == null) {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
-                )
-
-                // Bilder Filter
-                FilterChip(
-                    selected = selectedFilter == MediaType.IMAGE,
-                    onClick = { selectedFilter = MediaType.IMAGE },
-                    label = { Text("Bilder") },
-                    leadingIcon = if (selectedFilter == MediaType.IMAGE) {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
-                )
-
-                // GIFs Filter
-                FilterChip(
-                    selected = selectedFilter == MediaType.GIF,
-                    onClick = { selectedFilter = MediaType.GIF },
-                    label = { Text("GIFs") },
-                    leadingIcon = if (selectedFilter == MediaType.GIF) {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
-                )
-
-                // Audio Filter
-                FilterChip(
-                    selected = selectedFilter == MediaType.AUDIO,
-                    onClick = { selectedFilter = MediaType.AUDIO },
-                    label = { Text("Audio") },
-                    leadingIcon = if (selectedFilter == MediaType.AUDIO) {
-                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                    } else null
-                )
-            }
-
-            // Category filter
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Nach Kategorie filtern:",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "Filter",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
-                        FilterChip(
-                            selected = selectedCategoryFilter == null,
-                            onClick = { selectedCategoryFilter = null },
-                            label = { Text("Alle") }
-                        )
-                    }
-                    items(categories) { category ->
-                        FilterChip(
-                            selected = selectedCategoryFilter == category.id,
-                            onClick = { selectedCategoryFilter = category.id },
-                            label = {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(category.emoji)
-                                    Text(category.name)
-                                }
-                            }
-                        )
-                    }
+                IconButton(onClick = { isFiltersExpanded = !isFiltersExpanded }) {
+                    Icon(
+                        imageVector = if (isFiltersExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isFiltersExpanded) "Filter einklappen" else "Filter ausklappen"
+                    )
                 }
             }
 
-            // Tags filter
-            val availableTags = remember(uiState.allMedia) {
-                uiState.allMedia
-                    .flatMap { it.tags.split(",") }
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .sorted()
-            }
-
-            var selectedTag by remember { mutableStateOf<String?>(null) }
-
-            if (availableTags.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "Nach Tag filtern:",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LazyRow(
+            // Collapsible filters section
+            AnimatedVisibility(
+                visible = isFiltersExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column {
+                    // Filter chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item {
-                            FilterChip(
-                                selected = selectedTag == null,
-                                onClick = { selectedTag = null },
-                                label = { Text("Alle Tags") }
-                            )
+                        // Alle Filter
+                        FilterChip(
+                            selected = selectedFilter == null,
+                            onClick = { selectedFilter = null },
+                            label = { Text("Alle") },
+                            leadingIcon = if (selectedFilter == null) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+
+                        // Bilder Filter
+                        FilterChip(
+                            selected = selectedFilter == MediaType.IMAGE,
+                            onClick = { selectedFilter = MediaType.IMAGE },
+                            label = { Text("Bilder") },
+                            leadingIcon = if (selectedFilter == MediaType.IMAGE) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+
+                        // GIFs Filter
+                        FilterChip(
+                            selected = selectedFilter == MediaType.GIF,
+                            onClick = { selectedFilter = MediaType.GIF },
+                            label = { Text("GIFs") },
+                            leadingIcon = if (selectedFilter == MediaType.GIF) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+
+                        // Audio Filter
+                        FilterChip(
+                            selected = selectedFilter == MediaType.AUDIO,
+                            onClick = { selectedFilter = MediaType.AUDIO },
+                            label = { Text("Audio") },
+                            leadingIcon = if (selectedFilter == MediaType.AUDIO) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+                    }
+
+                    // Category filter
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Nach Kategorie filtern:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = selectedCategoryFilter == null,
+                                    onClick = { selectedCategoryFilter = null },
+                                    label = { Text("Alle") }
+                                )
+                            }
+                            items(categories) { category ->
+                                FilterChip(
+                                    selected = selectedCategoryFilter == category.id,
+                                    onClick = { selectedCategoryFilter = category.id },
+                                    label = {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(category.emoji)
+                                            Text(category.name)
+                                        }
+                                    }
+                                )
+                            }
                         }
-                        items(availableTags.take(10)) { tag ->
-                            FilterChip(
-                                selected = selectedTag == tag,
-                                onClick = { selectedTag = tag },
-                                label = { Text(tag) }
+                    }
+
+                    // Tags filter
+                    val availableTags = remember(uiState.allMedia) {
+                        uiState.allMedia
+                            .flatMap { it.tags.split(",") }
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .sorted()
+                    }
+
+                    if (availableTags.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Nach Tag filtern:",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                item {
+                                    FilterChip(
+                                        selected = selectedTag == null,
+                                        onClick = { selectedTag = null },
+                                        label = { Text("Alle Tags") }
+                                    )
+                                }
+                                items(availableTags.take(10)) { tag ->
+                                    FilterChip(
+                                        selected = selectedTag == tag,
+                                        onClick = { selectedTag = tag },
+                                        label = { Text(tag) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -442,9 +483,18 @@ fun MediaLibraryScreen(
                 }
             }
 
+            // Get base media list based on category filter
+            val categoryFilteredMedia by remember(selectedCategoryFilter) {
+                if (selectedCategoryFilter != null) {
+                    viewModel.getMediaByCategory(selectedCategoryFilter)
+                } else {
+                    viewModel.getAllMedia()
+                }
+            }.collectAsState(initial = emptyList())
+
             // Media grid with filtering
-            val filteredMedia = remember(uiState.allMedia, selectedFilter, searchQuery, selectedTag) {
-                var media = uiState.allMedia
+            val filteredMedia = remember(categoryFilteredMedia, selectedFilter, searchQuery, selectedTag) {
+                var media = categoryFilteredMedia
 
                 // Apply type filter
                 if (selectedFilter != null) {
@@ -547,6 +597,10 @@ fun MediaLibraryScreen(
                             },
                             onShowInfo = {
                                 viewModel.loadMediaDetails(media.id)
+                            },
+                            onManageUsages = {
+                                openUsageManagementDirectly = true
+                                viewModel.loadMediaDetails(media.id)
                             }
                         )
                     }
@@ -597,8 +651,13 @@ fun MediaLibraryScreen(
         )
     }
 
-    // Media details dialog
-    var showUsageManagement by remember { mutableStateOf(false) }
+    // Auto-open usage management when requested from dropdown menu
+    LaunchedEffect(uiState.selectedMediaWithUsage, openUsageManagementDirectly) {
+        if (openUsageManagementDirectly && uiState.selectedMediaWithUsage != null) {
+            showUsageManagement = true
+            openUsageManagementDirectly = false
+        }
+    }
 
     uiState.selectedMediaWithUsage?.let { mediaWithUsage ->
         if (showUsageManagement) {
@@ -608,6 +667,7 @@ fun MediaLibraryScreen(
                 categories = mediaWithUsage.categories,
                 onDismiss = {
                     showUsageManagement = false
+                    viewModel.clearMediaDetails()
                 },
                 onDeleteUsage = { usage ->
                     viewModel.deleteUsage(usage)
@@ -744,7 +804,8 @@ fun MediaGridItem(
     onDelete: () -> Unit,
     onClick: () -> Unit,
     onEdit: () -> Unit,
-    onShowInfo: () -> Unit
+    onShowInfo: () -> Unit,
+    onManageUsages: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -892,6 +953,16 @@ fun MediaGridItem(
                 },
                 leadingIcon = {
                     Icon(Icons.Default.Edit, contentDescription = null)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Verwendungen verwalten") },
+                onClick = {
+                    showMenu = false
+                    onManageUsages()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Settings, contentDescription = null)
                 }
             )
             DropdownMenuItem(

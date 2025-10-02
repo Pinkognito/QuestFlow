@@ -25,7 +25,8 @@ data class MediaWithUsage(
 class MediaLibraryRepository @Inject constructor(
     private val mediaLibraryDao: MediaLibraryDao,
     private val mediaUsageDao: MediaUsageDao,
-    private val fileStorageManager: FileStorageManager
+    private val fileStorageManager: FileStorageManager,
+    private val collectionRepository: CollectionRepository
 ) {
     companion object {
         private const val TAG = "MediaLibraryRepository"
@@ -394,6 +395,7 @@ class MediaLibraryRepository @Inject constructor(
 
     /**
      * Add multiple media to collection as collection items
+     * Creates actual CollectionItemEntity entries and tracks usage
      */
     suspend fun addMediaToCollection(
         mediaIds: List<String>,
@@ -405,26 +407,47 @@ class MediaLibraryRepository @Inject constructor(
         Log.d(TAG, "📦 [COLLECTION_TRANSFER] Adding ${mediaIds.size} media to collection")
         Log.d(TAG, "📦 [COLLECTION_TRANSFER] Category: ${categoryId ?: "Global"}, Name: '$name', Rarity: $rarity")
 
-        // This method is a placeholder - actual implementation needs CollectionRepository
-        // For now, we'll just track the usage
         var count = 0
         mediaIds.forEach { mediaId ->
             try {
-                // Track usage (placeholder for actual collection item creation)
-                trackUsage(
-                    mediaId = mediaId,
-                    usageType = com.example.questflow.data.database.entity.MediaUsageType.COLLECTION_ITEM,
-                    referenceId = System.currentTimeMillis(), // Placeholder - should be actual collection item ID
+                // Get media to check if it exists
+                val media = getMediaById(mediaId)
+                if (media == null) {
+                    Log.w(TAG, "⚠️ [COLLECTION_TRANSFER] Media $mediaId not found, skipping")
+                    return@forEach
+                }
+
+                // Create CollectionItemEntity
+                val itemName = if (name.isNotBlank()) name else media.displayName.ifBlank { media.fileName }
+                val itemDescription = if (description.isNotBlank()) description else media.description
+
+                val itemId = collectionRepository.addCollectionItem(
+                    name = itemName,
+                    description = itemDescription,
+                    mediaLibraryId = mediaId,
+                    rarity = rarity,
+                    requiredLevel = 1, // Default level requirement
                     categoryId = categoryId
                 )
+
+                Log.d(TAG, "✅ [COLLECTION_TRANSFER] Created CollectionItem $itemId for media $mediaId")
+
+                // Track usage
+                trackUsage(
+                    mediaId = mediaId,
+                    usageType = MediaUsageType.COLLECTION_ITEM,
+                    referenceId = itemId,
+                    categoryId = categoryId
+                )
+
                 count++
-                Log.d(TAG, "✅ [COLLECTION_TRANSFER] Tracked media $mediaId")
+                Log.d(TAG, "✅ [COLLECTION_TRANSFER] Successfully added media $mediaId to collection")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ [COLLECTION_TRANSFER] Failed to track media $mediaId", e)
+                Log.e(TAG, "❌ [COLLECTION_TRANSFER] Failed to add media $mediaId to collection", e)
             }
         }
 
-        Log.d(TAG, "✅ [COLLECTION_TRANSFER] Transfer complete: $count/${mediaIds.size} items")
+        Log.d(TAG, "✅ [COLLECTION_TRANSFER] Transfer complete: $count/${mediaIds.size} items created")
         return count
     }
 }
