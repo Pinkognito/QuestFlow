@@ -24,7 +24,7 @@ import com.example.questflow.data.database.entity.*
         MediaLibraryEntity::class,
         MediaUsageEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

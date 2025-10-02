@@ -157,8 +157,10 @@ fun CollectionScreen(
 
         // Image Popup Dialog
         if (uiState.selectedItem != null) {
+            val selectedItemWithUnlock = uiState.items.find { it.item.id == uiState.selectedItem!!.id }
             ImagePopupDialog(
                 item = uiState.selectedItem!!,
+                mediaFilePath = selectedItemWithUnlock?.mediaFilePath,
                 onDismiss = { viewModel.clearSelection() }
             )
         }
@@ -242,6 +244,7 @@ fun CollectionItemCard(
 @Composable
 fun ImagePopupDialog(
     item: CollectionItemEntity,
+    mediaFilePath: String?,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -277,9 +280,10 @@ fun ImagePopupDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Large image
+                // Large image - Use mediaFilePath from Media Library
+                val imagePath = mediaFilePath ?: item.imageUri
                 AsyncImage(
-                    model = item.imageUri,
+                    model = if (imagePath.isNotBlank()) java.io.File(imagePath) else null,
                     contentDescription = item.name,
                     modifier = Modifier
                         .fillMaxWidth()

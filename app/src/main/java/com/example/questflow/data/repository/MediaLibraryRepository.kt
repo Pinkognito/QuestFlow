@@ -37,8 +37,31 @@ class MediaLibraryRepository @Inject constructor(
     fun getMediaByType(type: MediaType): Flow<List<MediaLibraryEntity>> =
         mediaLibraryDao.getMediaByType(type)
 
+    fun getMediaByTag(tag: String): Flow<List<MediaLibraryEntity>> =
+        mediaLibraryDao.getMediaByTag(tag)
+
+    fun getMediaByTypeAndTag(type: MediaType, tag: String): Flow<List<MediaLibraryEntity>> =
+        mediaLibraryDao.getMediaByTypeAndTag(type, tag)
+
+    suspend fun getAllTags(): List<String> {
+        val rawTags = mediaLibraryDao.getAllTags()
+        return rawTags.flatMap { it.split(",") }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
+
     suspend fun getMediaById(id: String): MediaLibraryEntity? =
         mediaLibraryDao.getMediaById(id)
+
+    suspend fun updateMediaTags(mediaId: String, tags: List<String>) {
+        val media = getMediaById(mediaId) ?: return
+        val tagsString = tags.joinToString(",")
+        val updatedMedia = media.copy(tags = tagsString)
+        mediaLibraryDao.updateMedia(updatedMedia)
+        Log.d(TAG, "Updated tags for media $mediaId: $tagsString")
+    }
 
     /**
      * Add media from URI - handles file storage and database entry

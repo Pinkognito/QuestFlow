@@ -19,5 +19,6 @@ data class MediaLibraryEntity(
     val uploadedAt: Long = System.currentTimeMillis(),
     val fileSize: Long = 0, // in bytes
     val mimeType: String = "",
-    val thumbnailPath: String? = null // For videos/large images
+    val thumbnailPath: String? = null, // For videos/large images
+    val tags: String = "" // Comma-separated tags for filtering
 )

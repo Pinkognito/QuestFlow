@@ -16,8 +16,20 @@ interface MediaLibraryDao {
     @Query("SELECT * FROM media_library WHERE id = :id")
     suspend fun getMediaById(id: String): MediaLibraryEntity?
 
+    @Query("SELECT * FROM media_library WHERE tags LIKE '%' || :tag || '%' ORDER BY uploadedAt DESC")
+    fun getMediaByTag(tag: String): Flow<List<MediaLibraryEntity>>
+
+    @Query("SELECT * FROM media_library WHERE mediaType = :type AND tags LIKE '%' || :tag || '%' ORDER BY uploadedAt DESC")
+    fun getMediaByTypeAndTag(type: MediaType, tag: String): Flow<List<MediaLibraryEntity>>
+
+    @Query("SELECT DISTINCT tags FROM media_library WHERE tags != ''")
+    suspend fun getAllTags(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMedia(media: MediaLibraryEntity)
+
+    @Update
+    suspend fun updateMedia(media: MediaLibraryEntity)
 
     @Delete
     suspend fun deleteMedia(media: MediaLibraryEntity)

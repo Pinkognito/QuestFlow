@@ -57,6 +57,64 @@ class AddCollectionItemsUseCase @Inject constructor(
     }
 
     /**
+     * Add multiple items from media library (bulk operation)
+     */
+    suspend fun addMultipleFromMediaLibrary(
+        mediaIds: List<String>,
+        categoryId: Long?
+    ): Result {
+        Log.d(TAG, "Adding ${mediaIds.size} items from media library to collection")
+
+        if (mediaIds.isEmpty()) {
+            return Result.Error("No media IDs provided")
+        }
+
+        var addedCount = 0
+        mediaIds.forEach { mediaId ->
+            try {
+                // Get media entity to extract fileName as name
+                val media = mediaLibraryRepository.getMediaById(mediaId)
+                if (media == null) {
+                    Log.w(TAG, "Media not found: $mediaId")
+                    return@forEach
+                }
+
+                // Use fileName without extension as collection item name
+                val name = media.fileName.substringBeforeLast('.')
+
+                val itemId = collectionRepository.addCollectionItem(
+                    name = name,
+                    description = "",
+                    mediaLibraryId = mediaId,
+                    rarity = "COMMON",
+                    requiredLevel = 1,
+                    categoryId = categoryId
+                )
+
+                // Track media usage
+                mediaLibraryRepository.trackUsage(
+                    mediaId = mediaId,
+                    usageType = MediaUsageType.COLLECTION_ITEM,
+                    referenceId = itemId,
+                    categoryId = categoryId
+                )
+
+                addedCount++
+                Log.d(TAG, "Added collection item: $name (ID: $itemId)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add collection item for media: $mediaId", e)
+            }
+        }
+
+        Log.d(TAG, "Successfully added $addedCount/${mediaIds.size} collection items")
+        return if (addedCount > 0) {
+            Result.Success(addedCount)
+        } else {
+            Result.Error("Failed to add collection items")
+        }
+    }
+
+    /**
      * Add a single image to collection (legacy method - still used for bulk operations)
      */
     suspend fun addSingleImage(
