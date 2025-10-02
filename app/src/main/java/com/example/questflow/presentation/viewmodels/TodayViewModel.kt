@@ -1,4 +1,4 @@
-package com.example.questflow.presentation.screens.today
+package com.example.questflow.presentation.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

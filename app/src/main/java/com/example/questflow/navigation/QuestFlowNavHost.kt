@@ -5,7 +5,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.example.questflow.presentation.AppViewModel
-import com.example.questflow.presentation.screens.today.TodayScreen
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
 import com.example.questflow.presentation.screens.collection.CollectionScreen
 import com.example.questflow.presentation.screens.collection.CollectionManageScreen
@@ -20,14 +19,8 @@ fun QuestFlowNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "today"
+        startDestination = "calendar_xp"
     ) {
-        composable("today") {
-            TodayScreen(
-                navController = navController,
-                appViewModel = appViewModel
-            )
-        }
         composable("calendar_xp") {
             CalendarXpScreen(
                 appViewModel = appViewModel,

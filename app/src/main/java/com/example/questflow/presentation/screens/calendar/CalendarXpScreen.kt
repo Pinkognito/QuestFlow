@@ -31,8 +31,8 @@ import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.AppViewModel
 import androidx.navigation.NavController
 import java.time.format.DateTimeFormatter
-import com.example.questflow.presentation.screens.today.TodayViewModel
-import com.example.questflow.presentation.screens.today.AddTaskDialog
+import com.example.questflow.presentation.viewmodels.TodayViewModel
+import com.example.questflow.presentation.components.AddTaskDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu

@@ -109,22 +109,12 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         NavigationBar {
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.Home, contentDescription = "Today") },
-                                label = { Text("Today") },
-                                selected = currentRoute == "today",
-                                onClick = {
-                                    navController.navigate("today") {
-                                        popUpTo("today") { inclusive = true }
-                                    }
-                                }
-                            )
-                            NavigationBarItem(
                                 icon = { Icon(Icons.Default.DateRange, contentDescription = "Calendar XP") },
                                 label = { Text("Calendar") },
                                 selected = currentRoute == "calendar_xp",
                                 onClick = {
                                     navController.navigate("calendar_xp") {
-                                        popUpTo("today")
+                                        popUpTo("calendar_xp") { inclusive = true }
                                     }
                                 }
                             )
@@ -134,7 +124,7 @@ class MainActivity : ComponentActivity() {
                                 selected = currentRoute == "collection",
                                 onClick = {
                                     navController.navigate("collection") {
-                                        popUpTo("today")
+                                        popUpTo("calendar_xp")
                                     }
                                 }
                             )
@@ -144,7 +134,7 @@ class MainActivity : ComponentActivity() {
                                 selected = currentRoute == "skill_tree",
                                 onClick = {
                                     navController.navigate("skill_tree") {
-                                        popUpTo("today")
+                                        popUpTo("calendar_xp")
                                     }
                                 }
                             )
@@ -154,7 +144,7 @@ class MainActivity : ComponentActivity() {
                                 selected = currentRoute == "media_library",
                                 onClick = {
                                     navController.navigate("media_library") {
-                                        popUpTo("today")
+                                        popUpTo("calendar_xp")
                                     }
                                 }
                             )
