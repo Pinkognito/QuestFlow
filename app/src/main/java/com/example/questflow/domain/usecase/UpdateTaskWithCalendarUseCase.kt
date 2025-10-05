@@ -44,7 +44,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         val deleteOnClaim: Boolean = false,
         val deleteOnExpiry: Boolean = false,
         val isRecurring: Boolean = false,
-        val recurringConfig: RecurringConfig? = null
+        val recurringConfig: RecurringConfig? = null,
+        val parentTaskId: Long? = null,
+        val autoCompleteParent: Boolean = false
     )
 
     sealed class UpdateResult {
@@ -146,7 +148,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 recurringDays = recurringDays,
                 triggerMode = params.recurringConfig?.triggerMode?.name,
                 isCompleted = if (params.shouldReactivate) false else task.isCompleted,
-                calendarEventId = newCalendarEventId ?: task.calendarEventId
+                calendarEventId = newCalendarEventId ?: task.calendarEventId,
+                parentTaskId = params.parentTaskId,
+                autoCompleteParent = params.autoCompleteParent
             )
 
             taskRepository.updateTask(updatedTask)

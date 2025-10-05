@@ -319,7 +319,9 @@ class CalendarXpViewModel @Inject constructor(
         deleteOnClaim: Boolean = false,
         deleteOnExpiry: Boolean = false,
         isRecurring: Boolean = false,
-        recurringConfig: RecurringConfig? = null
+        recurringConfig: RecurringConfig? = null,
+        parentTaskId: Long? = null,
+        autoCompleteParent: Boolean = false
     ) {
         viewModelScope.launch {
             val params = UpdateTaskWithCalendarUseCase.UpdateParams(
@@ -336,7 +338,9 @@ class CalendarXpViewModel @Inject constructor(
                 deleteOnClaim = deleteOnClaim,
                 deleteOnExpiry = deleteOnExpiry,
                 isRecurring = isRecurring,
-                recurringConfig = recurringConfig
+                recurringConfig = recurringConfig,
+                parentTaskId = parentTaskId,
+                autoCompleteParent = autoCompleteParent
             )
 
             when (val result = updateTaskWithCalendarUseCase(params)) {
@@ -355,6 +359,8 @@ class CalendarXpViewModel @Inject constructor(
     fun findLinkByTaskId(taskId: Long): CalendarEventLinkEntity? {
         return _uiState.value.links.find { it.taskId == taskId }
     }
+
+    fun getAvailableTasksFlow() = taskRepository.getActiveTasks()
 }
 
 data class CalendarXpUiState(

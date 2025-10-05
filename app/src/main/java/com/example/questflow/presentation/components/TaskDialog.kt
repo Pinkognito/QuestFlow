@@ -37,11 +37,14 @@ fun TaskDialog(
     initialDeleteOnExpiry: Boolean = false,
     initialIsRecurring: Boolean = false,
     initialRecurringConfig: RecurringConfig? = null,
+    initialParentTaskId: Long? = null,
+    initialAutoCompleteParent: Boolean = false,
     categories: List<CategoryEntity>,
     selectedCategory: CategoryEntity? = null,
     hasCalendarPermission: Boolean,
     calendarLink: CalendarEventLinkEntity? = null, // For edit mode
     task: Task? = null, // For edit mode from Today screen
+    availableTasks: List<Task> = emptyList(), // For parent task selection
     onDismiss: () -> Unit,
     onConfirm: (
         title: String,
@@ -55,7 +58,9 @@ fun TaskDialog(
         deleteOnExpiry: Boolean,
         isRecurring: Boolean,
         recurringConfig: RecurringConfig?,
-        shouldReactivate: Boolean
+        shouldReactivate: Boolean,
+        parentTaskId: Long?,
+        autoCompleteParent: Boolean
     ) -> Unit,
     getXpForPercentage: (Int) -> String
 ) {
@@ -84,6 +89,12 @@ fun TaskDialog(
         mutableStateOf(initialRecurringConfig ?: RecurringConfig())
     }
     var showRecurringDialog by remember { mutableStateOf(false) }
+
+    // Subtask state
+    var selectedParentTask by remember(availableTasks, initialParentTaskId) {
+        mutableStateOf(availableTasks.find { it.id == initialParentTaskId })
+    }
+    var autoCompleteParent by remember { mutableStateOf(initialAutoCompleteParent) }
 
     // Reactivation state (only for edit mode)
     var shouldReactivate by remember { mutableStateOf(false) }
@@ -222,6 +233,86 @@ fun TaskDialog(
                                         categoryExpanded = false
                                     }
                                 )
+                            }
+                        }
+                    }
+
+                    // Parent Task Selection (Subtask)
+                    if (availableTasks.isNotEmpty()) {
+                        item {
+                            Text("Übergeordneter Task (optional):", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        item {
+                            var parentExpanded by remember { mutableStateOf(false) }
+
+                            OutlinedTextField(
+                                value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
+                                onValueChange = { },
+                                readOnly = true,
+                                trailingIcon = {
+                                    IconButton(onClick = { parentExpanded = !parentExpanded }) {
+                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            DropdownMenu(
+                                expanded = parentExpanded,
+                                onDismissRequest = { parentExpanded = false }
+                            ) {
+                                // Option: No parent (main task)
+                                DropdownMenuItem(
+                                    text = { Text("Kein (Haupt-Task)") },
+                                    onClick = {
+                                        selectedParentTask = null
+                                        parentExpanded = false
+                                    }
+                                )
+
+                                // Available tasks as parent options
+                                availableTasks.filter { it.id != task?.id }.forEach { parentTask ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = parentTask.title,
+                                                maxLines = 1
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedParentTask = parentTask
+                                            parentExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Auto-complete parent option (only if parent is selected)
+                        if (selectedParentTask != null) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Parent automatisch abschließen",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            "Wenn alle Subtasks fertig sind",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = autoCompleteParent,
+                                        onCheckedChange = { autoCompleteParent = it }
+                                    )
+                                }
                             }
                         }
                     }
@@ -620,7 +711,9 @@ fun TaskDialog(
                             deleteOnExpiry,
                             isRecurring,
                             if (isRecurring) recurringConfig else null,
-                            shouldReactivate && isClaimedTask
+                            shouldReactivate && isClaimedTask,
+                            selectedParentTask?.id,
+                            autoCompleteParent
                         )
                         onDismiss()
                     }
