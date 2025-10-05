@@ -336,6 +336,7 @@ fun EditCalendarTaskDialog(
     calendarViewModel: CalendarXpViewModel,
     onDismiss: () -> Unit
 ) {
+    val availableTasks by calendarViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
     var taskTitle by remember { mutableStateOf(calendarLink.title) }
     var taskDescription by remember { mutableStateOf("") }
@@ -373,6 +374,16 @@ fun EditCalendarTaskDialog(
         mutableStateOf(com.example.questflow.presentation.components.RecurringConfig())
     }
     var showRecurringDialog by remember { mutableStateOf(false) }
+
+    // Subtask options
+    var selectedParentTask by remember(availableTasks, calendarLink.taskId) {
+        mutableStateOf(
+            availableTasks.find { it.id == calendarLink.taskId }?.parentTaskId?.let { parentId ->
+                availableTasks.find { it.id == parentId }
+            }
+        )
+    }
+    var autoCompleteParent by remember { mutableStateOf(false) }
 
     // Date and time state - START
     var selectedYear by remember { mutableStateOf(calendarLink.startsAt.year) }
@@ -565,6 +576,86 @@ fun EditCalendarTaskDialog(
                                     modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
                                 )
                                 Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+
+                    // Parent Task Selection (Subtask) - only if we have a task
+                    if (availableTasks.isNotEmpty() && calendarLink.taskId != null) {
+                        item {
+                            Text("Übergeordneter Task (optional):", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        item {
+                            var parentExpanded by remember { mutableStateOf(false) }
+
+                            OutlinedTextField(
+                                value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
+                                onValueChange = { },
+                                readOnly = true,
+                                trailingIcon = {
+                                    IconButton(onClick = { parentExpanded = !parentExpanded }) {
+                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            DropdownMenu(
+                                expanded = parentExpanded,
+                                onDismissRequest = { parentExpanded = false }
+                            ) {
+                                // Option: No parent (main task)
+                                DropdownMenuItem(
+                                    text = { Text("Kein (Haupt-Task)") },
+                                    onClick = {
+                                        selectedParentTask = null
+                                        parentExpanded = false
+                                    }
+                                )
+
+                                // Available tasks as parent options (excluding self)
+                                availableTasks.filter { it.id != calendarLink.taskId }.forEach { parentTask ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = parentTask.title,
+                                                maxLines = 1
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedParentTask = parentTask
+                                            parentExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Auto-complete parent option (only if parent is selected)
+                        if (selectedParentTask != null) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Parent automatisch abschließen",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            "Wenn alle Subtasks fertig sind",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = autoCompleteParent,
+                                        onCheckedChange = { autoCompleteParent = it }
+                                    )
+                                }
                             }
                         }
                     }
@@ -886,7 +977,9 @@ fun EditCalendarTaskDialog(
                             deleteOnClaim = deleteOnClaim,
                             deleteOnExpiry = deleteOnExpiry,
                             isRecurring = isRecurring,
-                            recurringConfig = if (isRecurring) recurringConfig else null
+                            recurringConfig = if (isRecurring) recurringConfig else null,
+                            parentTaskId = selectedParentTask?.id,
+                            autoCompleteParent = autoCompleteParent
                         )
                         onDismiss()
                     }
