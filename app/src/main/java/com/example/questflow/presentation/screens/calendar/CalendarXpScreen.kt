@@ -31,6 +31,7 @@ import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.AppViewModel
 import androidx.navigation.NavController
 import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import com.example.questflow.presentation.components.AddTaskDialog
 import androidx.compose.material3.IconButton
@@ -60,6 +61,7 @@ fun CalendarXpScreen(
     val globalStats by appViewModel.globalStats.collectAsState()
     val showFilterDialog by viewModel.showFilterDialog.collectAsState()
     val filterSettings by viewModel.filterSettings.collectAsState()
+    val availableTasks by viewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var selectedEditLink by remember { mutableStateOf<CalendarEventLinkEntity?>(null) }
@@ -82,10 +84,15 @@ fun CalendarXpScreen(
     // Handle deep link - open edit dialog for specific task
     LaunchedEffect(deepLinkTaskId) {
         deepLinkTaskId?.let { taskId ->
-            // Find the calendar link for this task
-            val link = viewModel.findLinkByTaskId(taskId)
-            if (link != null) {
-                selectedEditLink = link
+            android.util.Log.d("CalendarXpScreen", "Deep link received for taskId: $taskId")
+            viewModel.openTaskFromDeepLink(taskId) { link ->
+                android.util.Log.d("CalendarXpScreen", "Callback received, link: ${link != null}")
+                if (link != null) {
+                    android.util.Log.d("CalendarXpScreen", "Setting selectedEditLink to: ${link.title}")
+                    selectedEditLink = link
+                } else {
+                    android.util.Log.w("CalendarXpScreen", "No link returned from viewModel")
+                }
             }
         }
     }
@@ -158,6 +165,11 @@ fun CalendarXpScreen(
                     val isExpired = link.endsAt < java.time.LocalDateTime.now()
                     val isClaimed = link.rewarded || link.status == "CLAIMED"
 
+                    // Check if this task is a parent or subtask
+                    val taskData = availableTasks.find { it.id == link.taskId }
+                    val isParentTask = taskData != null && availableTasks.any { it.parentTaskId == taskData.id }
+                    val isSubtask = taskData?.parentTaskId != null
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -180,9 +192,16 @@ fun CalendarXpScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    // Visual indicator for parent/subtask
+                                    if (isParentTask) {
+                                        Text("📁 ", style = MaterialTheme.typography.bodyLarge)
+                                    } else if (isSubtask) {
+                                        Text("  └ ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+
                                     Text(
                                         link.title,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isExpired && !isClaimed)
                                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                         else
@@ -193,6 +212,14 @@ fun CalendarXpScreen(
                                             containerColor = MaterialTheme.colorScheme.error
                                         ) {
                                             Text("Abgelaufen", fontSize = 10.sp)
+                                        }
+                                    }
+                                    if (isParentTask) {
+                                        val subtaskCount = availableTasks.count { it.parentTaskId == taskData?.id }
+                                        Badge(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        ) {
+                                            Text("$subtaskCount", fontSize = 10.sp)
                                         }
                                     }
                                 }
@@ -376,14 +403,19 @@ fun EditCalendarTaskDialog(
     var showRecurringDialog by remember { mutableStateOf(false) }
 
     // Subtask options
-    var selectedParentTask by remember(availableTasks, calendarLink.taskId) {
+    val currentTask = remember(availableTasks, calendarLink.taskId) {
+        availableTasks.find { it.id == calendarLink.taskId }
+    }
+    var selectedParentTask by remember(availableTasks, currentTask) {
         mutableStateOf(
-            availableTasks.find { it.id == calendarLink.taskId }?.parentTaskId?.let { parentId ->
+            currentTask?.parentTaskId?.let { parentId ->
                 availableTasks.find { it.id == parentId }
             }
         )
     }
-    var autoCompleteParent by remember { mutableStateOf(false) }
+    var autoCompleteParent by remember(currentTask) {
+        mutableStateOf(currentTask?.autoCompleteParent ?: false)
+    }
 
     // Date and time state - START
     var selectedYear by remember { mutableStateOf(calendarLink.startsAt.year) }
@@ -588,46 +620,93 @@ fun EditCalendarTaskDialog(
 
                         item {
                             var parentExpanded by remember { mutableStateOf(false) }
+                            var searchQuery by remember { mutableStateOf("") }
 
-                            OutlinedTextField(
-                                value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
-                                onValueChange = { },
-                                readOnly = true,
-                                trailingIcon = {
-                                    IconButton(onClick = { parentExpanded = !parentExpanded }) {
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            DropdownMenu(
-                                expanded = parentExpanded,
-                                onDismissRequest = { parentExpanded = false }
-                            ) {
-                                // Option: No parent (main task)
-                                DropdownMenuItem(
-                                    text = { Text("Kein (Haupt-Task)") },
-                                    onClick = {
-                                        selectedParentTask = null
-                                        parentExpanded = false
-                                    }
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
+                                    onValueChange = { },
+                                    readOnly = true,
+                                    trailingIcon = {
+                                        IconButton(onClick = { parentExpanded = !parentExpanded }) {
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
                                 )
 
-                                // Available tasks as parent options (excluding self)
-                                availableTasks.filter { it.id != calendarLink.taskId }.forEach { parentTask ->
+                                DropdownMenu(
+                                    expanded = parentExpanded,
+                                    onDismissRequest = {
+                                        parentExpanded = false
+                                        searchQuery = ""
+                                    },
+                                    modifier = Modifier.fillMaxWidth(0.9f)
+                                ) {
+                                    // Search field
+                                    OutlinedTextField(
+                                        value = searchQuery,
+                                        onValueChange = { searchQuery = it },
+                                        label = { Text("Suchen...") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+
+                                    androidx.compose.material3.Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                                    // Option: No parent (main task)
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = parentTask.title,
-                                                maxLines = 1
-                                            )
-                                        },
+                                        text = { Text("❌ Kein (Haupt-Task)") },
                                         onClick = {
-                                            selectedParentTask = parentTask
+                                            selectedParentTask = null
                                             parentExpanded = false
+                                            searchQuery = ""
                                         }
                                     )
+
+                                    // Filtered tasks
+                                    val filteredTasks = availableTasks
+                                        .filter { it.id != calendarLink.taskId }
+                                        .filter {
+                                            searchQuery.isBlank() ||
+                                            it.title.contains(searchQuery, ignoreCase = true)
+                                        }
+
+                                    filteredTasks.forEach { parentTask ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    // Show indicator if task has subtasks
+                                                    val hasSubtasks = availableTasks.any { it.parentTaskId == parentTask.id }
+                                                    if (hasSubtasks) {
+                                                        Text("📁 ", style = MaterialTheme.typography.bodySmall)
+                                                    }
+                                                    Text(
+                                                        text = parentTask.title,
+                                                        maxLines = 1,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedParentTask = parentTask
+                                                parentExpanded = false
+                                                searchQuery = ""
+                                            }
+                                        )
+                                    }
+
+                                    if (filteredTasks.isEmpty() && searchQuery.isNotBlank()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall) },
+                                            onClick = { }
+                                        )
+                                    }
                                 }
                             }
                         }

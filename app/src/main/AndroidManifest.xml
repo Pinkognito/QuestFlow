@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".QuestFlowApplication"
@@ -23,6 +24,7 @@
             </intent-filter>
 
             <!-- Deep linking for tasks from Google Calendar -->
+            <!-- Custom scheme (questflow://task/123) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -30,6 +32,29 @@
                 <data
                     android:scheme="questflow"
                     android:host="task" />
+            </intent-filter>
+
+            <!-- HTTP scheme for clickable links in Google Calendar (https://questflow.app/task/123) -->
+            <!-- User can choose which app to open the link with -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="questflow.app"
+                    android:pathPrefix="/task" />
+            </intent-filter>
+
+            <!-- HTTP fallback (http://questflow.app/task/123) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="http"
+                    android:host="questflow.app"
+                    android:pathPrefix="/task" />
             </intent-filter>
         </activity>
     </application>

@@ -55,6 +55,12 @@ class MainActivity : ComponentActivity() {
         // Permissions result handled here
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        // Notification permission result handled here
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,6 +90,9 @@ class MainActivity : ComponentActivity() {
 
         // Request calendar permissions if not already granted
         requestCalendarPermissionsIfNeeded()
+
+        // Request notification permission if not already granted (Android 13+)
+        requestNotificationPermissionIfNeeded()
 
         // Handle deep link if present
         handleDeepLink(intent)
@@ -217,11 +226,29 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLink(intent: android.content.Intent) {
         val data = intent.data
-        if (data != null && data.scheme == "questflow" && data.host == "task") {
-            // Extract task ID from path: questflow://task/123
-            val taskId = data.lastPathSegment?.toLongOrNull()
+        if (data != null) {
+            android.util.Log.d("MainActivity", "Deep link received: $data")
+            android.util.Log.d("MainActivity", "  Scheme: ${data.scheme}, Host: ${data.host}, Path: ${data.path}")
+
+            val taskId = when {
+                // Custom scheme: questflow://task/123
+                data.scheme == "questflow" && data.host == "task" -> {
+                    data.lastPathSegment?.toLongOrNull()
+                }
+                // HTTP(S) scheme: https://questflow.app/task/123
+                (data.scheme == "https" || data.scheme == "http") &&
+                data.host == "questflow.app" &&
+                data.path?.startsWith("/task/") == true -> {
+                    data.lastPathSegment?.toLongOrNull()
+                }
+                else -> null
+            }
+
             if (taskId != null) {
+                android.util.Log.d("MainActivity", "Extracted task ID: $taskId")
                 deepLinkTaskId = taskId
+            } else {
+                android.util.Log.w("MainActivity", "Could not extract task ID from deep link")
             }
         }
     }
@@ -244,6 +271,20 @@ class MainActivity : ComponentActivity() {
                     Manifest.permission.WRITE_CALENDAR
                 )
             )
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        // Notification permission is only required for Android 13+ (API 33+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val notificationPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+
+            if (notificationPermission != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 

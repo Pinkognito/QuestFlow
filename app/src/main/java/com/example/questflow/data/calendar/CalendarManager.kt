@@ -113,19 +113,22 @@ class CalendarManager @Inject constructor(
             put(CalendarContract.Events.DTEND, endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             put(CalendarContract.Events.TITLE, taskTitle) // Title already includes emoji from ViewModel
 
-            // Build description with deep link if taskId is provided
+            // Build description with taskId for reference
             val descriptionText = buildString {
                 append(taskDescription)
                 append("\n\n🎮 XP Reward: $xpReward")
                 if (taskId != null) {
-                    append("\n\n📱 Öffne in QuestFlow:\nquestflow://task/$taskId")
+                    // Include taskId as reference - app will handle opening from notification
+                    append("\n\n📱 Öffne QuestFlow, um den Task zu bearbeiten")
+                    append("\n(Task ID: $taskId)")
                 }
             }
             put(CalendarContract.Events.DESCRIPTION, descriptionText)
 
             put(CalendarContract.Events.CALENDAR_ID, calendarId)
             put(CalendarContract.Events.EVENT_TIMEZONE, ZoneId.systemDefault().id)
-            put(CalendarContract.Events.HAS_ALARM, 1)
+            // Disable Google Calendar alarms - we use our custom notification system
+            put(CalendarContract.Events.HAS_ALARM, 0)
             // Set event color if category color is provided
             categoryColor?.let {
                 try {
@@ -140,15 +143,9 @@ class CalendarManager @Inject constructor(
         val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
         val eventId = uri?.let { ContentUris.parseId(it) }
 
-        // Add a reminder 15 minutes before
-        eventId?.let {
-            val reminderValues = ContentValues().apply {
-                put(CalendarContract.Reminders.EVENT_ID, eventId)
-                put(CalendarContract.Reminders.MINUTES, 15)
-                put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-            }
-            context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
-        }
+        // NOTE: Google Calendar reminder disabled - we use our own custom notification system
+        // with deep link button via TaskNotificationManager and WorkManager
+        // This prevents duplicate notifications (Google's standard + our custom)
 
         eventId
     }

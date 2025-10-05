@@ -30,7 +30,8 @@ class TodayViewModel @Inject constructor(
     private val createCalendarLinkUseCase: CreateCalendarLinkUseCase,
     private val completeTaskUseCase: CompleteTaskUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
-    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase
+    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     // NOTE: calendarManager & calendarLinkRepository still needed for:
     // - checkCalendarPermission()
@@ -171,35 +172,6 @@ class TodayViewModel @Inject constructor(
             android.util.Log.d("TodayViewModel", "  Start: $startDateTime, End: $endDateTime, IsExpired: $isExpired")
             android.util.Log.d("TodayViewModel", "  DeleteOnExpiry: $deleteOnExpiry, AddToCalendar: $addToCalendar")
 
-            // Create calendar event if requested - BUT NOT if it's expired and should be deleted on expiry!
-            var calendarEventId: Long? = null
-            if (addToCalendar && calendarManager.hasCalendarPermission()) {
-                // Don't create calendar event if it's already expired and deleteOnExpiry is true
-                if (isExpired && deleteOnExpiry) {
-                    android.util.Log.d("TodayViewModel", "NOT creating calendar event - already expired with deleteOnExpiry=true")
-                    // We still need to create a placeholder ID for the link
-                    calendarEventId = -1L // Will be stored but event not actually created
-                } else {
-                    val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
-                    val eventTitle = if (category != null) {
-                        "${category.emoji} $title"
-                    } else {
-                        "🎯 $title"
-                    }
-
-                    android.util.Log.d("TodayViewModel", "Creating calendar event for task")
-                    calendarEventId = calendarManager.createTaskEvent(
-                        taskTitle = eventTitle,
-                        taskDescription = description,
-                        startTime = startDateTime,
-                        endTime = endDateTime,
-                        xpReward = xpReward,
-                        xpPercentage = xpPercentage,
-                        categoryColor = category?.color
-                    )
-                }
-            }
-
             // Map percentage to Priority enum for visual distinction
             val priority = when (xpPercentage) {
                 20 -> Priority.LOW
@@ -235,7 +207,7 @@ class TodayViewModel @Inject constructor(
                 } else null
             }
 
-            // Create task with calendar event ID and percentage
+            // STEP 1: Create task FIRST (without calendarEventId yet)
             val task = Task(
                 title = title,
                 description = description,
@@ -244,7 +216,7 @@ class TodayViewModel @Inject constructor(
                 xpReward = xpReward,
                 xpPercentage = xpPercentage,
                 categoryId = effectiveCategoryId,
-                calendarEventId = calendarEventId,
+                calendarEventId = null, // Will be set later
                 isRecurring = isRecurring,
                 recurringType = recurringType,
                 recurringInterval = recurringInterval,
@@ -253,6 +225,40 @@ class TodayViewModel @Inject constructor(
             )
 
             val taskId = taskRepository.insertTask(task)
+
+            // STEP 2: Create calendar event WITH taskId for deep linking
+            var calendarEventId: Long? = null
+            if (addToCalendar && calendarManager.hasCalendarPermission()) {
+                // Don't create calendar event if it's already expired and deleteOnExpiry is true
+                if (isExpired && deleteOnExpiry) {
+                    android.util.Log.d("TodayViewModel", "NOT creating calendar event - already expired with deleteOnExpiry=true")
+                    calendarEventId = -1L // Placeholder
+                } else {
+                    val category = effectiveCategoryId?.let { categoryRepository.getCategoryById(it) }
+                    val eventTitle = if (category != null) {
+                        "${category.emoji} $title"
+                    } else {
+                        "🎯 $title"
+                    }
+
+                    android.util.Log.d("TodayViewModel", "Creating calendar event WITH taskId for deep linking")
+                    calendarEventId = calendarManager.createTaskEvent(
+                        taskTitle = eventTitle,
+                        taskDescription = description,
+                        startTime = startDateTime,
+                        endTime = endDateTime,
+                        xpReward = xpReward,
+                        xpPercentage = xpPercentage,
+                        categoryColor = category?.color,
+                        taskId = taskId // Deep link!
+                    )
+                }
+            }
+
+            // STEP 3: Update task with calendarEventId
+            if (calendarEventId != null && calendarEventId != -1L) {
+                taskRepository.updateTask(task.copy(id = taskId, calendarEventId = calendarEventId))
+            }
 
             // Now create calendar link with taskId for XP tracking
             if (addToCalendar && calendarEventId != null && calendarEventId != -1L) {
@@ -296,6 +302,52 @@ class TodayViewModel @Inject constructor(
                 // Mark as expired immediately
                 calendarLinkRepository.updateLinkStatus(linkId, "EXPIRED")
             }
+
+            // STEP 4: Schedule notification reminder 15 minutes before task
+            if (addToCalendar && !isExpired) {
+                scheduleTaskNotification(
+                    taskId = taskId,
+                    title = title,
+                    description = description,
+                    xpReward = xpReward,
+                    startDateTime = startDateTime
+                )
+            }
+        }
+    }
+
+    private fun scheduleTaskNotification(
+        taskId: Long,
+        title: String,
+        description: String,
+        xpReward: Int,
+        startDateTime: LocalDateTime
+    ) {
+        // Calculate notification time: at task start time (not 15 minutes before)
+        val notificationTime = startDateTime
+        val now = LocalDateTime.now()
+
+        val workData = androidx.work.Data.Builder()
+            .putLong("taskId", taskId)
+            .putString("title", title)
+            .putString("description", description)
+            .putInt("xpReward", xpReward)
+            .build()
+
+        // Only schedule if notification time is in the future
+        if (notificationTime.isAfter(now)) {
+            val delayMillis = java.time.Duration.between(now, notificationTime).toMillis()
+
+            val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.questflow.workers.TaskReminderWorker>()
+                .setInitialDelay(delayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .setInputData(workData)
+                .addTag("task_reminder_$taskId")
+                .build()
+
+            androidx.work.WorkManager.getInstance(context).enqueue(workRequest)
+            android.util.Log.d("TodayViewModel", "Scheduled notification for task $taskId at $notificationTime (in ${delayMillis}ms)")
+        } else {
+            android.util.Log.d("TodayViewModel", "Task $taskId already started or in the past, no notification scheduled")
         }
     }
 

@@ -260,13 +260,24 @@ class CalendarXpViewModel @Inject constructor(
 
                 val taskId = taskRepository.insertTaskEntity(task)
 
-                // Create calendar event
+                // Get category for emoji and color
+                val category = selectedCategoryId?.let { categoryRepository.getCategoryById(it) }
+                val eventTitle = if (category != null) {
+                    "${category.emoji} $title"
+                } else {
+                    "🎯 $title"
+                }
+
+                // Create calendar event WITH taskId for deep linking
                 val eventId = calendarManager.createTaskEvent(
-                    taskTitle = title,
+                    taskTitle = eventTitle,
                     taskDescription = description,
                     startTime = dueDate,
                     endTime = dueDate.plusHours(1),
-                    xpReward = 10
+                    xpReward = 10,
+                    xpPercentage = xpPercentage,
+                    categoryColor = category?.color,
+                    taskId = taskId
                 )
 
                 eventId?.let {
@@ -358,6 +369,51 @@ class CalendarXpViewModel @Inject constructor(
 
     fun findLinkByTaskId(taskId: Long): CalendarEventLinkEntity? {
         return _uiState.value.links.find { it.taskId == taskId }
+    }
+
+    suspend fun findTaskById(taskId: Long): com.example.questflow.domain.model.Task? {
+        return taskRepository.getTaskById(taskId)
+    }
+
+    fun openTaskFromDeepLink(taskId: Long, onLinkFound: (CalendarEventLinkEntity?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                android.util.Log.d("CalendarXpViewModel", "openTaskFromDeepLink: $taskId")
+
+                // First try to find calendar link
+                val link = _uiState.value.links.find { it.taskId == taskId }
+                if (link != null) {
+                    android.util.Log.d("CalendarXpViewModel", "Found calendar link")
+                    onLinkFound(link)
+                    return@launch
+                }
+
+                // If no link, find task and create temp link
+                android.util.Log.d("CalendarXpViewModel", "No link, finding task...")
+                val task = taskRepository.getTaskById(taskId)
+                if (task != null) {
+                    android.util.Log.d("CalendarXpViewModel", "Found task: ${task.title}")
+                    val tempLink = CalendarEventLinkEntity(
+                        id = 0,
+                        calendarEventId = task.calendarEventId ?: 0,
+                        title = task.title,
+                        startsAt = task.dueDate ?: java.time.LocalDateTime.now(),
+                        endsAt = (task.dueDate ?: java.time.LocalDateTime.now()).plusHours(1),
+                        xp = task.xpReward,
+                        xpPercentage = task.xpPercentage ?: 60,
+                        categoryId = task.categoryId,
+                        taskId = task.id
+                    )
+                    onLinkFound(tempLink)
+                } else {
+                    android.util.Log.w("CalendarXpViewModel", "Task not found")
+                    onLinkFound(null)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarXpViewModel", "Error in openTaskFromDeepLink", e)
+                onLinkFound(null)
+            }
+        }
     }
 
     fun getAvailableTasksFlow() = taskRepository.getActiveTasks()
