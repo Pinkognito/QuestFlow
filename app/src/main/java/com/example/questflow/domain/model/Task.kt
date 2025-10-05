@@ -24,7 +24,8 @@ data class Task(
     val lastCompletedAt: LocalDateTime? = null,
     val nextDueDate: LocalDateTime? = null,
     val isEditable: Boolean = true,
-    val parentTaskId: Long? = null
+    val parentTaskId: Long? = null,
+    val autoCompleteParent: Boolean = false
 )
 
 enum class Priority {

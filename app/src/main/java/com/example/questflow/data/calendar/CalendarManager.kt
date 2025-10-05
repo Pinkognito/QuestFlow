@@ -101,7 +101,8 @@ class CalendarManager @Inject constructor(
         endTime: LocalDateTime,
         xpReward: Int,
         xpPercentage: Int = 60,
-        categoryColor: String? = null
+        categoryColor: String? = null,
+        taskId: Long? = null
     ): Long? = withContext(Dispatchers.IO) {
         if (!hasCalendarPermission()) return@withContext null
 
@@ -111,7 +112,17 @@ class CalendarManager @Inject constructor(
             put(CalendarContract.Events.DTSTART, startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             put(CalendarContract.Events.DTEND, endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             put(CalendarContract.Events.TITLE, taskTitle) // Title already includes emoji from ViewModel
-            put(CalendarContract.Events.DESCRIPTION, "$taskDescription\n\n🎮 XP Reward: $xpReward")
+
+            // Build description with deep link if taskId is provided
+            val descriptionText = buildString {
+                append(taskDescription)
+                append("\n\n🎮 XP Reward: $xpReward")
+                if (taskId != null) {
+                    append("\n\n📱 Öffne in QuestFlow:\nquestflow://task/$taskId")
+                }
+            }
+            put(CalendarContract.Events.DESCRIPTION, descriptionText)
+
             put(CalendarContract.Events.CALENDAR_ID, calendarId)
             put(CalendarContract.Events.EVENT_TIMEZONE, ZoneId.systemDefault().id)
             put(CalendarContract.Events.HAS_ALARM, 1)

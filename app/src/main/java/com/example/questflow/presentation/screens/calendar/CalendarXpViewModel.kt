@@ -351,6 +351,10 @@ class CalendarXpViewModel @Inject constructor(
             }
         }
     }
+
+    fun findLinkByTaskId(taskId: Long): CalendarEventLinkEntity? {
+        return _uiState.value.links.find { it.taskId == taskId }
+    }
 }
 
 data class CalendarXpUiState(

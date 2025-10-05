@@ -26,7 +26,7 @@ import com.example.questflow.data.database.entity.*
         StatisticsConfigEntity::class,
         DynamicChartEntity::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

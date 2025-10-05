@@ -70,6 +70,9 @@ class CompleteTaskUseCase @Inject constructor(
         }
         */
 
+        // Handle subtask completion logic
+        handleSubtaskCompletion(task)
+
         return CompleteTaskResult(
             success = true,
             xpGranted = xpResult?.xpGranted ?: categoryXpResult?.xpGranted,
@@ -78,6 +81,60 @@ class CompleteTaskUseCase @Inject constructor(
             unlockedMemes = xpResult?.unlockedMemes ?: emptyList(),
             categoryName = categoryName
         )
+    }
+
+    private suspend fun handleSubtaskCompletion(completedTask: com.example.questflow.domain.model.Task) {
+        // Case 1: If completed task has subtasks → complete all subtasks
+        val subtasks = taskRepository.getSubtasksSync(completedTask.id)
+        if (subtasks.isNotEmpty()) {
+            subtasks.filter { !it.isCompleted }.forEach { subtask ->
+                val updatedSubtask = subtask.copy(
+                    isCompleted = true,
+                    completedAt = LocalDateTime.now()
+                )
+                taskRepository.updateTaskEntity(updatedSubtask)
+            }
+        }
+
+        // Case 2: If completed task is a subtask → check if parent should be auto-completed
+        completedTask.parentTaskId?.let { parentId ->
+            val parentTask = taskRepository.getTaskById(parentId)
+            if (parentTask != null && !parentTask.isCompleted && parentTask.autoCompleteParent) {
+                // Check if all subtasks are now completed
+                val incompleteCount = taskRepository.getIncompleteSubtaskCount(parentId)
+                if (incompleteCount == 0) {
+                    // All subtasks completed → complete parent
+                    val updatedParent = parentTask.copy(
+                        isCompleted = true,
+                        completedAt = LocalDateTime.now()
+                    )
+                    taskRepository.updateTask(updatedParent)
+
+                    // Grant XP for parent task
+                    val (parentLevel, _) = if (parentTask.categoryId != null) {
+                        val category = categoryRepository.getCategoryById(parentTask.categoryId)
+                            ?: categoryRepository.getOrCreateDefaultCategory()
+                        category.currentLevel to category.name
+                    } else {
+                        val currentStats = statsRepository.getOrCreateStats()
+                        currentStats.level to null
+                    }
+
+                    val parentXp = calculateXpRewardUseCase(parentTask.xpPercentage, parentLevel)
+
+                    if (parentTask.categoryId != null) {
+                        grantCategoryXpUseCase(
+                            categoryId = parentTask.categoryId,
+                            baseXpAmount = parentXp,
+                            source = "TASK",
+                            sourceId = parentId
+                        )
+                    } else {
+                        grantXpUseCase(parentXp, XpSource.TASK, parentId)
+                    }
+                }
+            }
+        }
     }
 }
 

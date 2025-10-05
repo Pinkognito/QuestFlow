@@ -36,7 +36,8 @@ data class TaskEntity(
     val triggerMode: String? = null, // FIXED_INTERVAL, AFTER_COMPLETION, AFTER_EXPIRY
     // Task editing fields
     val isEditable: Boolean = true,
-    val parentTaskId: Long? = null // Reference to parent recurring task
+    val parentTaskId: Long? = null, // Reference to parent task for subtasks
+    val autoCompleteParent: Boolean = false // Auto-complete parent when all subtasks done
 )
 
 enum class RecurringType {

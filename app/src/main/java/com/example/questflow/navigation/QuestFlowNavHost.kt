@@ -16,7 +16,8 @@ import com.example.questflow.presentation.screens.statistics.DynamicStatisticsSc
 @Composable
 fun QuestFlowNavHost(
     navController: NavHostController,
-    appViewModel: AppViewModel
+    appViewModel: AppViewModel,
+    deepLinkTaskId: Long? = null
 ) {
     NavHost(
         navController = navController,
@@ -25,7 +26,8 @@ fun QuestFlowNavHost(
         composable("calendar_xp") {
             CalendarXpScreen(
                 appViewModel = appViewModel,
-                navController = navController
+                navController = navController,
+                deepLinkTaskId = deepLinkTaskId
             )
         }
         composable("collection") {

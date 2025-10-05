@@ -51,7 +51,8 @@ fun CalendarXpScreen(
     appViewModel: AppViewModel,
     navController: NavController,
     viewModel: CalendarXpViewModel = hiltViewModel(),
-    todayViewModel: TodayViewModel = hiltViewModel()
+    todayViewModel: TodayViewModel = hiltViewModel(),
+    deepLinkTaskId: Long? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
@@ -78,6 +79,17 @@ fun CalendarXpScreen(
         viewModel.updateSelectedCategory(selectedCategory?.id)
     }
 
+    // Handle deep link - open edit dialog for specific task
+    LaunchedEffect(deepLinkTaskId) {
+        deepLinkTaskId?.let { taskId ->
+            // Find the calendar link for this task
+            val link = viewModel.findLinkByTaskId(taskId)
+            if (link != null) {
+                selectedEditLink = link
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             floatingActionButton = {
@@ -89,7 +101,7 @@ fun CalendarXpScreen(
             },
             topBar = {
                 QuestFlowTopBar(
-                    title = "Calendar XP",
+                    title = "Tasks",
                     selectedCategory = selectedCategory,
                     categories = categories,
                     onCategorySelected = appViewModel::selectCategory,

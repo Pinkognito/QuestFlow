@@ -49,6 +49,21 @@ class TaskRepository @Inject constructor(
 
     suspend fun getTaskEntityById(id: Long): TaskEntity? =
         taskDao.getTaskById(id)
+
+    // Subtask methods
+    fun getSubtasks(parentId: Long): Flow<List<Task>> =
+        taskDao.getSubtasks(parentId).map { entities ->
+            entities.map { it.toDomainModel() }
+        }
+
+    suspend fun getSubtasksSync(parentId: Long): List<TaskEntity> =
+        taskDao.getSubtasksSync(parentId)
+
+    fun getTaskByIdFlow(taskId: Long): Flow<Task?> =
+        taskDao.getTaskByIdFlow(taskId).map { it?.toDomainModel() }
+
+    suspend fun getIncompleteSubtaskCount(parentId: Long): Int =
+        taskDao.getIncompleteSubtaskCount(parentId)
 }
 
 private fun TaskEntity.toDomainModel() = Task(
@@ -71,7 +86,8 @@ private fun TaskEntity.toDomainModel() = Task(
     lastCompletedAt = lastCompletedAt,
     nextDueDate = nextDueDate,
     isEditable = isEditable,
-    parentTaskId = parentTaskId
+    parentTaskId = parentTaskId,
+    autoCompleteParent = autoCompleteParent
 )
 
 private fun Task.toEntity() = TaskEntity(
@@ -96,5 +112,6 @@ private fun Task.toEntity() = TaskEntity(
     lastCompletedAt = lastCompletedAt,
     nextDueDate = nextDueDate,
     isEditable = isEditable,
-    parentTaskId = parentTaskId
+    parentTaskId = parentTaskId,
+    autoCompleteParent = autoCompleteParent
 )

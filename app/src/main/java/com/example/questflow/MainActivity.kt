@@ -84,6 +84,9 @@ class MainActivity : ComponentActivity() {
 
         // Request calendar permissions if not already granted
         requestCalendarPermissionsIfNeeded()
+
+        // Handle deep link if present
+        handleDeepLink(intent)
         setContent {
             val appViewModel: AppViewModel = hiltViewModel()
             val selectedCategory by appViewModel.selectedCategory.collectAsState()
@@ -109,8 +112,8 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         NavigationBar {
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.DateRange, contentDescription = "Calendar XP") },
-                                label = { Text("Calendar") },
+                                icon = { Icon(Icons.Default.DateRange, contentDescription = "Tasks") },
+                                label = { Text("Tasks") },
                                 selected = currentRoute == "calendar_xp",
                                 onClick = {
                                     navController.navigate("calendar_xp") {
@@ -172,7 +175,8 @@ class MainActivity : ComponentActivity() {
                         ) {
                             QuestFlowNavHost(
                                 navController = navController,
-                                appViewModel = appViewModel
+                                appViewModel = appViewModel,
+                                deepLinkTaskId = getDeepLinkTaskId()
                             )
                         }
 
@@ -201,6 +205,31 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         syncManager.stopPeriodicSync()
         syncManager.onDestroy()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private var deepLinkTaskId: Long? = null
+
+    private fun handleDeepLink(intent: android.content.Intent) {
+        val data = intent.data
+        if (data != null && data.scheme == "questflow" && data.host == "task") {
+            // Extract task ID from path: questflow://task/123
+            val taskId = data.lastPathSegment?.toLongOrNull()
+            if (taskId != null) {
+                deepLinkTaskId = taskId
+            }
+        }
+    }
+
+    fun getDeepLinkTaskId(): Long? {
+        val taskId = deepLinkTaskId
+        deepLinkTaskId = null // Clear after reading
+        return taskId
     }
 
     private fun requestCalendarPermissionsIfNeeded() {
