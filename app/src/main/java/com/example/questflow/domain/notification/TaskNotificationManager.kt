@@ -48,6 +48,8 @@ class TaskNotificationManager @Inject constructor(
         description: String,
         xpReward: Int
     ) {
+        android.util.Log.d("TaskNotificationManager", "showTaskNotification called: taskId=$taskId, title=$title")
+
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         // Create deep link intent
@@ -85,7 +87,9 @@ class TaskNotificationManager @Inject constructor(
             )
             .build()
 
+        android.util.Log.d("TaskNotificationManager", "Calling notify() with id=${taskId.toInt()}")
         notificationManager.notify(taskId.toInt(), notification)
+        android.util.Log.d("TaskNotificationManager", "Notification sent!")
     }
 
     fun cancelTaskNotification(taskId: Long) {

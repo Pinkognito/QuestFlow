@@ -28,7 +28,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
     private val calendarLinkRepository: CalendarLinkRepository,
     private val calendarManager: CalendarManager,
     private val categoryRepository: CategoryRepository,
-    private val calculateXpRewardUseCase: CalculateXpRewardUseCase
+    private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
+    private val notificationScheduler: com.example.questflow.domain.notification.TaskNotificationScheduler
 ) {
     data class UpdateParams(
         val taskId: Long?,
@@ -183,6 +184,25 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             calendarEventId = finalCalendarEventId
         )
         calendarLinkRepository.updateLink(updatedLink)
+
+        // 7. Reschedule notification if task has changed and is in future
+        params.taskId?.let { taskId ->
+            val now = LocalDateTime.now()
+            if (params.startDateTime.isAfter(now) && params.addToCalendar) {
+                android.util.Log.d(TAG, "Rescheduling notification for task $taskId at ${params.startDateTime}")
+                notificationScheduler.rescheduleNotification(
+                    taskId = taskId,
+                    title = params.title,
+                    description = params.description,
+                    xpReward = xpReward,
+                    notificationTime = params.startDateTime
+                )
+            } else if (!params.startDateTime.isAfter(now)) {
+                // Cancel notification if task is now in the past
+                android.util.Log.d(TAG, "Cancelling notification for task $taskId (now in past)")
+                notificationScheduler.cancelNotification(taskId)
+            }
+        }
 
         return UpdateResult.Success(
             updatedTaskId = params.taskId,

@@ -323,32 +323,15 @@ class TodayViewModel @Inject constructor(
         xpReward: Int,
         startDateTime: LocalDateTime
     ) {
-        // Calculate notification time: at task start time (not 15 minutes before)
-        val notificationTime = startDateTime
-        val now = LocalDateTime.now()
-
-        val workData = androidx.work.Data.Builder()
-            .putLong("taskId", taskId)
-            .putString("title", title)
-            .putString("description", description)
-            .putInt("xpReward", xpReward)
-            .build()
-
-        // Only schedule if notification time is in the future
-        if (notificationTime.isAfter(now)) {
-            val delayMillis = java.time.Duration.between(now, notificationTime).toMillis()
-
-            val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.questflow.workers.TaskReminderWorker>()
-                .setInitialDelay(delayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .setInputData(workData)
-                .addTag("task_reminder_$taskId")
-                .build()
-
-            androidx.work.WorkManager.getInstance(context).enqueue(workRequest)
-            android.util.Log.d("TodayViewModel", "Scheduled notification for task $taskId at $notificationTime (in ${delayMillis}ms)")
-        } else {
-            android.util.Log.d("TodayViewModel", "Task $taskId already started or in the past, no notification scheduled")
-        }
+        // Use centralized notification scheduler
+        val notificationScheduler = com.example.questflow.domain.notification.TaskNotificationScheduler(context)
+        notificationScheduler.scheduleNotification(
+            taskId = taskId,
+            title = title,
+            description = description,
+            xpReward = xpReward,
+            notificationTime = startDateTime
+        )
     }
 
     // NOTE: updateCalendarTask removed - use CalendarXpViewModel.updateCalendarTask instead
