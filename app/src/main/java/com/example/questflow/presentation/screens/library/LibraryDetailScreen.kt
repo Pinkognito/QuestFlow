@@ -1,19 +1,24 @@
 package com.example.questflow.presentation.screens.library
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.questflow.data.database.entity.*
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.components.QuestFlowTopBar
@@ -35,6 +40,8 @@ fun LibraryDetailScreen(
     val globalStats by appViewModel.globalStats.collectAsState()
 
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showImportContactDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(globalStats?.xp) {
         globalStats?.xp?.let { currentXp ->
@@ -77,10 +84,20 @@ fun LibraryDetailScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { /* Show add dialog */ }
-            ) {
-                Icon(Icons.Default.Add, "Hinzufügen")
+            // Only show FAB for implemented types
+            if (type in listOf("locations", "phones", "notes", "contacts")) {
+                FloatingActionButton(
+                    onClick = {
+                        // For contacts, show import dialog instead of manual add
+                        if (type == "contacts") {
+                            showImportContactDialog = true
+                        } else {
+                            showAddDialog = true
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Add, "Hinzufügen")
+                }
             }
         }
     ) { paddingValues ->
@@ -93,9 +110,38 @@ fun LibraryDetailScreen(
                 "locations" -> LocationsList(viewModel)
                 "phones" -> PhonesList(viewModel)
                 "notes" -> NotesList(viewModel)
+                "contacts" -> ContactsList(viewModel, navController)
                 else -> EmptyPlaceholder(title)
             }
         }
+    }
+
+    // Show appropriate add dialog based on type
+    if (showAddDialog) {
+        when (type) {
+            "locations" -> AddLocationDialog(
+                onDismiss = { showAddDialog = false },
+                onSave = { location -> viewModel.addLocation(location) }
+            )
+            "phones" -> AddPhoneDialog(
+                onDismiss = { showAddDialog = false },
+                onSave = { phone -> viewModel.addPhone(phone) }
+            )
+            "notes" -> AddNoteDialog(
+                onDismiss = { showAddDialog = false },
+                onSave = { note -> viewModel.addNote(note) }
+            )
+        }
+    }
+
+    // Show import contact dialog
+    if (showImportContactDialog) {
+        ImportContactDialog(
+            onDismiss = { showImportContactDialog = false },
+            onContactSelected = { contactData ->
+                viewModel.importContact(contactData)
+            }
+        )
     }
 }
 
@@ -156,6 +202,31 @@ private fun NotesList(viewModel: MetadataLibraryViewModel) {
                 NoteCard(
                     note = note,
                     onDelete = { viewModel.deleteNote(note) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContactsList(
+    viewModel: MetadataLibraryViewModel,
+    navController: NavController
+) {
+    val contacts by viewModel.contacts.collectAsState()
+
+    if (contacts.isEmpty()) {
+        EmptyState("Keine Kontakte vorhanden")
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(contacts) { contact ->
+                ContactCard(
+                    contact = contact,
+                    onDelete = { viewModel.deleteContact(contact) },
+                    onClick = { navController.navigate("contact_detail/${contact.id}") }
                 )
             }
         }
@@ -290,6 +361,71 @@ private fun NoteCard(
                         text = note.content.take(100) + if (note.content.length > 100) "..." else "",
                         style = MaterialTheme.typography.bodyMedium
                     )
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Löschen",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContactCard(
+    contact: MetadataContactEntity,
+    onDelete: () -> Unit,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (contact.photoUri != null) {
+                    AsyncImage(
+                        model = Uri.parse(contact.photoUri),
+                        contentDescription = "Kontaktfoto",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = contact.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    contact.organization?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             IconButton(onClick = onDelete) {

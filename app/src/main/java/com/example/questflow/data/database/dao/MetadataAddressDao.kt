@@ -16,6 +16,9 @@ interface MetadataAddressDao {
     @Query("SELECT * FROM metadata_addresses ORDER BY city ASC, street ASC")
     fun getAll(): Flow<List<MetadataAddressEntity>>
 
+    @Query("SELECT * FROM metadata_addresses WHERE contactId = :contactId ORDER BY addressType ASC")
+    fun getByContactId(contactId: Long): Flow<List<MetadataAddressEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(address: MetadataAddressEntity): Long
 

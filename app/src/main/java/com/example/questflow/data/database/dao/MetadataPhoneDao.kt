@@ -16,6 +16,9 @@ interface MetadataPhoneDao {
     @Query("SELECT * FROM metadata_phones ORDER BY phoneNumber ASC")
     fun getAll(): Flow<List<MetadataPhoneEntity>>
 
+    @Query("SELECT * FROM metadata_phones WHERE contactId = :contactId ORDER BY phoneType ASC")
+    fun getByContactId(contactId: Long): Flow<List<MetadataPhoneEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(phone: MetadataPhoneEntity): Long
 

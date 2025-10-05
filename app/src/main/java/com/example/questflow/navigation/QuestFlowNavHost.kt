@@ -2,8 +2,10 @@ package com.example.questflow.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
 import com.example.questflow.presentation.screens.collection.CollectionScreen
@@ -15,6 +17,7 @@ import com.example.questflow.presentation.screens.statistics.DynamicStatisticsSc
 import com.example.questflow.presentation.screens.metadata.MetadataLibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryDetailScreen
+import com.example.questflow.presentation.screens.library.ContactDetailScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -135,6 +138,18 @@ fun QuestFlowNavHost(
         composable("library_files") {
             LibraryDetailScreen(
                 type = "files",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+
+        composable(
+            route = "contact_detail/{contactId}",
+            arguments = listOf(navArgument("contactId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val contactId = backStackEntry.arguments?.getLong("contactId") ?: 0L
+            ContactDetailScreen(
+                contactId = contactId,
                 appViewModel = appViewModel,
                 navController = navController
             )

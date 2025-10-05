@@ -34,9 +34,10 @@ import com.example.questflow.data.database.entity.*
         MetadataEmailEntity::class,
         MetadataUrlEntity::class,
         MetadataNoteEntity::class,
-        MetadataFileAttachmentEntity::class
+        MetadataFileAttachmentEntity::class,
+        TaskContactLinkEntity::class
     ],
-    version = 26,
+    version = 28,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -64,6 +65,7 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun metadataUrlDao(): MetadataUrlDao
     abstract fun metadataNoteDao(): MetadataNoteDao
     abstract fun metadataFileAttachmentDao(): MetadataFileAttachmentDao
+    abstract fun taskContactLinkDao(): TaskContactLinkDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"

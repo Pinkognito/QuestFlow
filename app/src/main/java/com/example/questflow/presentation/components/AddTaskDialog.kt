@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,6 +47,11 @@ fun AddTaskDialog(
     var taskCategory by remember(selectedCategory) { mutableStateOf(selectedCategory) }
     var selectedParentTask by remember { mutableStateOf<com.example.questflow.domain.model.Task?>(null) }
     var autoCompleteParent by remember { mutableStateOf(false) }
+
+    // Contact selection state
+    val availableContacts by viewModel.contacts.collectAsState()
+    var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showContactDialog by remember { mutableStateOf(false) }
 
     // Date and time state - START
     val currentDateTime = remember { java.time.LocalDateTime.now() }
@@ -422,6 +428,47 @@ fun AddTaskDialog(
                         }
                     }
 
+                    // Contact Selection
+                    item {
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Kontakte",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (selectedContactIds.isEmpty()) "Keine verknüpft"
+                                    else "${selectedContactIds.size} verknüpft",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { showContactDialog = true },
+                                enabled = availableContacts.isNotEmpty()
+                            ) {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Auswählen")
+                            }
+                        }
+                    }
+
+                    item {
+                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    }
+
                     // Date and Time Selection - START
                     item {
                         Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -696,7 +743,8 @@ fun AddTaskDialog(
                             isRecurring = isRecurring,
                             recurringConfig = if (isRecurring) recurringConfig else null,
                             parentTaskId = selectedParentTask?.id,
-                            autoCompleteParent = autoCompleteParent
+                            autoCompleteParent = autoCompleteParent,
+                            contactIds = selectedContactIds
                         )
                         onDismiss()
                     }
@@ -720,6 +768,19 @@ fun AddTaskDialog(
             onConfirm = { config ->
                 recurringConfig = config
                 showRecurringDialog = false
+            }
+        )
+    }
+
+    // Show contact selection dialog
+    if (showContactDialog) {
+        SelectContactsDialog(
+            contacts = availableContacts,
+            selectedContactIds = selectedContactIds,
+            onDismiss = { showContactDialog = false },
+            onConfirm = { newContactIds ->
+                selectedContactIds = newContactIds
+                showContactDialog = false
             }
         )
     }

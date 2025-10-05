@@ -23,7 +23,8 @@ class MetadataLibraryViewModel @Inject constructor(
     private val emailDao: MetadataEmailDao,
     private val urlDao: MetadataUrlDao,
     private val noteDao: MetadataNoteDao,
-    private val fileDao: MetadataFileAttachmentDao
+    private val fileDao: MetadataFileAttachmentDao,
+    private val taskContactLinkDao: TaskContactLinkDao
 ) : ViewModel() {
 
     companion object {
@@ -54,6 +55,45 @@ class MetadataLibraryViewModel @Inject constructor(
 
     val files: StateFlow<List<MetadataFileAttachmentEntity>> = fileDao.getAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Contact-specific flows for detail screen
+    private val _contactPhones = MutableStateFlow<List<MetadataPhoneEntity>>(emptyList())
+    val contactPhones: StateFlow<List<MetadataPhoneEntity>> = _contactPhones
+
+    private val _contactEmails = MutableStateFlow<List<MetadataEmailEntity>>(emptyList())
+    val contactEmails: StateFlow<List<MetadataEmailEntity>> = _contactEmails
+
+    private val _contactAddresses = MutableStateFlow<List<MetadataAddressEntity>>(emptyList())
+    val contactAddresses: StateFlow<List<MetadataAddressEntity>> = _contactAddresses
+
+    private val _linkedTasks = MutableStateFlow<List<com.example.questflow.data.database.TaskEntity>>(emptyList())
+    val linkedTasks: StateFlow<List<com.example.questflow.data.database.TaskEntity>> = _linkedTasks
+
+    /**
+     * Loads all related data for a specific contact
+     */
+    fun loadContactDetails(contactId: Long) {
+        viewModelScope.launch {
+            phoneDao.getByContactId(contactId).collect { phones ->
+                _contactPhones.value = phones
+            }
+        }
+        viewModelScope.launch {
+            emailDao.getByContactId(contactId).collect { emails ->
+                _contactEmails.value = emails
+            }
+        }
+        viewModelScope.launch {
+            addressDao.getByContactId(contactId).collect { addresses ->
+                _contactAddresses.value = addresses
+            }
+        }
+        viewModelScope.launch {
+            taskContactLinkDao.getTasksByContactId(contactId).collect { tasks ->
+                _linkedTasks.value = tasks
+            }
+        }
+    }
 
     // CRUD operations for Locations
     fun addLocation(location: MetadataLocationEntity) {
@@ -323,6 +363,90 @@ class MetadataLibraryViewModel @Inject constructor(
                 Log.d(TAG, "File deleted: ${file.id}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error deleting file", e)
+            }
+        }
+    }
+
+    /**
+     * Imports a contact from the device phonebook
+     * Creates linked metadata entries (Contact + Phones + Emails + Addresses)
+     */
+    fun importContact(contactData: com.example.questflow.presentation.screens.library.ContactData) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "Importing contact: ${contactData.displayName}")
+
+                // 1. Create the main contact entity
+                val contactId = contactDao.insert(
+                    MetadataContactEntity(
+                        displayName = contactData.displayName
+                    )
+                )
+                Log.d(TAG, "Contact created with ID: $contactId")
+
+                // 2. Import all phone numbers
+                contactData.phoneNumbers.forEach { phoneData ->
+                    val phoneType = when (phoneData.type) {
+                        "MOBILE" -> PhoneType.MOBILE
+                        "HOME" -> PhoneType.HOME
+                        "WORK" -> PhoneType.WORK
+                        "FAX" -> PhoneType.FAX
+                        else -> PhoneType.OTHER
+                    }
+
+                    val phoneId = phoneDao.insert(
+                        MetadataPhoneEntity(
+                            contactId = contactId,
+                            phoneNumber = phoneData.number,
+                            phoneType = phoneType
+                        )
+                    )
+                    Log.d(TAG, "Phone added with ID: $phoneId (${phoneData.number})")
+                }
+
+                // 3. Import all emails
+                contactData.emails.forEach { emailData ->
+                    val emailType = when (emailData.type) {
+                        "HOME" -> EmailType.PERSONAL
+                        "WORK" -> EmailType.WORK
+                        else -> EmailType.OTHER
+                    }
+
+                    val emailId = emailDao.insert(
+                        MetadataEmailEntity(
+                            contactId = contactId,
+                            emailAddress = emailData.email,
+                            emailType = emailType
+                        )
+                    )
+                    Log.d(TAG, "Email added with ID: $emailId (${emailData.email})")
+                }
+
+                // 4. Import all addresses
+                contactData.addresses.forEach { addressData ->
+                    val addressType = when (addressData.type) {
+                        "HOME" -> AddressType.HOME
+                        "WORK" -> AddressType.WORK
+                        else -> AddressType.OTHER
+                    }
+
+                    val addressId = addressDao.insert(
+                        MetadataAddressEntity(
+                            contactId = contactId,
+                            street = addressData.street ?: "",
+                            city = addressData.city ?: "",
+                            postalCode = addressData.postalCode ?: "",
+                            country = addressData.country ?: "",
+                            addressType = addressType
+                        )
+                    )
+                    Log.d(TAG, "Address added with ID: $addressId")
+                }
+
+                Log.d(TAG, "Contact import completed successfully: ${contactData.phoneNumbers.size} phones, ${contactData.emails.size} emails, ${contactData.addresses.size} addresses")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error importing contact", e)
             }
         }
     }

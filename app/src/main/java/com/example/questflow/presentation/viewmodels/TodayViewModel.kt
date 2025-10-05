@@ -8,6 +8,10 @@ import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.database.entity.CategoryEntity
+import com.example.questflow.data.database.entity.MetadataContactEntity
+import com.example.questflow.data.database.entity.TaskContactLinkEntity
+import com.example.questflow.data.database.dao.MetadataContactDao
+import com.example.questflow.data.database.dao.TaskContactLinkDao
 import com.example.questflow.domain.model.Priority
 import com.example.questflow.domain.model.Task
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
@@ -31,6 +35,8 @@ class TodayViewModel @Inject constructor(
     private val completeTaskUseCase: CompleteTaskUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
+    private val metadataContactDao: MetadataContactDao,
+    private val taskContactLinkDao: TaskContactLinkDao,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     // NOTE: calendarManager & calendarLinkRepository still needed for:
@@ -48,6 +54,13 @@ class TodayViewModel @Inject constructor(
     val selectedCategory: StateFlow<CategoryEntity?> = _selectedCategory.asStateFlow()
 
     val categories = categoryRepository.getActiveCategories()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val contacts = metadataContactDao.getAll()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -150,7 +163,8 @@ class TodayViewModel @Inject constructor(
         isRecurring: Boolean = false,
         recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null,
         parentTaskId: Long? = null,
-        autoCompleteParent: Boolean = false
+        autoCompleteParent: Boolean = false,
+        contactIds: Set<Long> = emptySet()
     ) {
         if (title.isBlank()) return
 
@@ -317,6 +331,11 @@ class TodayViewModel @Inject constructor(
                     startDateTime = startDateTime
                 )
             }
+
+            // STEP 5: Save contact links if any
+            if (contactIds.isNotEmpty()) {
+                saveTaskContactLinks(taskId, contactIds)
+            }
         }
     }
 
@@ -366,6 +385,28 @@ class TodayViewModel @Inject constructor(
 
     fun clearXpAnimation() {
         _uiState.value = _uiState.value.copy(xpAnimationData = null)
+    }
+
+    fun saveTaskContactLinks(taskId: Long, contactIds: Set<Long>) {
+        viewModelScope.launch {
+            // Delete existing links for this task
+            taskContactLinkDao.deleteAllLinksForTask(taskId)
+
+            // Insert new links
+            contactIds.forEach { contactId ->
+                taskContactLinkDao.insert(
+                    TaskContactLinkEntity(
+                        taskId = taskId,
+                        contactId = contactId
+                    )
+                )
+            }
+        }
+    }
+
+    fun getTaskContactIds(taskId: Long): Flow<Set<Long>> {
+        return taskContactLinkDao.getContactsByTaskId(taskId)
+            .map { contacts -> contacts.map { it.id }.toSet() }
     }
 }
 

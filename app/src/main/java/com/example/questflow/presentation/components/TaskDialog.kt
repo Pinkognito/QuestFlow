@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,7 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.domain.model.Task
 import com.example.questflow.domain.model.TaskMetadataItem
 import com.example.questflow.presentation.components.metadata.LinkMetadataDialog
@@ -52,6 +54,8 @@ fun TaskDialog(
     availableTasks: List<Task> = emptyList(), // For parent task selection
     linkedMetadata: List<TaskMetadataItem> = emptyList(), // Existing linked metadata
     onMetadataLinked: (TaskMetadataItem) -> Unit = {}, // Callback for metadata linking
+    availableContacts: List<MetadataContactEntity> = emptyList(), // For contact selection
+    initialContactIds: Set<Long> = emptySet(), // Initial selected contacts
     onDismiss: () -> Unit,
     onConfirm: (
         title: String,
@@ -67,7 +71,8 @@ fun TaskDialog(
         recurringConfig: RecurringConfig?,
         shouldReactivate: Boolean,
         parentTaskId: Long?,
-        autoCompleteParent: Boolean
+        autoCompleteParent: Boolean,
+        contactIds: Set<Long>
     ) -> Unit,
     getXpForPercentage: (Int) -> String
 ) {
@@ -108,6 +113,10 @@ fun TaskDialog(
 
     // Metadata linking state
     var showLinkMetadataDialog by remember { mutableStateOf(false) }
+
+    // Contact selection state
+    var selectedContactIds by remember { mutableStateOf(initialContactIds) }
+    var showContactDialog by remember { mutableStateOf(false) }
 
     // Date and time state - START datetime
     var selectedYear by remember { mutableStateOf(initialDateTime.year) }
@@ -527,6 +536,43 @@ fun TaskDialog(
                         }
                     }
 
+                    // Contact Selection
+                    item {
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Kontakte",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (selectedContactIds.isEmpty()) "Keine verknüpft"
+                                    else "${selectedContactIds.size} verknüpft",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { showContactDialog = true },
+                                enabled = availableContacts.isNotEmpty()
+                            ) {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Auswählen")
+                            }
+                        }
+                    }
+
                     // Date & Time Selection - START
                     item {
                         Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -849,7 +895,8 @@ fun TaskDialog(
                             if (isRecurring) recurringConfig else null,
                             shouldReactivate && isClaimedTask,
                             selectedParentTask?.id,
-                            autoCompleteParent
+                            autoCompleteParent,
+                            selectedContactIds
                         )
                         onDismiss()
                     }
@@ -885,6 +932,19 @@ fun TaskDialog(
             onMetadataLinked = { metadata ->
                 onMetadataLinked(metadata)
                 showLinkMetadataDialog = false
+            }
+        )
+    }
+
+    // Show contact selection dialog
+    if (showContactDialog) {
+        SelectContactsDialog(
+            contacts = availableContacts,
+            selectedContactIds = selectedContactIds,
+            onDismiss = { showContactDialog = false },
+            onConfirm = { newContactIds ->
+                selectedContactIds = newContactIds
+                showContactDialog = false
             }
         )
     }

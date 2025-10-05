@@ -16,6 +16,9 @@ interface MetadataEmailDao {
     @Query("SELECT * FROM metadata_emails ORDER BY emailAddress ASC")
     fun getAll(): Flow<List<MetadataEmailEntity>>
 
+    @Query("SELECT * FROM metadata_emails WHERE contactId = :contactId ORDER BY emailType ASC")
+    fun getByContactId(contactId: Long): Flow<List<MetadataEmailEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(email: MetadataEmailEntity): Long
 
