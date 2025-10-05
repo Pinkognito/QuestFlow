@@ -15,7 +15,8 @@ class CompleteTaskUseCase @Inject constructor(
     private val grantXpUseCase: GrantXpUseCase,
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
-    private val calendarLinkRepository: com.example.questflow.data.repository.CalendarLinkRepository
+    private val calendarLinkRepository: com.example.questflow.data.repository.CalendarLinkRepository,
+    private val calendarManager: com.example.questflow.data.calendar.CalendarManager
 ) {
     suspend operator fun invoke(taskId: Long): CompleteTaskResult {
         val task = taskRepository.getTaskById(taskId)
@@ -176,6 +177,17 @@ class CompleteTaskUseCase @Inject constructor(
                                     calendarLinkRepository.updateLink(
                                         calendarLink.copy(rewarded = true, status = "CLAIMED")
                                     )
+
+                                    // Delete calendar event if deleteOnClaim flag is set
+                                    if (calendarLink.deleteOnClaim) {
+                                        try {
+                                            android.util.Log.d("CompleteTaskUseCase", "    Deleting parent calendar event (deleteOnClaim=true)")
+                                            calendarManager.deleteEvent(calendarEventId)
+                                            android.util.Log.d("CompleteTaskUseCase", "    Successfully deleted parent calendar event")
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("CompleteTaskUseCase", "    Failed to delete parent calendar event: ${e.message}")
+                                        }
+                                    }
                                 } else {
                                     android.util.Log.d("CompleteTaskUseCase", "    Parent calendar link already claimed")
                                 }
