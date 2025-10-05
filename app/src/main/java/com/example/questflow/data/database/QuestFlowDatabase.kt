@@ -24,9 +24,19 @@ import com.example.questflow.data.database.entity.*
         MediaLibraryEntity::class,
         MediaUsageEntity::class,
         StatisticsConfigEntity::class,
-        DynamicChartEntity::class
+        DynamicChartEntity::class,
+        // Task Metadata System
+        TaskMetadataEntity::class,
+        MetadataLocationEntity::class,
+        MetadataContactEntity::class,
+        MetadataPhoneEntity::class,
+        MetadataAddressEntity::class,
+        MetadataEmailEntity::class,
+        MetadataUrlEntity::class,
+        MetadataNoteEntity::class,
+        MetadataFileAttachmentEntity::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +53,17 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun mediaUsageDao(): MediaUsageDao
     abstract fun statisticsDao(): StatisticsDao
     abstract fun dynamicChartDao(): DynamicChartDao
+
+    // Task Metadata DAOs
+    abstract fun taskMetadataDao(): TaskMetadataDao
+    abstract fun metadataLocationDao(): MetadataLocationDao
+    abstract fun metadataContactDao(): MetadataContactDao
+    abstract fun metadataPhoneDao(): MetadataPhoneDao
+    abstract fun metadataAddressDao(): MetadataAddressDao
+    abstract fun metadataEmailDao(): MetadataEmailDao
+    abstract fun metadataUrlDao(): MetadataUrlDao
+    abstract fun metadataNoteDao(): MetadataNoteDao
+    abstract fun metadataFileAttachmentDao(): MetadataFileAttachmentDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -23,6 +24,8 @@ import android.app.TimePickerDialog
 import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import com.example.questflow.domain.model.Task
+import com.example.questflow.domain.model.TaskMetadataItem
+import com.example.questflow.presentation.components.metadata.LinkMetadataDialog
 import java.time.LocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,6 +50,8 @@ fun TaskDialog(
     calendarLink: CalendarEventLinkEntity? = null, // For edit mode
     task: Task? = null, // For edit mode from Today screen
     availableTasks: List<Task> = emptyList(), // For parent task selection
+    linkedMetadata: List<TaskMetadataItem> = emptyList(), // Existing linked metadata
+    onMetadataLinked: (TaskMetadataItem) -> Unit = {}, // Callback for metadata linking
     onDismiss: () -> Unit,
     onConfirm: (
         title: String,
@@ -100,6 +105,9 @@ fun TaskDialog(
 
     // Reactivation state (only for edit mode)
     var shouldReactivate by remember { mutableStateOf(false) }
+
+    // Metadata linking state
+    var showLinkMetadataDialog by remember { mutableStateOf(false) }
 
     // Date and time state - START datetime
     var selectedYear by remember { mutableStateOf(initialDateTime.year) }
@@ -468,6 +476,57 @@ fun TaskDialog(
                         }
                     }
 
+                    // Metadata Linking
+                    item {
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Metadaten",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (linkedMetadata.isEmpty()) "Keine verknüpft"
+                                    else "${linkedMetadata.size} verknüpft",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    // Only allow linking for edit mode with task ID
+                                    if (isEditMode && task != null) {
+                                        showLinkMetadataDialog = true
+                                    }
+                                },
+                                enabled = isEditMode && task != null
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Verknüpfen")
+                            }
+                        }
+
+                        if (!isEditMode || task == null) {
+                            Text(
+                                "Speichern Sie die Aufgabe, um Metadaten zu verknüpfen",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+
                     // Date & Time Selection - START
                     item {
                         Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -814,6 +873,18 @@ fun TaskDialog(
             onConfirm = { config ->
                 recurringConfig = config
                 showRecurringDialog = false
+            }
+        )
+    }
+
+    // Show metadata linking dialog
+    if (showLinkMetadataDialog && task != null) {
+        LinkMetadataDialog(
+            taskId = task.id,
+            onDismiss = { showLinkMetadataDialog = false },
+            onMetadataLinked = { metadata ->
+                onMetadataLinked(metadata)
+                showLinkMetadataDialog = false
             }
         )
     }

@@ -12,6 +12,9 @@ import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementS
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
 import com.example.questflow.presentation.screens.medialibrary.MediaLibraryScreen
 import com.example.questflow.presentation.screens.statistics.DynamicStatisticsScreen
+import com.example.questflow.presentation.screens.metadata.MetadataLibraryScreen
+import com.example.questflow.presentation.screens.library.LibraryScreen
+import com.example.questflow.presentation.screens.library.LibraryDetailScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -62,6 +65,76 @@ fun QuestFlowNavHost(
         }
         composable("statistics") {
             DynamicStatisticsScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library") {
+            LibraryScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("metadata_library") {
+            MetadataLibraryScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+
+        // Library detail routes
+        composable("library_locations") {
+            LibraryDetailScreen(
+                type = "locations",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_contacts") {
+            LibraryDetailScreen(
+                type = "contacts",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_phones") {
+            LibraryDetailScreen(
+                type = "phones",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_addresses") {
+            LibraryDetailScreen(
+                type = "addresses",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_emails") {
+            LibraryDetailScreen(
+                type = "emails",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_urls") {
+            LibraryDetailScreen(
+                type = "urls",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_notes") {
+            LibraryDetailScreen(
+                type = "notes",
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("library_files") {
+            LibraryDetailScreen(
+                type = "files",
                 appViewModel = appViewModel,
                 navController = navController
             )
