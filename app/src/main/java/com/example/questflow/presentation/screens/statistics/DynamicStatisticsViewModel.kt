@@ -13,13 +13,15 @@ import javax.inject.Inject
 @HiltViewModel
 class DynamicStatisticsViewModel @Inject constructor(
     private val chartRepository: DynamicChartRepository,
-    private val chartDataAggregationUseCase: ChartDataAggregationUseCase
+    private val chartDataAggregationUseCase: ChartDataAggregationUseCase,
+    private val taskDao: com.example.questflow.data.database.TaskDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DynamicStatisticsUiState())
     val uiState: StateFlow<DynamicStatisticsUiState> = _uiState.asStateFlow()
 
     private val _selectedCategoryId = MutableStateFlow<Long?>(null)
+    private val _refreshTrigger = MutableStateFlow(0L)
 
     val charts: StateFlow<List<DynamicChartConfig>> = chartRepository.getAllCharts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -30,6 +32,20 @@ class DynamicStatisticsViewModel @Inject constructor(
     init {
         observeCharts()
         observeCategoryChanges()
+        observeTaskChanges()
+    }
+
+    // Observe task changes and refresh charts
+    private fun observeTaskChanges() {
+        viewModelScope.launch {
+            taskDao.getAllTasks().collect {
+                // Reload all charts when tasks change
+                _refreshTrigger.value = System.currentTimeMillis()
+                charts.value.forEach { chart ->
+                    loadChartData(chart)
+                }
+            }
+        }
     }
 
     fun updateSelectedCategory(categoryId: Long?) {
@@ -121,6 +137,14 @@ class DynamicStatisticsViewModel @Inject constructor(
     fun reorderCharts(chartIds: List<Long>) {
         viewModelScope.launch {
             chartRepository.reorderCharts(chartIds)
+        }
+    }
+
+    fun refreshAllCharts() {
+        viewModelScope.launch {
+            charts.value.forEach { chart ->
+                loadChartData(chart)
+            }
         }
     }
 }

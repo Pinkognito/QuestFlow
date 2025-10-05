@@ -40,6 +40,11 @@ fun DynamicStatisticsScreen(
         viewModel.updateSelectedCategory(selectedCategory?.id)
     }
 
+    // Auto-refresh charts when screen becomes visible
+    LaunchedEffect(Unit) {
+        viewModel.refreshAllCharts()
+    }
+
     Scaffold(
         topBar = {
             com.example.questflow.presentation.components.QuestFlowTopBar(
