@@ -17,7 +17,8 @@ class RecordCalendarXpUseCase @Inject constructor(
     private val grantXpUseCase: GrantXpUseCase,
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
-    private val calendarManager: CalendarManager
+    private val calendarManager: CalendarManager,
+    private val completeTaskUseCase: CompleteTaskUseCase
 ) {
     suspend operator fun invoke(linkId: Long): RecordCalendarXpResult {
         val link = calendarLinkRepository.getLinkById(linkId)
@@ -82,7 +83,7 @@ class RecordCalendarXpUseCase @Inject constructor(
         val taskWithCalendarEvent = taskRepository.getTaskByCalendarEventId(link.calendarEventId)
         taskWithCalendarEvent?.let { task ->
             if (!task.isCompleted) {
-                taskRepository.toggleTaskCompletion(task.id, true)
+                completeTaskUseCase(task.id)
             }
         }
 

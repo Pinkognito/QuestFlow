@@ -11,6 +11,7 @@ import com.example.questflow.presentation.screens.collection.CollectionManageScr
 import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementScreen
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
 import com.example.questflow.presentation.screens.medialibrary.MediaLibraryScreen
+import com.example.questflow.presentation.screens.statistics.DynamicStatisticsScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -53,6 +54,12 @@ fun QuestFlowNavHost(
         }
         composable("media_library") {
             MediaLibraryScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("statistics") {
+            DynamicStatisticsScreen(
                 appViewModel = appViewModel,
                 navController = navController
             )

@@ -129,6 +129,16 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                             NavigationBarItem(
+                                icon = { Icon(Icons.Outlined.Info, contentDescription = "Statistiken") },
+                                label = { Text("Statistik") },
+                                selected = currentRoute == "statistics",
+                                onClick = {
+                                    navController.navigate("statistics") {
+                                        popUpTo("calendar_xp")
+                                    }
+                                }
+                            )
+                            NavigationBarItem(
                                 icon = { Icon(Icons.Default.Build, contentDescription = "Skills") },
                                 label = { Text("Skills") },
                                 selected = currentRoute == "skill_tree",

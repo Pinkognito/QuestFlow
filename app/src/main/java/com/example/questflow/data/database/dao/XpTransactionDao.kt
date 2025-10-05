@@ -17,4 +17,11 @@ interface XpTransactionDao {
 
     @Query("SELECT SUM(amount) FROM xp_transactions")
     suspend fun getTotalXp(): Long?
+
+    // Statistics queries
+    @Query("SELECT * FROM xp_transactions ORDER BY timestamp DESC LIMIT 100")
+    suspend fun getRecentTransactions(): List<XpTransactionEntity>
+
+    @Query("SELECT SUM(amount) FROM xp_transactions WHERE source = :source")
+    suspend fun getTotalXpBySource(source: String): Long?
 }

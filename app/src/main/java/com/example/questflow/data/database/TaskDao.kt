@@ -1,6 +1,7 @@
 package com.example.questflow.data.database
 
 import androidx.room.*
+import com.example.questflow.data.database.entity.TaskCompletionByDate
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,4 +29,11 @@ interface TaskDao {
 
     @Query("UPDATE tasks SET isCompleted = :isCompleted WHERE id = :taskId")
     suspend fun updateTaskCompletion(taskId: Long, isCompleted: Boolean)
+
+    // Statistics queries
+    @Query("SELECT * FROM tasks WHERE isCompleted = 1 ORDER BY completedAt DESC LIMIT 100")
+    suspend fun getRecentCompletedTasks(): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE isCompleted = 1 ORDER BY completedAt DESC LIMIT 1")
+    suspend fun getLastCompletedTask(): TaskEntity?
 }

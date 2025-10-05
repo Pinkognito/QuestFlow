@@ -23,6 +23,9 @@ data class TaskEntity(
     val calendarEventId: Long? = null,
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val completedAt: LocalDateTime? = null,
+    // Statistics metadata
+    val estimatedMinutes: Int? = null, // Estimated duration in minutes
+    val tags: String? = null, // Comma-separated tags
     // Recurring task fields
     val isRecurring: Boolean = false,
     val recurringType: String? = null, // DAILY, WEEKLY, MONTHLY, CUSTOM

@@ -22,9 +22,11 @@ import com.example.questflow.data.database.entity.*
         CategoryEntity::class,
         CategoryXpTransactionEntity::class,
         MediaLibraryEntity::class,
-        MediaUsageEntity::class
+        MediaUsageEntity::class,
+        StatisticsConfigEntity::class,
+        DynamicChartEntity::class
     ],
-    version = 19,
+    version = 24,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -39,6 +41,8 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun mediaLibraryDao(): MediaLibraryDao
     abstract fun mediaUsageDao(): MediaUsageDao
+    abstract fun statisticsDao(): StatisticsDao
+    abstract fun dynamicChartDao(): DynamicChartDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"
