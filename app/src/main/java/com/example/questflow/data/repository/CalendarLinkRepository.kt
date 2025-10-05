@@ -92,4 +92,8 @@ class CalendarLinkRepository @Inject constructor(
             calendarEventLinkDao.update(it.copy(status = status))
         }
     }
+
+    suspend fun getLinkByCalendarEventId(calendarEventId: Long): CalendarEventLinkEntity? {
+        return calendarEventLinkDao.getLinkByCalendarEventId(calendarEventId)
+    }
 }

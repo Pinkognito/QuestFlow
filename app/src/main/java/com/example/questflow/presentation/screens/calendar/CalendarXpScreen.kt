@@ -20,6 +20,8 @@ import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -169,6 +171,9 @@ fun CalendarXpScreen(
                     val taskData = availableTasks.find { it.id == link.taskId }
                     val isParentTask = taskData != null && availableTasks.any { it.parentTaskId == taskData.id }
                     val isSubtask = taskData?.parentTaskId != null
+                    val parentTask = if (isSubtask) {
+                        availableTasks.find { it.id == taskData?.parentTaskId }
+                    } else null
 
                     Card(
                         modifier = Modifier
@@ -188,38 +193,48 @@ fun CalendarXpScreen(
                     ) {
                         ListItem(
                             headlineContent = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    // Visual indicator for parent/subtask
-                                    if (isParentTask) {
-                                        Text("📁 ", style = MaterialTheme.typography.bodyLarge)
-                                    } else if (isSubtask) {
-                                        Text("  └ ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-
-                                    Text(
-                                        link.title,
-                                        fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isExpired && !isClaimed)
-                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                        else
-                                            MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (isExpired && !isClaimed) {
-                                        Badge(
-                                            containerColor = MaterialTheme.colorScheme.error
-                                        ) {
-                                            Text("Abgelaufen", fontSize = 10.sp)
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // Show full path for subtasks: "ParentName / SubtaskName"
+                                        if (isSubtask && parentTask != null) {
+                                            Text(
+                                                "${parentTask.title} / ",
+                                                fontWeight = FontWeight.Normal,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                            )
                                         }
-                                    }
-                                    if (isParentTask) {
-                                        val subtaskCount = availableTasks.count { it.parentTaskId == taskData?.id }
-                                        Badge(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        ) {
-                                            Text("$subtaskCount", fontSize = 10.sp)
+
+                                        // Visual indicator for parent/subtask
+                                        if (isParentTask) {
+                                            Text("📁 ", style = MaterialTheme.typography.bodyLarge)
+                                        }
+
+                                        Text(
+                                            link.title,
+                                            fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isExpired && !isClaimed)
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            else
+                                                MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (isExpired && !isClaimed) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.error
+                                            ) {
+                                                Text("Abgelaufen", fontSize = 10.sp)
+                                            }
+                                        }
+                                        if (isParentTask) {
+                                            val subtaskCount = availableTasks.count { it.parentTaskId == taskData?.id }
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            ) {
+                                                Text("$subtaskCount", fontSize = 10.sp)
+                                            }
                                         }
                                     }
                                 }
@@ -621,6 +636,7 @@ fun EditCalendarTaskDialog(
                         item {
                             var parentExpanded by remember { mutableStateOf(false) }
                             var searchQuery by remember { mutableStateOf("") }
+                            val parentFocusRequester = remember { FocusRequester() }
 
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 OutlinedTextField(
@@ -652,7 +668,16 @@ fun EditCalendarTaskDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            .focusRequester(parentFocusRequester)
                                     )
+
+                                    // Auto-focus when dropdown opens
+                                    LaunchedEffect(parentExpanded) {
+                                        if (parentExpanded) {
+                                            kotlinx.coroutines.delay(100)
+                                            parentFocusRequester.requestFocus()
+                                        }
+                                    }
 
                                     androidx.compose.material3.Divider(modifier = Modifier.padding(vertical = 4.dp))
 

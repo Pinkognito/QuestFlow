@@ -148,7 +148,9 @@ class TodayViewModel @Inject constructor(
         deleteOnClaim: Boolean = false,
         deleteOnExpiry: Boolean = false,
         isRecurring: Boolean = false,
-        recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null
+        recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null,
+        parentTaskId: Long? = null,
+        autoCompleteParent: Boolean = false
     ) {
         if (title.isBlank()) return
 
@@ -219,6 +221,8 @@ class TodayViewModel @Inject constructor(
                 calendarEventId = null, // Will be set later
                 isRecurring = isRecurring,
                 recurringType = recurringType,
+                parentTaskId = parentTaskId,
+                autoCompleteParent = autoCompleteParent,
                 recurringInterval = recurringInterval,
                 recurringDays = recurringDays,
                 triggerMode = recurringConfig?.triggerMode?.name

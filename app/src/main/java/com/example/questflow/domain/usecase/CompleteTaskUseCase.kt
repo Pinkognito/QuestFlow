@@ -14,7 +14,8 @@ class CompleteTaskUseCase @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val grantXpUseCase: GrantXpUseCase,
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
-    private val calculateXpRewardUseCase: CalculateXpRewardUseCase
+    private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
+    private val calendarLinkRepository: com.example.questflow.data.repository.CalendarLinkRepository
 ) {
     suspend operator fun invoke(taskId: Long): CompleteTaskResult {
         val task = taskRepository.getTaskById(taskId)
@@ -84,10 +85,14 @@ class CompleteTaskUseCase @Inject constructor(
     }
 
     private suspend fun handleSubtaskCompletion(completedTask: com.example.questflow.domain.model.Task) {
+        android.util.Log.d("CompleteTaskUseCase", "handleSubtaskCompletion START - Task: ${completedTask.title} (ID: ${completedTask.id})")
+
         // Case 1: If completed task has subtasks → complete all subtasks
         val subtasks = taskRepository.getSubtasksSync(completedTask.id)
         if (subtasks.isNotEmpty()) {
+            android.util.Log.d("CompleteTaskUseCase", "  Task is a PARENT - has ${subtasks.size} subtasks")
             subtasks.filter { !it.isCompleted }.forEach { subtask ->
+                android.util.Log.d("CompleteTaskUseCase", "    Completing subtask: ${subtask.title} (ID: ${subtask.id})")
                 val updatedSubtask = subtask.copy(
                     isCompleted = true,
                     completedAt = LocalDateTime.now()
@@ -97,44 +102,103 @@ class CompleteTaskUseCase @Inject constructor(
         }
 
         // Case 2: If completed task is a subtask → check if parent should be auto-completed
-        completedTask.parentTaskId?.let { parentId ->
+        val parentId = completedTask.parentTaskId
+        if (parentId != null) {
+            android.util.Log.d("CompleteTaskUseCase", "  Task is a SUBTASK - Parent ID: $parentId")
+            android.util.Log.d("CompleteTaskUseCase", "  This subtask has autoCompleteParent: ${completedTask.autoCompleteParent}")
+
             val parentTask = taskRepository.getTaskById(parentId)
-            if (parentTask != null && !parentTask.isCompleted && parentTask.autoCompleteParent) {
-                // Check if all subtasks are now completed
-                val incompleteCount = taskRepository.getIncompleteSubtaskCount(parentId)
-                if (incompleteCount == 0) {
-                    // All subtasks completed → complete parent
-                    val updatedParent = parentTask.copy(
-                        isCompleted = true,
-                        completedAt = LocalDateTime.now()
-                    )
-                    taskRepository.updateTask(updatedParent)
+            if (parentTask != null) {
+                android.util.Log.d("CompleteTaskUseCase", "    Parent task found: ${parentTask.title} (ID: ${parentTask.id})")
+                android.util.Log.d("CompleteTaskUseCase", "    Parent completed: ${parentTask.isCompleted}")
 
-                    // Grant XP for parent task
-                    val (parentLevel, _) = if (parentTask.categoryId != null) {
-                        val category = categoryRepository.getCategoryById(parentTask.categoryId)
-                            ?: categoryRepository.getOrCreateDefaultCategory()
-                        category.currentLevel to category.name
-                    } else {
-                        val currentStats = statsRepository.getOrCreateStats()
-                        currentStats.level to null
-                    }
+                // FIXED: Check autoCompleteParent on the SUBTASK (completedTask), not the parent!
+                // The flag is stored on each subtask to indicate if it should trigger parent completion
+                val shouldAutoComplete = !parentTask.isCompleted && completedTask.autoCompleteParent
 
-                    val parentXp = calculateXpRewardUseCase(parentTask.xpPercentage, parentLevel)
+                if (shouldAutoComplete) {
+                    // Check if all subtasks are now completed
+                    val incompleteCount = taskRepository.getIncompleteSubtaskCount(parentId)
+                    android.util.Log.d("CompleteTaskUseCase", "    Incomplete subtask count: $incompleteCount")
 
-                    if (parentTask.categoryId != null) {
-                        grantCategoryXpUseCase(
-                            categoryId = parentTask.categoryId,
-                            baseXpAmount = parentXp,
-                            source = "TASK",
-                            sourceId = parentId
+                    val allSubtasksComplete = (incompleteCount == 0)
+
+                    if (allSubtasksComplete) {
+                        android.util.Log.d("CompleteTaskUseCase", "    ALL SUBTASKS COMPLETED → Auto-completing parent!")
+
+                        // All subtasks completed → complete parent
+                        val updatedParent = parentTask.copy(
+                            isCompleted = true,
+                            completedAt = LocalDateTime.now()
                         )
+                        taskRepository.updateTask(updatedParent)
+
+                        // Grant XP for parent task
+                        val parentLevel: Int
+                        val parentCategoryName: String?
+
+                        if (parentTask.categoryId != null) {
+                            val category = categoryRepository.getCategoryById(parentTask.categoryId)
+                                ?: categoryRepository.getOrCreateDefaultCategory()
+                            parentLevel = category.currentLevel
+                            parentCategoryName = category.name
+                        } else {
+                            val currentStats = statsRepository.getOrCreateStats()
+                            parentLevel = currentStats.level
+                            parentCategoryName = null
+                        }
+
+                        val parentXp = calculateXpRewardUseCase(parentTask.xpPercentage, parentLevel)
+                        android.util.Log.d("CompleteTaskUseCase", "    Parent XP granted: $parentXp")
+
+                        if (parentTask.categoryId != null) {
+                            grantCategoryXpUseCase(
+                                categoryId = parentTask.categoryId,
+                                baseXpAmount = parentXp,
+                                source = "TASK",
+                                sourceId = parentId
+                            )
+                        } else {
+                            grantXpUseCase(parentXp, XpSource.TASK, parentId)
+                        }
+
+                        // CRITICAL FIX: Also claim the parent's calendar link if it exists
+                        if (parentTask.calendarEventId != null) {
+                            val calendarEventId = parentTask.calendarEventId
+                            android.util.Log.d("CompleteTaskUseCase", "    Parent has calendar event ID: $calendarEventId")
+
+                            val calendarLink = calendarLinkRepository.getLinkByCalendarEventId(calendarEventId)
+                            if (calendarLink != null) {
+                                android.util.Log.d("CompleteTaskUseCase", "    Found calendar link for parent (ID: ${calendarLink.id})")
+
+                                if (!calendarLink.rewarded) {
+                                    android.util.Log.d("CompleteTaskUseCase", "    Marking parent calendar link as CLAIMED")
+                                    calendarLinkRepository.updateLink(
+                                        calendarLink.copy(rewarded = true, status = "CLAIMED")
+                                    )
+                                } else {
+                                    android.util.Log.d("CompleteTaskUseCase", "    Parent calendar link already claimed")
+                                }
+                            } else {
+                                android.util.Log.w("CompleteTaskUseCase", "    No calendar link found for parent event ID: $calendarEventId")
+                            }
+                        } else {
+                            android.util.Log.d("CompleteTaskUseCase", "    Parent has no calendar event ID")
+                        }
+                    }
+                } else {
+                    if (parentTask.isCompleted) {
+                        android.util.Log.d("CompleteTaskUseCase", "    Parent already completed - skipping")
                     } else {
-                        grantXpUseCase(parentXp, XpSource.TASK, parentId)
+                        android.util.Log.d("CompleteTaskUseCase", "    autoCompleteParent=false - skipping auto-complete")
                     }
                 }
+            } else {
+                android.util.Log.w("CompleteTaskUseCase", "    Parent task NOT FOUND for ID: $parentId")
             }
         }
+
+        android.util.Log.d("CompleteTaskUseCase", "handleSubtaskCompletion END")
     }
 }
 

@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -166,6 +168,8 @@ fun TaskDialog(
 
                     item {
                         var categoryExpanded by remember { mutableStateOf(false) }
+                        var categorySearchQuery by remember { mutableStateOf("") }
+                        val categoryFocusRequester = remember { FocusRequester() }
 
                         OutlinedTextField(
                             value = taskCategory?.name ?: "Allgemein",
@@ -205,34 +209,69 @@ fun TaskDialog(
                             expanded = categoryExpanded,
                             onDismissRequest = { categoryExpanded = false }
                         ) {
-                            categories.forEach { category ->
+                            // Search field
+                            OutlinedTextField(
+                                value = categorySearchQuery,
+                                onValueChange = { categorySearchQuery = it },
+                                placeholder = { Text("Suchen...") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .focusRequester(categoryFocusRequester),
+                                singleLine = true
+                            )
+
+                            // Auto-focus when dropdown opens
+                            LaunchedEffect(categoryExpanded) {
+                                if (categoryExpanded) {
+                                    kotlinx.coroutines.delay(100)
+                                    categoryFocusRequester.requestFocus()
+                                }
+                            }
+
+                            // Filter categories
+                            val filteredCategories = categories.filter { category ->
+                                category.name.contains(categorySearchQuery, ignoreCase = true) ||
+                                category.emoji.contains(categorySearchQuery, ignoreCase = true)
+                            }
+
+                            if (filteredCategories.isEmpty()) {
                                 DropdownMenuItem(
-                                    leadingIcon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    try {
-                                                        Color(android.graphics.Color.parseColor(category.color))
-                                                    } catch (e: Exception) {
-                                                        MaterialTheme.colorScheme.primary
-                                                    }
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = category.emoji,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                    },
-                                    text = { Text(category.name) },
-                                    onClick = {
-                                        taskCategory = category
-                                        categoryExpanded = false
-                                    }
+                                    text = { Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall) },
+                                    onClick = { },
+                                    enabled = false
                                 )
+                            } else {
+                                filteredCategories.forEach { category ->
+                                    DropdownMenuItem(
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        try {
+                                                            Color(android.graphics.Color.parseColor(category.color))
+                                                        } catch (e: Exception) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        }
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = category.emoji,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        },
+                                        text = { Text(category.name) },
+                                        onClick = {
+                                            taskCategory = category
+                                            categoryExpanded = false
+                                            categorySearchQuery = ""
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -245,6 +284,8 @@ fun TaskDialog(
 
                         item {
                             var parentExpanded by remember { mutableStateOf(false) }
+                            var parentSearchQuery by remember { mutableStateOf("") }
+                            val parentFocusRequester = remember { FocusRequester() }
 
                             OutlinedTextField(
                                 value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
@@ -262,29 +303,65 @@ fun TaskDialog(
                                 expanded = parentExpanded,
                                 onDismissRequest = { parentExpanded = false }
                             ) {
-                                // Option: No parent (main task)
+                                // Search field
+                                OutlinedTextField(
+                                    value = parentSearchQuery,
+                                    onValueChange = { parentSearchQuery = it },
+                                    placeholder = { Text("Suchen...") },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .focusRequester(parentFocusRequester),
+                                    singleLine = true
+                                )
+
+                                // Auto-focus when dropdown opens
+                                LaunchedEffect(parentExpanded) {
+                                    if (parentExpanded) {
+                                        kotlinx.coroutines.delay(100)
+                                        parentFocusRequester.requestFocus()
+                                    }
+                                }
+
+                                // Option: No parent (main task) - always visible
                                 DropdownMenuItem(
                                     text = { Text("Kein (Haupt-Task)") },
                                     onClick = {
                                         selectedParentTask = null
                                         parentExpanded = false
+                                        parentSearchQuery = ""
                                     }
                                 )
 
-                                // Available tasks as parent options
-                                availableTasks.filter { it.id != task?.id }.forEach { parentTask ->
+                                // Filter tasks
+                                val filteredTasks = availableTasks.filter { it.id != task?.id }.filter { parentTask ->
+                                    parentTask.title.contains(parentSearchQuery, ignoreCase = true) ||
+                                    parentTask.description.contains(parentSearchQuery, ignoreCase = true)
+                                }
+
+                                if (filteredTasks.isEmpty() && parentSearchQuery.isNotEmpty()) {
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = parentTask.title,
-                                                maxLines = 1
-                                            )
-                                        },
-                                        onClick = {
-                                            selectedParentTask = parentTask
-                                            parentExpanded = false
-                                        }
+                                        text = { Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall) },
+                                        onClick = { },
+                                        enabled = false
                                     )
+                                } else {
+                                    // Available tasks as parent options
+                                    filteredTasks.forEach { parentTask ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = parentTask.title,
+                                                    maxLines = 1
+                                                )
+                                            },
+                                            onClick = {
+                                                selectedParentTask = parentTask
+                                                parentExpanded = false
+                                                parentSearchQuery = ""
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
