@@ -73,6 +73,13 @@ fun LibraryScreen(
             count = null // Count could be added later
         ),
         LibraryCategory(
+            title = "Tags",
+            description = "Globale Tags verwalten",
+            icon = Icons.Default.Settings,
+            route = "tag_management",
+            count = null // Count could be added later
+        ),
+        LibraryCategory(
             title = "Standorte",
             description = "Orte & Adressen",
             icon = Icons.Default.LocationOn,

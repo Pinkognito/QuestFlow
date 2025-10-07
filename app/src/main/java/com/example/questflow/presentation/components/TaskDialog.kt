@@ -9,7 +9,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -116,7 +118,37 @@ fun TaskDialog(
 
     // Contact selection state
     var selectedContactIds by remember { mutableStateOf(initialContactIds) }
-    var showContactDialog by remember { mutableStateOf(false) }
+    var showTaskContactsDialog by remember { mutableStateOf(false) }
+    var showActionsDialog by remember { mutableStateOf(false) }
+
+    // Tag-Related State for Contact Selection
+    val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = hiltViewModel()
+
+    // Lade nur verwendete CONTACT-Tags (die mindestens einem Kontakt zugewiesen sind)
+    var usedContactTags by remember { mutableStateOf<List<com.example.questflow.data.database.entity.MetadataTagEntity>>(emptyList()) }
+    var contactTagsMap by remember { mutableStateOf<Map<Long, List<com.example.questflow.data.database.entity.MetadataTagEntity>>>(emptyMap()) }
+
+    // Task-spezifische Contact-Tags State
+    var taskContactTagsMap by remember { mutableStateOf<Map<Long, List<String>>>(emptyMap()) }
+
+    // Lade Tags beim Start
+    LaunchedEffect(availableContacts) {
+        if (availableContacts.isNotEmpty()) {
+            // Lade verwendete Tags
+            usedContactTags = tagViewModel.getUsedContactTags()
+
+            // Lade Contact-Tags Map
+            contactTagsMap = tagViewModel.getContactTagsMap(availableContacts.map { it.id })
+        }
+    }
+
+    // Lade Task-Contact-Tags wenn im Edit-Modus
+    LaunchedEffect(task?.id) {
+        task?.id?.let { taskId ->
+            // Hier würden wir Task-Contact-Tags laden
+            // TODO: Implement TaskContactTagViewModel
+        }
+    }
 
     // Date and time state - START datetime
     var selectedYear by remember { mutableStateOf(initialDateTime.year) }
@@ -540,35 +572,60 @@ fun TaskDialog(
                     item {
                         Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Kontakte",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    if (selectedContactIds.isEmpty()) "Keine verknüpft"
-                                    else "${selectedContactIds.size} verknüpft",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { showContactDialog = true },
-                                enabled = availableContacts.isNotEmpty()
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "Kontakte & Aktionen",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (selectedContactIds.isEmpty()) "Keine verknüpft"
+                                else "${selectedContactIds.size} verknüpft",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            // Zwei Buttons nebeneinander
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Auswählen")
+                                // Button 1: Task Contacts (Alle Kontakte mit Tag-Filter)
+                                OutlinedButton(
+                                    onClick = {
+                                        showTaskContactsDialog = true
+                                    },
+                                    enabled = availableContacts.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text("Task Contacts", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+
+                                // Button 2: Aktionen (nur Task-Kontakte)
+                                OutlinedButton(
+                                    onClick = {
+                                        showActionsDialog = true
+                                    },
+                                    enabled = selectedContactIds.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Default.Send,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text("Aktionen", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
                             }
                         }
                     }
@@ -936,15 +993,35 @@ fun TaskDialog(
         )
     }
 
-    // Show contact selection dialog
-    if (showContactDialog) {
-        SelectContactsDialog(
-            contacts = availableContacts,
-            selectedContactIds = selectedContactIds,
-            onDismiss = { showContactDialog = false },
+    // Show Task Contacts Dialog (alle Kontakte mit Tag-Filter)
+    if (showTaskContactsDialog) {
+        TaskContactSelectionDialog(
+            allContacts = availableContacts,
+            contactTags = contactTagsMap,
+            availableTags = usedContactTags,
+            initialSelectedContactIds = selectedContactIds,
+            onDismiss = { showTaskContactsDialog = false },
             onConfirm = { newContactIds ->
                 selectedContactIds = newContactIds
-                showContactDialog = false
+                showTaskContactsDialog = false
+            }
+        )
+    }
+
+    // Show Actions Dialog (nur Task-Kontakte)
+    if (showActionsDialog) {
+        val taskLinkedContacts = availableContacts.filter { it.id in selectedContactIds }
+
+        TaskContactActionsDialog(
+            taskLinkedContacts = taskLinkedContacts,
+            contactTags = contactTagsMap,
+            availableTags = usedContactTags,
+            taskContactTags = taskContactTagsMap,
+            onDismiss = { showActionsDialog = false },
+            onSaveTaskTags = { updatedTaskTags ->
+                taskContactTagsMap = updatedTaskTags
+                // TODO: Persist to database
+                showActionsDialog = false
             }
         )
     }

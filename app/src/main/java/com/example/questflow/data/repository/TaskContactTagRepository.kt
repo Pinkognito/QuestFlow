@@ -45,8 +45,10 @@ class TaskContactTagRepository @Inject constructor(
      * Replaces all existing tags for this contact
      */
     suspend fun saveTagsForContact(taskId: Long, contactId: Long, tags: List<String>) {
+        android.util.Log.d("TaskTags", "    saveTagsForContact - deleting old tags for contact $contactId")
         deleteTagsForContact(taskId, contactId)
         if (tags.isNotEmpty()) {
+            android.util.Log.d("TaskTags", "    saveTagsForContact - inserting ${tags.size} new tags: $tags")
             insertTags(tags.map {
                 TaskContactTagEntity(
                     taskId = taskId,
@@ -55,6 +57,8 @@ class TaskContactTagRepository @Inject constructor(
                     createdAt = LocalDateTime.now()
                 )
             })
+        } else {
+            android.util.Log.d("TaskTags", "    saveTagsForContact - no tags to insert (empty list)")
         }
     }
 
@@ -73,8 +77,25 @@ class TaskContactTagRepository @Inject constructor(
      * contactTagMap: Map<contactId, List<tags>>
      */
     suspend fun saveTaskContactTags(taskId: Long, contactTagMap: Map<Long, List<String>>) {
+        android.util.Log.d("TaskTags", "Repository.saveTaskContactTags - taskId: $taskId, contactTagMap: $contactTagMap")
         contactTagMap.forEach { (contactId, tags) ->
+            android.util.Log.d("TaskTags", "  Saving tags for contact $contactId: $tags")
             saveTagsForContact(taskId, contactId, tags)
         }
+        android.util.Log.d("TaskTags", "Repository.saveTaskContactTags - completed")
+    }
+
+    /**
+     * Load all task-contact-tags as Map<ContactId, List<TagNames>>
+     */
+    suspend fun loadTaskContactTagsMap(taskId: Long): Map<Long, List<String>> {
+        android.util.Log.d("TaskTags", "Repository.loadTaskContactTagsMap - taskId: $taskId")
+        val allTags = getTagsForTaskSync(taskId)
+        android.util.Log.d("TaskTags", "  Found ${allTags.size} tag entities in DB")
+        val result = allTags.groupBy { it.contactId }.mapValues { (_, tagEntities) ->
+            tagEntities.map { it.tag }
+        }
+        android.util.Log.d("TaskTags", "Repository.loadTaskContactTagsMap - returning: $result")
+        return result
     }
 }

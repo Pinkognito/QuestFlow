@@ -8,8 +8,10 @@ import com.example.questflow.data.database.TaskEntity
 import java.time.LocalDateTime
 
 /**
- * Tags für Kontakte innerhalb eines Tasks
- * Beispiel: Max Mustermann → "Teilnehmer", "Entscheidungsträger"
+ * Tags für Kontakte innerhalb eines Tasks (task-spezifisch)
+ * Beispiel: Max Mustermann → "Teilnehmer", "Entscheidungsträger" (nur für diesen Task)
+ *
+ * MIGRATION: Unterstützt sowohl String-Tags (legacy) als auch tagId (neu)
  */
 @Entity(
     tableName = "task_contact_tags",
@@ -25,9 +27,20 @@ import java.time.LocalDateTime
             parentColumns = ["id"],
             childColumns = ["contactId"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = MetadataTagEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["tagId"],
+            onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("taskId"), Index("contactId"), Index("tag")]
+    indices = [
+        Index("taskId"),
+        Index("contactId"),
+        Index("tag"),
+        Index("tagId")
+    ]
 )
 data class TaskContactTagEntity(
     @PrimaryKey(autoGenerate = true)
@@ -35,7 +48,12 @@ data class TaskContactTagEntity(
 
     val taskId: Long,
     val contactId: Long,
-    val tag: String,                        // Tag-Name: "Teilnehmer", "Verantwortlich", etc.
+
+    // LEGACY: String-basierte Tags (für Rückwärtskompatibilität)
+    val tag: String,                        // Tag-Name als String
+
+    // NEU: Referenz zu globalem Tag
+    val tagId: Long? = null,                // Optional: Verknüpfung mit MetadataTagEntity
 
     val createdAt: LocalDateTime = LocalDateTime.now()
 )

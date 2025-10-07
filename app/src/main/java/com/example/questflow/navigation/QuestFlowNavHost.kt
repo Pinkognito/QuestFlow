@@ -150,6 +150,12 @@ fun QuestFlowNavHost(
             )
         }
 
+        composable("tag_management") {
+            com.example.questflow.presentation.screens.library.TagManagementScreen(
+                onNavigateBack = { navController.navigateUp() }
+            )
+        }
+
         composable(
             route = "contact_detail/{contactId}",
             arguments = listOf(navArgument("contactId") { type = NavType.LongType })

@@ -137,6 +137,41 @@ fun ContactDetailScreen(
                     )
                 }
 
+                // Tags Section
+                item {
+                    val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = hiltViewModel()
+                    val contactTags by tagViewModel.getTagsForContact(contactId).collectAsState(initial = emptyList())
+                    val allContactTags by tagViewModel.getContactTags().collectAsState(initial = emptyList())
+                    var showTagSelectionDialog by remember { mutableStateOf(false) }
+
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        com.example.questflow.presentation.components.ContactTagManagementSection(
+                            contactId = contactId,
+                            assignedTags = contactTags,
+                            onAddTagsClick = { showTagSelectionDialog = true },
+                            onRemoveTag = { tag ->
+                                tagViewModel.removeTagFromContact(contactId, tag.id)
+                            },
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+
+                    if (showTagSelectionDialog) {
+                        com.example.questflow.presentation.components.ContactTagSelectionDialog(
+                            availableTags = allContactTags,
+                            currentlyAssignedTagIds = contactTags.map { it.id }.toSet(),
+                            onDismiss = { showTagSelectionDialog = false },
+                            onConfirm = { selectedTagIds ->
+                                tagViewModel.setContactTags(contactId, selectedTagIds)
+                                showTagSelectionDialog = false
+                            },
+                            onCreateNewTag = { tagName ->
+                                tagViewModel.createContactTag(tagName)
+                            }
+                        )
+                    }
+                }
+
                 // Phone Numbers Section
                 item {
                     SectionHeader(

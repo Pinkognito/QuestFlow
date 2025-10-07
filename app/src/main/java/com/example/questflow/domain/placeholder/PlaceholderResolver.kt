@@ -28,8 +28,8 @@ class PlaceholderResolver @Inject constructor(
     private val taskDao: TaskDao
 ) {
     companion object {
-        private val PLACEHOLDER_REGEX = Regex("""\{([^}]+)}""")
-        private val ARRAY_ACCESS_REGEX = Regex("""(\w+)\[(\d+)]\.(\w+)""")
+        private val PLACEHOLDER_REGEX = Regex("""\{([^}]+)\}""")
+        private val ARRAY_ACCESS_REGEX = Regex("""(\w+)\[(\d+)\]\.(\w+)""")
     }
 
     /**

@@ -41,9 +41,12 @@ import com.example.questflow.data.database.entity.*
         TextTemplateTagEntity::class,
         TaskContactTagEntity::class,
         TagUsageStatsEntity::class,
-        ActionHistoryEntity::class
+        ActionHistoryEntity::class,
+        // Global Tag System
+        MetadataTagEntity::class,
+        ContactTagEntity::class
     ],
-    version = 29,
+    version = 30,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -79,6 +82,10 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun taskContactTagDao(): TaskContactTagDao
     abstract fun tagUsageStatsDao(): TagUsageStatsDao
     abstract fun actionHistoryDao(): ActionHistoryDao
+
+    // Global Tag System DAOs
+    abstract fun metadataTagDao(): MetadataTagDao
+    abstract fun contactTagDao(): ContactTagDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"

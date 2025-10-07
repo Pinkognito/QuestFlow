@@ -400,14 +400,37 @@ fun EditCalendarTaskDialog(
     // Load task contact tags
     var taskContactTags by remember { mutableStateOf<Map<String, List<Long>>>(emptyMap()) }
 
+    // Tag-Related State for Contact Selection
+    val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    var usedContactTags by remember { mutableStateOf<List<com.example.questflow.data.database.entity.MetadataTagEntity>>(emptyList()) }
+    var contactTagsMap by remember { mutableStateOf<Map<Long, List<com.example.questflow.data.database.entity.MetadataTagEntity>>>(emptyMap()) }
+    var taskContactTagsMap by remember { mutableStateOf<Map<Long, List<String>>>(emptyMap()) }
+
+    // Load tags and contact-tag mappings
+    LaunchedEffect(availableContacts) {
+        if (availableContacts.isNotEmpty()) {
+            usedContactTags = tagViewModel.getUsedContactTags()
+            contactTagsMap = tagViewModel.getContactTagsMap(availableContacts.map { it.id })
+        }
+    }
+
     // Load existing contact links for this task
     LaunchedEffect(calendarLink.taskId) {
         calendarLink.taskId?.let { taskId ->
-            viewModel.getTaskContactIds(taskId).collect { contactIds ->
-                selectedContactIds = contactIds
+            // CRITICAL: Launch separate coroutine for collect to avoid blocking
+            launch {
+                viewModel.getTaskContactIds(taskId).collect { contactIds ->
+                    selectedContactIds = contactIds
+                }
             }
-            // Load tags
+
+            // Load tags (old format - for reference)
             taskContactTags = viewModel.getTaskContactTags(taskId)
+
+            // Load task-specific contact tags into correct format
+            android.util.Log.d("TaskTags", "LOADING task-tags from DB for task $taskId...")
+            taskContactTagsMap = calendarViewModel.loadTaskContactTags(taskId)
+            android.util.Log.d("TaskTags", "LOADED task-tags from DB: $taskContactTagsMap")
         }
     }
 
@@ -1049,27 +1072,45 @@ fun EditCalendarTaskDialog(
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     OutlinedButton(
                                         onClick = { showContactDialog = true },
-                                        enabled = availableContacts.isNotEmpty()
+                                        enabled = availableContacts.isNotEmpty(),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Person,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Tags", style = MaterialTheme.typography.labelSmall)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Person,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                "Task Contacts",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1
+                                            )
+                                        }
                                     }
                                     OutlinedButton(
                                         onClick = { showActionDialog = true },
-                                        enabled = selectedContactIds.isNotEmpty()
+                                        enabled = selectedContactIds.isNotEmpty(),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Default.Send,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Aktion", style = MaterialTheme.typography.labelSmall)
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Send,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                "Aktionen",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1227,9 +1268,12 @@ fun EditCalendarTaskDialog(
                             autoCompleteParent = autoCompleteParent
                         )
 
-                        // Update contact links if task has an ID
+                        // Update contact links and task-tags if task has an ID
                         calendarLink.taskId?.let { taskId ->
                             viewModel.saveTaskContactLinks(taskId, selectedContactIds)
+                            android.util.Log.d("TaskTags", "FINAL SAVE on dialog close - task $taskId: $taskContactTagsMap")
+                            calendarViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                            android.util.Log.d("TaskTags", "FINAL SAVE completed")
                         }
 
                         onDismiss()
@@ -1260,52 +1304,59 @@ fun EditCalendarTaskDialog(
 
     // Show contact-tag selection dialog
     if (showContactDialog && calendarLink.taskId != null) {
-        val contactSelectionManager = remember { com.example.questflow.domain.contact.ContactSelectionManager() }
         val coroutineScope = rememberCoroutineScope()
 
-        com.example.questflow.presentation.components.ContactTagSelectionDialog(
-            availableContacts = availableContacts,
-            initialSelectedContacts = selectedContactIds,
-            initialTags = taskContactTags,
+        com.example.questflow.presentation.components.TaskContactSelectionDialog(
+            allContacts = availableContacts,
+            contactTags = contactTagsMap,
+            availableTags = usedContactTags,
+            initialSelectedContactIds = selectedContactIds,
             onDismiss = { showContactDialog = false },
-            onConfirm = { newContactIds, contactTagMap ->
+            onConfirm = { newContactIds ->
                 selectedContactIds = newContactIds
 
-                // Save tags and contacts to database
+                // Save contacts to database
                 calendarLink.taskId?.let { taskId ->
                     coroutineScope.launch {
                         viewModel.saveTaskContactLinks(taskId, newContactIds)
-                        viewModel.saveTaskContactTags(taskId, contactTagMap)
-                        // Reload tags
-                        taskContactTags = viewModel.getTaskContactTags(taskId)
                     }
                 }
 
                 showContactDialog = false
-            },
-            getTagSuggestions = { query ->
-                viewModel.getTagSuggestions(query)
-            },
-            contactSelectionManager = contactSelectionManager
+            }
         )
     }
 
-    // Show action dialog
+    // Action Dialog
     if (showActionDialog && calendarLink.taskId != null) {
-        val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
-        val templates by viewModel.textTemplates.collectAsState()
+        val taskLinkedContacts = availableContacts.filter { it.id in selectedContactIds }
+        val coroutineScope = rememberCoroutineScope()
 
-        com.example.questflow.presentation.components.ActionDialog(
-            taskId = calendarLink.taskId,
-            selectedContacts = selectedContacts,
-            availableTemplates = templates,
+        com.example.questflow.presentation.components.TaskContactActionsDialog(
+            taskLinkedContacts = taskLinkedContacts,
+            contactTags = contactTagsMap,
+            availableTags = usedContactTags,
+            taskContactTags = taskContactTagsMap,
             onDismiss = { showActionDialog = false },
-            onActionExecuted = {
-                // Refresh action history
+            onSaveTaskTags = { updatedTaskTags ->
+                // Save task-specific tags
+                android.util.Log.d("TaskTags", "onSaveTaskTags called - before merge: $taskContactTagsMap")
+                android.util.Log.d("TaskTags", "onSaveTaskTags - updated tags: $updatedTaskTags")
+
+                // CRITICAL: Merge instead of replace to preserve tags of non-selected contacts
+                taskContactTagsMap = taskContactTagsMap + updatedTaskTags
+
+                android.util.Log.d("TaskTags", "onSaveTaskTags - after merge: $taskContactTagsMap")
+
+                calendarLink.taskId?.let { taskId ->
+                    coroutineScope.launch {
+                        android.util.Log.d("TaskTags", "Saving merged tags to DB for task $taskId: $taskContactTagsMap")
+                        calendarViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                        android.util.Log.d("TaskTags", "Tags saved successfully")
+                    }
+                }
                 showActionDialog = false
-            },
-            actionExecutor = viewModel.actionExecutor,
-            placeholderResolver = viewModel.placeholderResolver
+            }
         )
     }
 }

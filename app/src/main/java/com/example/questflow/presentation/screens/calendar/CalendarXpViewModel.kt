@@ -38,7 +38,8 @@ class CalendarXpViewModel @Inject constructor(
     private val filterPreferences: CalendarFilterPreferences,
     private val taskRepository: TaskRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
-    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase
+    private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
+    private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository
 ) : ViewModel() {
     // NOTE: calculateXpRewardUseCase entfernt - wird jetzt in UpdateTaskWithCalendarUseCase verwendet
     // NOTE: calendarManager, statsRepository, categoryRepository, taskRepository still needed for:
@@ -456,6 +457,22 @@ class CalendarXpViewModel @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("CalendarXpViewModel", "Error getting link by task ID", e)
             null
+        }
+    }
+
+    /**
+     * Load task-specific contact tags
+     */
+    suspend fun loadTaskContactTags(taskId: Long): Map<Long, List<String>> {
+        return taskContactTagRepository.loadTaskContactTagsMap(taskId)
+    }
+
+    /**
+     * Save task-specific contact tags
+     */
+    fun saveTaskContactTags(taskId: Long, contactTagMap: Map<Long, List<String>>) {
+        viewModelScope.launch {
+            taskContactTagRepository.saveTaskContactTags(taskId, contactTagMap)
         }
     }
 }
