@@ -15,8 +15,10 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.sp
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -393,6 +395,10 @@ fun EditCalendarTaskDialog(
     val availableContacts by viewModel.contacts.collectAsState()
     var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showContactDialog by remember { mutableStateOf(false) }
+    var showActionDialog by remember { mutableStateOf(false) }
+
+    // Load task contact tags
+    var taskContactTags by remember { mutableStateOf<Map<String, List<Long>>>(emptyMap()) }
 
     // Load existing contact links for this task
     LaunchedEffect(calendarLink.taskId) {
@@ -400,6 +406,8 @@ fun EditCalendarTaskDialog(
             viewModel.getTaskContactIds(taskId).collect { contactIds ->
                 selectedContactIds = contactIds
             }
+            // Load tags
+            taskContactTags = viewModel.getTaskContactTags(taskId)
         }
     }
 
@@ -1015,7 +1023,7 @@ fun EditCalendarTaskDialog(
                         }
                     }
 
-                    // Contact Selection Section
+                    // Contact & Action Section
                     if (calendarLink.taskId != null) {
                         item {
                             Divider(modifier = Modifier.padding(vertical = 8.dp))
@@ -1027,7 +1035,7 @@ fun EditCalendarTaskDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "Kontakte",
+                                        "Kontakte & Aktionen",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -1038,21 +1046,35 @@ fun EditCalendarTaskDialog(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                OutlinedButton(
-                                    onClick = { showContactDialog = true },
-                                    enabled = availableContacts.isNotEmpty()
-                                ) {
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Auswählen")
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    OutlinedButton(
+                                        onClick = { showContactDialog = true },
+                                        enabled = availableContacts.isNotEmpty()
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Tags", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showActionDialog = true },
+                                        enabled = selectedContactIds.isNotEmpty()
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Send,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Aktion", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
 
-                            // Show selected contacts with names
+                            // Show selected contacts with tags
                             if (selectedContactIds.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Card(
@@ -1075,11 +1097,43 @@ fun EditCalendarTaskDialog(
                                                     modifier = Modifier.size(16.dp),
                                                     tint = MaterialTheme.colorScheme.primary
                                                 )
-                                                Text(
-                                                    contact.displayName,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    modifier = Modifier.weight(1f)
-                                                )
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        contact.displayName,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    // Show tags for this contact
+                                                    val contactTags = taskContactTags.filter { (_, contactIds) ->
+                                                        contact.id in contactIds
+                                                    }.keys
+                                                    if (contactTags.isNotEmpty()) {
+                                                        Row(
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                            modifier = Modifier.padding(top = 2.dp)
+                                                        ) {
+                                                            contactTags.take(3).forEach { tag ->
+                                                                AssistChip(
+                                                                    onClick = { },
+                                                                    label = {
+                                                                        Text(
+                                                                            tag,
+                                                                            style = MaterialTheme.typography.labelSmall
+                                                                        )
+                                                                    },
+                                                                    modifier = Modifier.height(24.dp)
+                                                                )
+                                                            }
+                                                            if (contactTags.size > 3) {
+                                                                Text(
+                                                                    "+${contactTags.size - 3}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1204,16 +1258,54 @@ fun EditCalendarTaskDialog(
         )
     }
 
-    // Show contact selection dialog
-    if (showContactDialog) {
-        com.example.questflow.presentation.components.SelectContactsDialog(
-            contacts = availableContacts,
-            selectedContactIds = selectedContactIds,
+    // Show contact-tag selection dialog
+    if (showContactDialog && calendarLink.taskId != null) {
+        val contactSelectionManager = remember { com.example.questflow.domain.contact.ContactSelectionManager() }
+        val coroutineScope = rememberCoroutineScope()
+
+        com.example.questflow.presentation.components.ContactTagSelectionDialog(
+            availableContacts = availableContacts,
+            initialSelectedContacts = selectedContactIds,
+            initialTags = taskContactTags,
             onDismiss = { showContactDialog = false },
-            onConfirm = { newContactIds ->
+            onConfirm = { newContactIds, contactTagMap ->
                 selectedContactIds = newContactIds
+
+                // Save tags and contacts to database
+                calendarLink.taskId?.let { taskId ->
+                    coroutineScope.launch {
+                        viewModel.saveTaskContactLinks(taskId, newContactIds)
+                        viewModel.saveTaskContactTags(taskId, contactTagMap)
+                        // Reload tags
+                        taskContactTags = viewModel.getTaskContactTags(taskId)
+                    }
+                }
+
                 showContactDialog = false
-            }
+            },
+            getTagSuggestions = { query ->
+                viewModel.getTagSuggestions(query)
+            },
+            contactSelectionManager = contactSelectionManager
+        )
+    }
+
+    // Show action dialog
+    if (showActionDialog && calendarLink.taskId != null) {
+        val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
+        val templates by viewModel.textTemplates.collectAsState()
+
+        com.example.questflow.presentation.components.ActionDialog(
+            taskId = calendarLink.taskId,
+            selectedContacts = selectedContacts,
+            availableTemplates = templates,
+            onDismiss = { showActionDialog = false },
+            onActionExecuted = {
+                // Refresh action history
+                showActionDialog = false
+            },
+            actionExecutor = viewModel.actionExecutor,
+            placeholderResolver = viewModel.placeholderResolver
         )
     }
 }

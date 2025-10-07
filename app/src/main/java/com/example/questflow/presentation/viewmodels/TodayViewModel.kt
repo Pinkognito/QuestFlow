@@ -12,6 +12,12 @@ import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.TaskContactLinkEntity
 import com.example.questflow.data.database.dao.MetadataContactDao
 import com.example.questflow.data.database.dao.TaskContactLinkDao
+import com.example.questflow.data.repository.TextTemplateRepository
+import com.example.questflow.data.repository.TaskContactTagRepository
+import com.example.questflow.data.repository.TagUsageRepository
+import com.example.questflow.data.repository.ActionHistoryRepository
+import com.example.questflow.domain.action.ActionExecutor
+import com.example.questflow.domain.placeholder.PlaceholderResolver
 import com.example.questflow.domain.model.Priority
 import com.example.questflow.domain.model.Task
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
@@ -37,6 +43,12 @@ class TodayViewModel @Inject constructor(
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
     private val metadataContactDao: MetadataContactDao,
     private val taskContactLinkDao: TaskContactLinkDao,
+    private val textTemplateRepository: TextTemplateRepository,
+    private val taskContactTagRepository: TaskContactTagRepository,
+    private val tagUsageRepository: TagUsageRepository,
+    val actionHistoryRepository: ActionHistoryRepository,
+    val actionExecutor: ActionExecutor,
+    val placeholderResolver: PlaceholderResolver,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     // NOTE: calendarManager & calendarLinkRepository still needed for:
@@ -61,6 +73,13 @@ class TodayViewModel @Inject constructor(
         )
 
     val contacts = metadataContactDao.getAll()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val textTemplates = textTemplateRepository.getAllTemplatesFlow()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -408,6 +427,23 @@ class TodayViewModel @Inject constructor(
         return taskContactLinkDao.getContactsByTaskId(taskId)
             .map { contacts -> contacts.map { it.id }.toSet() }
     }
+
+    suspend fun getTagSuggestions(query: String) = tagUsageRepository.getRankedSuggestions(query)
+
+    suspend fun saveTaskContactTags(taskId: Long, contactTagMap: Map<Long, List<String>>) {
+        viewModelScope.launch {
+            taskContactTagRepository.saveTaskContactTags(taskId, contactTagMap)
+            // Update tag usage statistics
+            val allTags = contactTagMap.values.flatten().distinct()
+            tagUsageRepository.incrementUsageForMultiple(allTags)
+        }
+    }
+
+    suspend fun getTaskContactTags(taskId: Long): Map<String, List<Long>> {
+        return taskContactTagRepository.getContactsByTags(taskId)
+    }
+
+    fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
 }
 
 data class TodayUiState(

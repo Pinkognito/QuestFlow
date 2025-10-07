@@ -67,4 +67,14 @@ class TaskContactTagRepository @Inject constructor(
             tagEntities.map { it.contactId }
         }
     }
+
+    /**
+     * Save all task-contact-tag relationships
+     * contactTagMap: Map<contactId, List<tags>>
+     */
+    suspend fun saveTaskContactTags(taskId: Long, contactTagMap: Map<Long, List<String>>) {
+        contactTagMap.forEach { (contactId, tags) ->
+            saveTagsForContact(taskId, contactId, tags)
+        }
+    }
 }
