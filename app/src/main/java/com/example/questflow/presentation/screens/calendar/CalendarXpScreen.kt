@@ -397,9 +397,6 @@ fun EditCalendarTaskDialog(
     var showContactDialog by remember { mutableStateOf(false) }
     var showActionDialog by remember { mutableStateOf(false) }
 
-    // Load task contact tags
-    var taskContactTags by remember { mutableStateOf<Map<String, List<Long>>>(emptyMap()) }
-
     // Tag-Related State for Contact Selection
     val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     var usedContactTags by remember { mutableStateOf<List<com.example.questflow.data.database.entity.MetadataTagEntity>>(emptyList()) }
@@ -424,10 +421,7 @@ fun EditCalendarTaskDialog(
                 }
             }
 
-            // Load tags (old format - for reference)
-            taskContactTags = viewModel.getTaskContactTags(taskId)
-
-            // Load task-specific contact tags into correct format
+            // Load task-specific contact tags
             android.util.Log.d("TaskTags", "LOADING task-tags from DB for task $taskId...")
             taskContactTagsMap = calendarViewModel.loadTaskContactTags(taskId)
             android.util.Log.d("TaskTags", "LOADED task-tags from DB: $taskContactTagsMap")
@@ -1144,10 +1138,8 @@ fun EditCalendarTaskDialog(
                                                         style = MaterialTheme.typography.bodySmall,
                                                         fontWeight = FontWeight.Medium
                                                     )
-                                                    // Show tags for this contact
-                                                    val contactTags = taskContactTags.filter { (_, contactIds) ->
-                                                        contact.id in contactIds
-                                                    }.keys
+                                                    // Show task-tags for this contact
+                                                    val contactTags = taskContactTagsMap[contact.id] ?: emptyList()
                                                     if (contactTags.isNotEmpty()) {
                                                         Row(
                                                             horizontalArrangement = Arrangement.spacedBy(4.dp),

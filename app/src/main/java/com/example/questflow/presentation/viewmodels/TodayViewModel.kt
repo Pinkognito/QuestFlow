@@ -439,10 +439,6 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    suspend fun getTaskContactTags(taskId: Long): Map<String, List<Long>> {
-        return taskContactTagRepository.getContactsByTags(taskId)
-    }
-
     fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
 }
 

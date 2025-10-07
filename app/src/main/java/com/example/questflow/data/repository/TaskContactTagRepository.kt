@@ -63,16 +63,6 @@ class TaskContactTagRepository @Inject constructor(
     }
 
     /**
-     * Get all contacts grouped by their tags in a task
-     */
-    suspend fun getContactsByTags(taskId: Long): Map<String, List<Long>> {
-        val allTags = getTagsForTaskSync(taskId)
-        return allTags.groupBy { it.tag }.mapValues { (_, tagEntities) ->
-            tagEntities.map { it.contactId }
-        }
-    }
-
-    /**
      * Save all task-contact-tag relationships
      * contactTagMap: Map<contactId, List<tags>>
      */
