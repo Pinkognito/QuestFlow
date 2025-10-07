@@ -26,6 +26,7 @@ import com.example.questflow.data.database.entity.*
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.viewmodels.MetadataLibraryViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +34,9 @@ fun ContactDetailScreen(
     contactId: Long,
     appViewModel: AppViewModel,
     navController: NavController,
-    viewModel: MetadataLibraryViewModel = hiltViewModel()
+    viewModel: MetadataLibraryViewModel = hiltViewModel(),
+    todayViewModel: com.example.questflow.presentation.viewmodels.TodayViewModel = hiltViewModel(),
+    calendarViewModel: com.example.questflow.presentation.screens.calendar.CalendarXpViewModel = hiltViewModel()
 ) {
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
     val categories by appViewModel.categories.collectAsState()
@@ -43,6 +46,9 @@ fun ContactDetailScreen(
     // Load contact data
     val contacts by viewModel.contacts.collectAsState()
     val contact = contacts.find { it.id == contactId }
+
+    // State for editing a task
+    var selectedEditLink by remember { mutableStateOf<com.example.questflow.data.database.entity.CalendarEventLinkEntity?>(null) }
 
     LaunchedEffect(globalStats?.xp) {
         globalStats?.xp?.let { currentXp ->
@@ -68,6 +74,14 @@ fun ContactDetailScreen(
     var editingPhone by remember { mutableStateOf<MetadataPhoneEntity?>(null) }
     var editingEmail by remember { mutableStateOf<MetadataEmailEntity?>(null) }
     var editingAddress by remember { mutableStateOf<MetadataAddressEntity?>(null) }
+
+    // Task filtering state
+    var taskSearchQuery by remember { mutableStateOf("") }
+    var showCompletedTasks by remember { mutableStateOf(true) }
+    var showActiveTasks by remember { mutableStateOf(true) }
+
+    // Coroutine scope for async operations
+    val coroutineScope = rememberCoroutineScope()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -200,10 +214,99 @@ fun ContactDetailScreen(
                         count = linkedTasks.size
                     )
                 }
-                items(linkedTasks) { task ->
+
+                // Task search and filter
+                if (linkedTasks.isNotEmpty()) {
+                    item {
+                        OutlinedTextField(
+                            value = taskSearchQuery,
+                            onValueChange = { taskSearchQuery = it },
+                            label = { Text("Suchen...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, "Suchen")
+                            },
+                            trailingIcon = {
+                                if (taskSearchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { taskSearchQuery = "" }) {
+                                        Icon(Icons.Default.Close, "Löschen")
+                                    }
+                                }
+                            }
+                        )
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = showActiveTasks,
+                                onClick = { showActiveTasks = !showActiveTasks },
+                                label = { Text("Aktiv") },
+                                leadingIcon = if (showActiveTasks) {
+                                    { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
+                                } else null
+                            )
+                            FilterChip(
+                                selected = showCompletedTasks,
+                                onClick = { showCompletedTasks = !showCompletedTasks },
+                                label = { Text("Erledigt") },
+                                leadingIcon = if (showCompletedTasks) {
+                                    { Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }
+                                } else null
+                            )
+                        }
+                    }
+                }
+
+                // Filter and display tasks
+                val filteredTasks = linkedTasks.filter { task ->
+                    val matchesSearch = task.title.contains(taskSearchQuery, ignoreCase = true) ||
+                                       (task.description?.contains(taskSearchQuery, ignoreCase = true) == true)
+                    val matchesFilter = (task.isCompleted && showCompletedTasks) ||
+                                       (!task.isCompleted && showActiveTasks)
+                    matchesSearch && matchesFilter
+                }
+
+                if (filteredTasks.isEmpty() && linkedTasks.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Keine Tasks gefunden",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                items(filteredTasks) { task ->
                     TaskItemCard(
                         task = task,
-                        onClick = { navController.navigate("task_detail/${task.id}") }
+                        onClick = {
+                            // Load the calendar link for this task and open edit dialog
+                            coroutineScope.launch {
+                                val link = calendarViewModel.getLinkByTaskId(task.id)
+                                if (link != null) {
+                                    selectedEditLink = link
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -252,6 +355,20 @@ fun ContactDetailScreen(
                 } else {
                     viewModel.updateAddress(address)
                 }
+            }
+        )
+    }
+
+    // Edit Task Dialog
+    selectedEditLink?.let { link ->
+        com.example.questflow.presentation.screens.calendar.EditCalendarTaskDialog(
+            calendarLink = link,
+            viewModel = todayViewModel,
+            calendarViewModel = calendarViewModel,
+            onDismiss = {
+                selectedEditLink = null
+                // Refresh the linked tasks
+                viewModel.loadContactDetails(contactId)
             }
         )
     }

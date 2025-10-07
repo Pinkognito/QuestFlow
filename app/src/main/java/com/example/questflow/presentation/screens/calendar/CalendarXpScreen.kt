@@ -389,6 +389,20 @@ fun EditCalendarTaskDialog(
     }
     var shouldReactivate by remember { mutableStateOf(false) }
 
+    // Contact selection state
+    val availableContacts by viewModel.contacts.collectAsState()
+    var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showContactDialog by remember { mutableStateOf(false) }
+
+    // Load existing contact links for this task
+    LaunchedEffect(calendarLink.taskId) {
+        calendarLink.taskId?.let { taskId ->
+            viewModel.getTaskContactIds(taskId).collect { contactIds ->
+                selectedContactIds = contactIds
+            }
+        }
+    }
+
     // Calendar integration options - initialize once per dialog instance
     // WICHTIG: Keine calendarLink.deleteOnClaim/deleteOnExpiry als Keys verwenden!
     // Sonst wird State zurückgesetzt wenn DB sich durch Background-Updates ändert
@@ -1001,6 +1015,79 @@ fun EditCalendarTaskDialog(
                         }
                     }
 
+                    // Contact Selection Section
+                    if (calendarLink.taskId != null) {
+                        item {
+                            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Kontakte",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        if (selectedContactIds.isEmpty()) "Keine verknüpft"
+                                        else "${selectedContactIds.size} verknüpft",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { showContactDialog = true },
+                                    enabled = availableContacts.isNotEmpty()
+                                ) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Auswählen")
+                                }
+                            }
+
+                            // Show selected contacts with names
+                            if (selectedContactIds.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
+                                        selectedContacts.forEach { contact ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    contact.displayName,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Show reactivation option only for claimed tasks
                     val isExpiredTask = calendarLink.endsAt < java.time.LocalDateTime.now()
                     val isClaimedTask = calendarLink.rewarded || calendarLink.status == "CLAIMED"
@@ -1085,6 +1172,12 @@ fun EditCalendarTaskDialog(
                             parentTaskId = selectedParentTask?.id,
                             autoCompleteParent = autoCompleteParent
                         )
+
+                        // Update contact links if task has an ID
+                        calendarLink.taskId?.let { taskId ->
+                            viewModel.saveTaskContactLinks(taskId, selectedContactIds)
+                        }
+
                         onDismiss()
                     }
                 }
@@ -1107,6 +1200,19 @@ fun EditCalendarTaskDialog(
             onConfirm = { config ->
                 recurringConfig = config
                 showRecurringDialog = false
+            }
+        )
+    }
+
+    // Show contact selection dialog
+    if (showContactDialog) {
+        com.example.questflow.presentation.components.SelectContactsDialog(
+            contacts = availableContacts,
+            selectedContactIds = selectedContactIds,
+            onDismiss = { showContactDialog = false },
+            onConfirm = { newContactIds ->
+                selectedContactIds = newContactIds
+                showContactDialog = false
             }
         )
     }

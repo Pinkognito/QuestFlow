@@ -66,6 +66,13 @@ fun LibraryScreen(
             count = null // Media count could be added later
         ),
         LibraryCategory(
+            title = "Textbausteine",
+            description = "Templates & Vorlagen",
+            icon = Icons.Default.Create,
+            route = "text_templates",
+            count = null // Count could be added later
+        ),
+        LibraryCategory(
             title = "Standorte",
             description = "Orte & Adressen",
             icon = Icons.Default.LocationOn,

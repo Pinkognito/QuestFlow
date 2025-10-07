@@ -417,6 +417,47 @@ class CalendarXpViewModel @Inject constructor(
     }
 
     fun getAvailableTasksFlow() = taskRepository.getActiveTasks()
+
+    /**
+     * Get calendar link by task ID
+     * Returns the existing link or creates a temporary one from task data
+     */
+    suspend fun getLinkByTaskId(taskId: Long): CalendarEventLinkEntity? {
+        return try {
+            // First try to find existing calendar link
+            val link = _uiState.value.links.find { it.taskId == taskId }
+            if (link != null) {
+                return link
+            }
+
+            // If no link exists, find task and create temp link
+            val task = taskRepository.getTaskById(taskId)
+            if (task != null) {
+                CalendarEventLinkEntity(
+                    id = 0,
+                    calendarEventId = task.calendarEventId ?: 0,
+                    title = task.title,
+                    startsAt = task.dueDate ?: LocalDateTime.now(),
+                    endsAt = (task.dueDate ?: LocalDateTime.now()).plusHours(1),
+                    xp = task.xpReward,
+                    xpPercentage = task.xpPercentage ?: 60,
+                    categoryId = task.categoryId,
+                    taskId = task.id,
+                    rewarded = false,
+                    deleteOnClaim = false,
+                    deleteOnExpiry = false,
+                    status = "ACTIVE",
+                    isRecurring = task.isRecurring,
+                    recurringTaskId = task.id
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("CalendarXpViewModel", "Error getting link by task ID", e)
+            null
+        }
+    }
 }
 
 data class CalendarXpUiState(

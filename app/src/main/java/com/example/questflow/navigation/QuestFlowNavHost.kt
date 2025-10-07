@@ -18,6 +18,7 @@ import com.example.questflow.presentation.screens.metadata.MetadataLibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryDetailScreen
 import com.example.questflow.presentation.screens.library.ContactDetailScreen
+import com.example.questflow.presentation.screens.library.TextTemplateLibraryScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -80,6 +81,12 @@ fun QuestFlowNavHost(
         }
         composable("metadata_library") {
             MetadataLibraryScreen(
+                appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("text_templates") {
+            TextTemplateLibraryScreen(
                 appViewModel = appViewModel,
                 navController = navController
             )
