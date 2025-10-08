@@ -450,8 +450,9 @@ fun TaskContactTagAssignmentDialog(
                                     style = MaterialTheme.typography.bodyLarge
                                 )
 
-                                // Tags für diesen Kontakt
+                                // Tags für diesen Kontakt - DIREKT aus State lesen statt cachen!
                                 val tags = contactTagMap[contact.id] ?: emptyList()
+                                android.util.Log.d("TaskTagDialog", "Rendering tags for ${contact.displayName}: $tags")
                                 if (tags.isNotEmpty()) {
                                     // FlowRow statt LazyRow, um Touch-Konflikte zu vermeiden
                                     Row(
@@ -462,17 +463,27 @@ fun TaskContactTagAssignmentDialog(
                                             InputChip(
                                                 selected = false,
                                                 onClick = {
-                                                    android.util.Log.d("TaskTagDialog", "Removing tag '$tag' from contact ${contact.displayName}")
-                                                    // Entferne Tag
-                                                    val updatedTags = tags - tag
+                                                    android.util.Log.d("TaskTagDialog", "=== REMOVE TAG CLICKED ===")
+                                                    android.util.Log.d("TaskTagDialog", "Contact: ${contact.displayName} (ID: ${contact.id})")
+                                                    android.util.Log.d("TaskTagDialog", "Tag to remove: '$tag'")
+
+                                                    // WICHTIG: Aktuelle Tags aus Map holen, nicht cached 'tags' verwenden!
+                                                    val currentTags = contactTagMap[contact.id] ?: emptyList()
+                                                    android.util.Log.d("TaskTagDialog", "Current tags in map: $currentTags")
+
+                                                    val updatedTags = currentTags - tag
+                                                    android.util.Log.d("TaskTagDialog", "Updated tags after removal: $updatedTags")
+
                                                     contactTagMap = contactTagMap.toMutableMap().apply {
                                                         if (updatedTags.isEmpty()) {
                                                             remove(contact.id)
+                                                            android.util.Log.d("TaskTagDialog", "All tags removed, removed contact from map")
                                                         } else {
                                                             put(contact.id, updatedTags)
+                                                            android.util.Log.d("TaskTagDialog", "Updated map with new tags")
                                                         }
                                                     }
-                                                    android.util.Log.d("TaskTagDialog", "Tag removed. New tags: $updatedTags")
+                                                    android.util.Log.d("TaskTagDialog", "Final map state: ${contactTagMap[contact.id]}")
                                                 },
                                                 label = { Text(tag) },
                                                 trailingIcon = {

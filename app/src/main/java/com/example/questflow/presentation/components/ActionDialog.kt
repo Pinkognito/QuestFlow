@@ -304,13 +304,36 @@ fun ActionDialog(
                                             )
                                         }
                                         ActionType.EMAIL -> {
-                                            actionExecutor.sendEmail(
-                                                taskId,
-                                                selectedContacts,
-                                                emailSubject,
-                                                messageText,
-                                                selectedTemplate?.title
-                                            )
+                                            android.util.Log.d("ActionDialog", "EMAIL action selected")
+                                            if (personalizeMessages) {
+                                                android.util.Log.d("ActionDialog", "Personalizing email messages...")
+                                                val messages = placeholderResolver.resolveForContacts(
+                                                    messageText,
+                                                    taskId,
+                                                    selectedContacts.map { it.id }
+                                                )
+                                                android.util.Log.d("ActionDialog", "Resolved ${messages.size} personalized messages")
+                                                // For email, send to all with first personalized message
+                                                // (Email can't send different messages to different recipients in one intent)
+                                                val personalizedBody = messages[selectedContacts.first().id] ?: messageText
+                                                android.util.Log.d("ActionDialog", "Using personalized body: $personalizedBody")
+                                                actionExecutor.sendEmail(
+                                                    taskId,
+                                                    selectedContacts,
+                                                    emailSubject,
+                                                    personalizedBody,
+                                                    selectedTemplate?.title
+                                                )
+                                            } else {
+                                                android.util.Log.d("ActionDialog", "Sending non-personalized email")
+                                                actionExecutor.sendEmail(
+                                                    taskId,
+                                                    selectedContacts,
+                                                    emailSubject,
+                                                    messageText,
+                                                    selectedTemplate?.title
+                                                )
+                                            }
                                         }
                                         ActionType.CALL -> {
                                             actionExecutor.makeCall(taskId, selectedContacts.first())

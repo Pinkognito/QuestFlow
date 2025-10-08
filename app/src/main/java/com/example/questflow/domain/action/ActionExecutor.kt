@@ -184,26 +184,41 @@ class ActionExecutor @Inject constructor(
             val emails = emailMap.map { it.second }
             android.util.Log.d("ActionExecutor", "Valid emails: ${emails.joinToString()}")
 
+            // Build mailto URI with embedded addresses, subject, and body
+            // Format: mailto:addr1,addr2?subject=xxx&body=yyy
+            val mailtoUri = buildString {
+                append("mailto:")
+                append(emails.joinToString(","))
+                append("?subject=")
+                append(Uri.encode(subject))
+                append("&body=")
+                append(Uri.encode(body))
+            }
+            android.util.Log.d("ActionExecutor", "Mailto URI: $mailtoUri")
+
             val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("mailto:") // only email apps
-                putExtra(Intent.EXTRA_EMAIL, emails.toTypedArray())
-                putExtra(Intent.EXTRA_SUBJECT, subject)
-                putExtra(Intent.EXTRA_TEXT, body)
+                data = Uri.parse(mailtoUri)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
 
-            android.util.Log.d("ActionExecutor", "Starting email chooser...")
+            android.util.Log.d("ActionExecutor", "Checking for email apps...")
+            val packageManager = context.packageManager
+            val activities = packageManager.queryIntentActivities(intent, 0)
+            android.util.Log.d("ActionExecutor", "Found ${activities.size} email apps: ${activities.map { it.activityInfo.packageName }}")
+
             // Check if there's an app that can handle this intent
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(Intent.createChooser(intent, "Email senden"))
-                android.util.Log.d("ActionExecutor", "SUCCESS: Email chooser opened")
+            if (intent.resolveActivity(packageManager) != null) {
+                android.util.Log.d("ActionExecutor", "Starting email activity...")
+                context.startActivity(intent)
+                android.util.Log.d("ActionExecutor", "SUCCESS: Email app opened")
                 results.addAll(emailMap.map { (contact, _) ->
                     ContactActionResult(contact.id, contact.displayName, true)
                 })
             } else {
-                android.util.Log.e("ActionExecutor", "ERROR: No email app found")
+                android.util.Log.e("ActionExecutor", "ERROR: No email app found (resolveActivity returned null)")
+                android.util.Log.e("ActionExecutor", "  This might mean no email app is installed or configured")
                 results.addAll(contacts.map {
-                    ContactActionResult(it.id, it.displayName, false, "Keine Email-App gefunden")
+                    ContactActionResult(it.id, it.displayName, false, "Keine Email-App gefunden oder konfiguriert")
                 })
             }
         } catch (e: Exception) {
