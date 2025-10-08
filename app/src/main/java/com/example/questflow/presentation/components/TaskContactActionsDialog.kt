@@ -453,15 +453,26 @@ fun TaskContactTagAssignmentDialog(
                                 // Tags für diesen Kontakt
                                 val tags = contactTagMap[contact.id] ?: emptyList()
                                 if (tags.isNotEmpty()) {
-                                    LazyRow(
+                                    // FlowRow statt LazyRow, um Touch-Konflikte zu vermeiden
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        items(tags) { tag ->
+                                        tags.forEach { tag ->
                                             InputChip(
                                                 selected = false,
                                                 onClick = {
+                                                    android.util.Log.d("TaskTagDialog", "Removing tag '$tag' from contact ${contact.displayName}")
                                                     // Entferne Tag
-                                                    contactTagMap[contact.id] = tags - tag
+                                                    val updatedTags = tags - tag
+                                                    contactTagMap = contactTagMap.toMutableMap().apply {
+                                                        if (updatedTags.isEmpty()) {
+                                                            remove(contact.id)
+                                                        } else {
+                                                            put(contact.id, updatedTags)
+                                                        }
+                                                    }
+                                                    android.util.Log.d("TaskTagDialog", "Tag removed. New tags: $updatedTags")
                                                 },
                                                 label = { Text(tag) },
                                                 trailingIcon = {

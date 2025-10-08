@@ -152,13 +152,26 @@ class ActionExecutor @Inject constructor(
         body: String,
         templateName: String? = null
     ): ActionResult {
+        android.util.Log.d("ActionExecutor", "=== sendEmail CALLED ===")
+        android.util.Log.d("ActionExecutor", "taskId: $taskId")
+        android.util.Log.d("ActionExecutor", "contacts: ${contacts.size}")
+        android.util.Log.d("ActionExecutor", "subject: '$subject'")
+        android.util.Log.d("ActionExecutor", "body: '$body'")
+        android.util.Log.d("ActionExecutor", "templateName: $templateName")
+
         val results = mutableListOf<ContactActionResult>()
 
         try {
             // For email, we can send to multiple recipients at once
-            val emails = contacts.mapNotNull { getEmailAddress(it) }
+            android.util.Log.d("ActionExecutor", "Collecting email addresses...")
+            val emailMap = contacts.mapNotNull { contact ->
+                val email = getEmailAddress(contact)
+                android.util.Log.d("ActionExecutor", "  ${contact.displayName}: $email")
+                if (email != null) contact to email else null
+            }
 
-            if (emails.isEmpty()) {
+            if (emailMap.isEmpty()) {
+                android.util.Log.e("ActionExecutor", "ERROR: No email addresses found for any contact")
                 return ActionResult(
                     actionType = "EMAIL",
                     success = false,
@@ -168,18 +181,33 @@ class ActionExecutor @Inject constructor(
                 )
             }
 
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "message/rfc822"
+            val emails = emailMap.map { it.second }
+            android.util.Log.d("ActionExecutor", "Valid emails: ${emails.joinToString()}")
+
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:") // only email apps
                 putExtra(Intent.EXTRA_EMAIL, emails.toTypedArray())
                 putExtra(Intent.EXTRA_SUBJECT, subject)
                 putExtra(Intent.EXTRA_TEXT, body)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
 
-            context.startActivity(Intent.createChooser(intent, "Email senden"))
-
-            results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
+            android.util.Log.d("ActionExecutor", "Starting email chooser...")
+            // Check if there's an app that can handle this intent
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(Intent.createChooser(intent, "Email senden"))
+                android.util.Log.d("ActionExecutor", "SUCCESS: Email chooser opened")
+                results.addAll(emailMap.map { (contact, _) ->
+                    ContactActionResult(contact.id, contact.displayName, true)
+                })
+            } else {
+                android.util.Log.e("ActionExecutor", "ERROR: No email app found")
+                results.addAll(contacts.map {
+                    ContactActionResult(it.id, it.displayName, false, "Keine Email-App gefunden")
+                })
+            }
         } catch (e: Exception) {
+            android.util.Log.e("ActionExecutor", "EXCEPTION in sendEmail: ${e.message}", e)
             results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, false, e.message) })
         }
 
@@ -307,16 +335,51 @@ class ActionExecutor @Inject constructor(
 
     /**
      * Helper: Extract phone number from contact
-     * In real implementation, would query phone DAO
+     * Normalizes German numbers (0XXX -> +49XXX) for WhatsApp
      */
     private suspend fun getPhoneNumber(contact: MetadataContactEntity): String? {
         android.util.Log.d("ActionExecutor", "  getPhoneNumber for contact ${contact.id}")
         // Query first phone number for this contact
         val phones = metadataPhoneDao.getByContactId(contact.id).first()
         android.util.Log.d("ActionExecutor", "  Found ${phones.size} phone numbers")
-        val phoneNumber = phones.firstOrNull()?.phoneNumber
-        android.util.Log.d("ActionExecutor", "  Selected phone: $phoneNumber")
-        return phoneNumber
+        val rawPhone = phones.firstOrNull()?.phoneNumber
+        android.util.Log.d("ActionExecutor", "  Raw phone: $rawPhone")
+
+        if (rawPhone == null) return null
+
+        // Normalize phone number for international format
+        val normalized = normalizePhoneNumber(rawPhone)
+        android.util.Log.d("ActionExecutor", "  Normalized phone: $normalized")
+        return normalized
+    }
+
+    /**
+     * Normalize phone number to international format
+     * - Removes spaces, dashes, parentheses
+     * - Converts German format (0XXX) to +49XXX
+     */
+    private fun normalizePhoneNumber(phone: String): String {
+        // Remove all non-digit characters except +
+        var cleaned = phone.replace(Regex("[^0-9+]"), "")
+        android.util.Log.d("ActionExecutor", "    Cleaned: $cleaned")
+
+        // If starts with 0 (German mobile/landline), replace with +49
+        if (cleaned.startsWith("0") && !cleaned.startsWith("00")) {
+            cleaned = "+49" + cleaned.substring(1)
+            android.util.Log.d("ActionExecutor", "    Converted 0 -> +49: $cleaned")
+        }
+        // If starts with 00, replace with +
+        else if (cleaned.startsWith("00")) {
+            cleaned = "+" + cleaned.substring(2)
+            android.util.Log.d("ActionExecutor", "    Converted 00 -> +: $cleaned")
+        }
+        // If doesn't start with +, assume German and add +49
+        else if (!cleaned.startsWith("+")) {
+            cleaned = "+49$cleaned"
+            android.util.Log.d("ActionExecutor", "    Added +49 prefix: $cleaned")
+        }
+
+        return cleaned
     }
 
     /**
