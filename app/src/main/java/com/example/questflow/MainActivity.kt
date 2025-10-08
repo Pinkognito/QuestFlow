@@ -49,6 +49,14 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var syncManager: SyncManager
 
+    @Inject
+    lateinit var multiContactActionManager: com.example.questflow.domain.action.MultiContactActionManager
+
+    @Inject
+    lateinit var actionExecutor: com.example.questflow.domain.action.ActionExecutor
+
+    private var isProcessingContact = false
+
     private val calendarPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -220,6 +228,57 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleDeepLink(intent)
+
+        // Handle multi-contact action continuation
+        if (intent.action == com.example.questflow.domain.action.MultiContactActionManager.ACTION_NEXT_CONTACT) {
+            android.util.Log.d("MainActivity", "ACTION_NEXT_CONTACT received - will process in onResume")
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Check if we have a pending multi-contact session when app comes to foreground
+        // This handles both: notification taps (onNewIntent) and manual app returns
+        if (multiContactActionManager.hasActiveSession() && !isProcessingContact) {
+            android.util.Log.d("MainActivity", "Active multi-contact session found on resume")
+            lifecycleScope.launch {
+                processNextContact()
+            }
+        }
+    }
+
+    private suspend fun processNextContact() {
+        // Prevent concurrent processing
+        if (isProcessingContact) {
+            android.util.Log.d("MainActivity", "Already processing contact, skipping")
+            return
+        }
+
+        isProcessingContact = true
+        try {
+            val contact = multiContactActionManager.getCurrentContact()
+            if (contact != null) {
+                android.util.Log.d("MainActivity", "Processing next contact: ${contact.contact.displayName} (${contact.index + 1}/${contact.total})")
+
+                // Send WhatsApp message
+                val result = actionExecutor.sendWhatsAppMessage(
+                    taskId = multiContactActionManager.currentSession.value?.taskId ?: 0,
+                    contacts = listOf(contact.contact),
+                    message = contact.message,
+                    templateName = multiContactActionManager.currentSession.value?.templateName
+                )
+
+                android.util.Log.d("MainActivity", "WhatsApp result: ${result.success}")
+
+                // Mark as processed - will show notification for next or finish
+                multiContactActionManager.processedCurrentContact()
+            } else {
+                android.util.Log.d("MainActivity", "No more contacts to process")
+            }
+        } finally {
+            isProcessingContact = false
+        }
     }
 
     private var deepLinkTaskId: Long? = null

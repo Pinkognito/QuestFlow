@@ -47,6 +47,7 @@ fun TaskContactActionsDialog(
     textTemplates: List<com.example.questflow.data.database.entity.TextTemplateEntity> = emptyList(),
     actionExecutor: com.example.questflow.domain.action.ActionExecutor? = null,
     placeholderResolver: com.example.questflow.domain.placeholder.PlaceholderResolver? = null,
+    multiContactActionManager: com.example.questflow.domain.action.MultiContactActionManager? = null,
     onDismiss: () -> Unit,
     onSaveTaskTags: (Map<Long, List<String>>) -> Unit
 ) {
@@ -328,7 +329,7 @@ fun TaskContactActionsDialog(
     )
 
     // Action Dialog (WhatsApp, SMS, Email mit Text-Eingabe)
-    if (showActionDialog && selectedContacts.isNotEmpty() && actionExecutor != null && placeholderResolver != null) {
+    if (showActionDialog && selectedContacts.isNotEmpty() && actionExecutor != null && placeholderResolver != null && multiContactActionManager != null) {
         android.util.Log.d("ActionDialog", "Rendering ActionDialog for ${selectedContacts.size} contacts")
         ActionDialog(
             taskId = taskId,
@@ -343,7 +344,8 @@ fun TaskContactActionsDialog(
                 showActionDialog = false
             },
             actionExecutor = actionExecutor,
-            placeholderResolver = placeholderResolver
+            placeholderResolver = placeholderResolver,
+            multiContactActionManager = multiContactActionManager
         )
     } else if (showActionDialog && selectedContacts.isNotEmpty() && (actionExecutor == null || placeholderResolver == null)) {
         android.util.Log.e("ActionDialog", "ERROR: ActionDialog cannot render - missing actionExecutor or placeholderResolver")

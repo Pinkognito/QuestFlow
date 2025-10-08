@@ -69,6 +69,7 @@ fun CalendarXpScreen(
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var selectedEditLink by remember { mutableStateOf<CalendarEventLinkEntity?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
 
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
@@ -145,27 +146,59 @@ fun CalendarXpScreen(
                 )
             }
         ) { paddingValues ->
-        if (uiState.links.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "No calendar events yet",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+            // Filter links based on search query
+            val filteredLinks = if (searchQuery.isEmpty()) {
+                uiState.links
+            } else {
+                uiState.links.filter { link ->
+                    // Search in title
+                    link.title.contains(searchQuery, ignoreCase = true) ||
+                    // Search in category name
+                    (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+                }
             }
-        } else {
-            LazyColumn(
+
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(paddingValues)
             ) {
-                items(uiState.links) { link ->
+                // Search bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Suche nach Name, Metadaten, Tags...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suchen") },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Löschen")
+                            }
+                        }
+                    },
+                    singleLine = true
+                )
+
+                if (filteredLinks.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (searchQuery.isEmpty()) "No calendar events yet" else "Keine Ergebnisse gefunden",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredLinks) { link ->
                     val isExpired = link.endsAt < java.time.LocalDateTime.now()
                     val isClaimed = link.rewarded || link.status == "CLAIMED"
 
@@ -301,6 +334,7 @@ fun CalendarXpScreen(
                 }
             }
         }
+            }
         }
 
         // Show XP animation overlay
@@ -491,9 +525,36 @@ fun EditCalendarTaskDialog(
     val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
     val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
 
+    // Track whether task is claimable
+    val isClaimable = !calendarLink.rewarded && calendarLink.status != "CLAIMED" && calendarLink.status != "EXPIRED"
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Aufgabe bearbeiten") },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Aufgabe bearbeiten")
+                if (isClaimable) {
+                    FilledTonalButton(
+                        onClick = {
+                            android.util.Log.d("QuickClaim", "Quick claim for linkId: ${calendarLink.id}")
+                            calendarViewModel.claimXp(calendarLink.id) {
+                                android.util.Log.d("QuickClaim", "Claim successful")
+                                onDismiss()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Star, contentDescription = "Claim", modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Claimen", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        },
         text = {
             Box(
                 modifier = Modifier
@@ -1346,6 +1407,7 @@ fun EditCalendarTaskDialog(
             textTemplates = textTemplates,
             actionExecutor = viewModel.actionExecutor,
             placeholderResolver = viewModel.placeholderResolver,
+            multiContactActionManager = viewModel.multiContactActionManager,
             onDismiss = { showActionDialog = false },
             onSaveTaskTags = { updatedTaskTags ->
                 // Save task-specific tags

@@ -14,6 +14,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.TextTemplateEntity
 import com.example.questflow.domain.action.ActionExecutor
+import com.example.questflow.domain.action.MultiContactActionManager
 import com.example.questflow.domain.placeholder.PlaceholderResolver
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -36,7 +37,8 @@ fun ActionDialog(
     onDismiss: () -> Unit,
     onActionExecuted: () -> Unit,
     actionExecutor: ActionExecutor,
-    placeholderResolver: PlaceholderResolver
+    placeholderResolver: PlaceholderResolver,
+    multiContactActionManager: MultiContactActionManager
 ) {
     var selectedAction by remember { mutableStateOf<ActionType?>(null) }
     var selectedTemplate by remember { mutableStateOf<TextTemplateEntity?>(null) }
@@ -378,22 +380,29 @@ fun ActionDialog(
                                                     selectedContacts.map { it.id }
                                                 )
                                                 android.util.Log.d("ActionDialog", "Resolved ${messages.size} personalized messages")
-                                                // Send personalized messages with delay
-                                                selectedContacts.forEachIndexed { index, contact ->
-                                                    android.util.Log.d("ActionDialog", "Sending WhatsApp to ${contact.displayName} (${index + 1}/${selectedContacts.size})")
+
+                                                // Start multi-contact session
+                                                multiContactActionManager.startWhatsAppSession(
+                                                    taskId = taskId,
+                                                    contacts = selectedContacts,
+                                                    messages = messages,
+                                                    templateName = selectedTemplate?.title
+                                                )
+
+                                                // Send first contact immediately
+                                                val firstContact = multiContactActionManager.getCurrentContact()
+                                                if (firstContact != null) {
+                                                    android.util.Log.d("ActionDialog", "Sending WhatsApp to ${firstContact.contact.displayName} (${firstContact.index + 1}/${firstContact.total})")
                                                     val result = actionExecutor.sendWhatsAppMessage(
                                                         taskId,
-                                                        listOf(contact),
-                                                        messages[contact.id] ?: messageText,
+                                                        listOf(firstContact.contact),
+                                                        firstContact.message,
                                                         selectedTemplate?.title
                                                     )
                                                     android.util.Log.d("ActionDialog", "Result: ${result.success}")
 
-                                                    // Delay zwischen Kontakten (außer beim letzten)
-                                                    if (index < selectedContacts.size - 1) {
-                                                        android.util.Log.d("ActionDialog", "Waiting 2s before next contact...")
-                                                        kotlinx.coroutines.delay(2000)
-                                                    }
+                                                    // Mark as processed - will show notification for next contact
+                                                    multiContactActionManager.processedCurrentContact()
                                                 }
                                             } else {
                                                 android.util.Log.d("ActionDialog", "Sending group WhatsApp message to ${selectedContacts.size} contacts")

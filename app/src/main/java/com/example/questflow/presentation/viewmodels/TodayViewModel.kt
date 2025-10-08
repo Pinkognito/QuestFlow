@@ -49,6 +49,7 @@ class TodayViewModel @Inject constructor(
     val actionHistoryRepository: ActionHistoryRepository,
     val actionExecutor: ActionExecutor,
     val placeholderResolver: PlaceholderResolver,
+    val multiContactActionManager: com.example.questflow.domain.action.MultiContactActionManager,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     // NOTE: calendarManager & calendarLinkRepository still needed for:

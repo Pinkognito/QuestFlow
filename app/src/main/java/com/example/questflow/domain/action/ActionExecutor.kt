@@ -64,12 +64,6 @@ class ActionExecutor @Inject constructor(
                 context.startActivity(intent)
                 android.util.Log.d("ActionExecutor", "  SUCCESS: WhatsApp opened for ${contact.displayName}")
                 results.add(ContactActionResult(contact.id, contact.displayName, true))
-
-                // Delay für Multi-Contact: Gib WhatsApp Zeit zum Laden
-                if (contacts.size > 1 && contact != contacts.last()) {
-                    android.util.Log.d("ActionExecutor", "  Waiting 2s before next contact...")
-                    kotlinx.coroutines.delay(2000)
-                }
             } catch (e: Exception) {
                 android.util.Log.e("ActionExecutor", "  EXCEPTION: ${e.message}", e)
                 results.add(ContactActionResult(contact.id, contact.displayName, false, e.message))
@@ -370,12 +364,13 @@ class ActionExecutor @Inject constructor(
                 val eventUri = contentResolver.insert(CalendarContract.Events.CONTENT_URI, eventValues)
                 android.util.Log.d("ActionExecutor", "Event created: $eventUri")
 
-                if (eventUri != null && emails.isNotEmpty()) {
+                if (eventUri != null) {
                     val eventId = eventUri.lastPathSegment?.toLongOrNull()
                     android.util.Log.d("ActionExecutor", "Event ID: $eventId")
 
-                    if (eventId != null) {
+                    if (eventId != null && emails.isNotEmpty()) {
                         // Insert attendees
+                        android.util.Log.d("ActionExecutor", "Adding ${emails.size} attendees...")
                         emails.forEach { email ->
                             val attendeeValues = android.content.ContentValues().apply {
                                 put(CalendarContract.Attendees.ATTENDEE_EMAIL, email)
@@ -388,10 +383,15 @@ class ActionExecutor @Inject constructor(
                             val attendeeUri = contentResolver.insert(CalendarContract.Attendees.CONTENT_URI, attendeeValues)
                             android.util.Log.d("ActionExecutor", "Attendee added: $email -> $attendeeUri")
                         }
+                        android.util.Log.d("ActionExecutor", "Successfully added ${emails.size} attendees to event")
+                    } else if (emails.isEmpty()) {
+                        android.util.Log.w("ActionExecutor", "WARNING: No email addresses found for ${contacts.size} contacts - meeting created without attendees")
                     }
                 }
 
-                results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
+                // Mark as success even if no attendees (meeting was created)
+                val successMessage = if (emails.isEmpty()) "Meeting erstellt (Kontakte haben keine E-Mail)" else null
+                results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true, successMessage) })
                 android.util.Log.d("ActionExecutor", "SUCCESS: Event created with ${emails.size} attendees")
 
                 // Open Calendar app to show the event
@@ -511,6 +511,7 @@ class ActionExecutor @Inject constructor(
         android.util.Log.w("ActionExecutor", "No calendar found, using ID 1 as fallback")
         return 1L // Fallback to first calendar
     }
+
 }
 
 data class ActionResult(
