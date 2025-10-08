@@ -64,6 +64,12 @@ class ActionExecutor @Inject constructor(
                 context.startActivity(intent)
                 android.util.Log.d("ActionExecutor", "  SUCCESS: WhatsApp opened for ${contact.displayName}")
                 results.add(ContactActionResult(contact.id, contact.displayName, true))
+
+                // Delay für Multi-Contact: Gib WhatsApp Zeit zum Laden
+                if (contacts.size > 1 && contact != contacts.last()) {
+                    android.util.Log.d("ActionExecutor", "  Waiting 2s before next contact...")
+                    kotlinx.coroutines.delay(2000)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ActionExecutor", "  EXCEPTION: ${e.message}", e)
                 results.add(ContactActionResult(contact.id, contact.displayName, false, e.message))
@@ -305,9 +311,26 @@ class ActionExecutor @Inject constructor(
         endTime: LocalDateTime,
         location: String?
     ): ActionResult {
+        android.util.Log.d("ActionExecutor", "=== createMeeting CALLED ===")
+        android.util.Log.d("ActionExecutor", "taskId: $taskId")
+        android.util.Log.d("ActionExecutor", "contacts: ${contacts.size}")
+        android.util.Log.d("ActionExecutor", "title: '$title'")
+        android.util.Log.d("ActionExecutor", "location: $location")
+        android.util.Log.d("ActionExecutor", "startTime: $startTime")
+        android.util.Log.d("ActionExecutor", "endTime: $endTime")
+
         val results = mutableListOf<ContactActionResult>()
 
         try {
+            // Collect attendee emails
+            android.util.Log.d("ActionExecutor", "Collecting attendee emails...")
+            val emails = contacts.mapNotNull { contact ->
+                val email = getEmailAddress(contact)
+                android.util.Log.d("ActionExecutor", "  ${contact.displayName}: $email")
+                email
+            }
+            android.util.Log.d("ActionExecutor", "Valid attendee emails: ${emails.joinToString()}")
+
             val intent = Intent(Intent.ACTION_INSERT).apply {
                 data = CalendarContract.Events.CONTENT_URI
                 putExtra(CalendarContract.Events.TITLE, title)
@@ -316,18 +339,26 @@ class ActionExecutor @Inject constructor(
                 putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                 putExtra(CalendarContract.Events.EVENT_LOCATION, location ?: "")
 
-                // Add attendees (emails)
-                val emails = contacts.mapNotNull { getEmailAddress(it) }
+                // Add attendees - Google Calendar uses EXTRA_EMAIL field
                 if (emails.isNotEmpty()) {
-                    putExtra(Intent.EXTRA_EMAIL, emails.joinToString(","))
+                    // Try multiple approaches for compatibility
+                    putExtra(Intent.EXTRA_EMAIL, emails.toTypedArray())
+                    putExtra("attendees", emails.joinToString(";"))
+                    android.util.Log.d("ActionExecutor", "Added attendees: EXTRA_EMAIL=${emails.toTypedArray().contentToString()}")
+                    android.util.Log.d("ActionExecutor", "Added attendees: attendees=${emails.joinToString(";")}")
+                } else {
+                    android.util.Log.w("ActionExecutor", "No attendees added (no email addresses)")
                 }
 
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
 
+            android.util.Log.d("ActionExecutor", "Starting Calendar activity...")
             context.startActivity(intent)
+            android.util.Log.d("ActionExecutor", "SUCCESS: Calendar opened")
             results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
         } catch (e: Exception) {
+            android.util.Log.e("ActionExecutor", "EXCEPTION in createMeeting: ${e.message}", e)
             results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, false, e.message) })
         }
 

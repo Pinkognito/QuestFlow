@@ -316,6 +316,42 @@ fun ActionDialog(
                                 }
                             }
                         }
+
+                        // WhatsApp Multi-Contact Hinweis
+                        if (selectedAction == ActionType.WHATSAPP && selectedContacts.size > 1) {
+                            item {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        Column {
+                                            Text(
+                                                "WhatsApp Mehrfachversand",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                "Öffnet WhatsApp ${selectedContacts.size}x nacheinander. " +
+                                                        "Nachricht wird vorbefüllt, bitte manuell senden.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Execute Button
