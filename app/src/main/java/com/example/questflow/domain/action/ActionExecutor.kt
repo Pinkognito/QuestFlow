@@ -331,45 +331,76 @@ class ActionExecutor @Inject constructor(
             }
             android.util.Log.d("ActionExecutor", "Valid attendee emails: ${emails.joinToString()}")
 
-            // Google Calendar Intent hat Limitierungen:
-            // - EXTRA_EMAIL funktioniert nicht für Attendees
-            // - Attendees können nur über das UI manuell hinzugefügt werden
-            // - Workaround: Emails in Beschreibung einfügen als Referenz
-            val descriptionWithAttendees = buildString {
-                if (!description.isNullOrBlank()) {
-                    append(description)
-                    append("\n\n")
+            // Check WRITE_CALENDAR permission
+            val hasPermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.WRITE_CALENDAR
+                    )
+            android.util.Log.d("ActionExecutor", "WRITE_CALENDAR permission: $hasPermission")
+
+            if (!hasPermission) {
+                android.util.Log.e("ActionExecutor", "Missing WRITE_CALENDAR permission, using Intent fallback")
+                val intent = Intent(Intent.ACTION_INSERT).apply {
+                    data = CalendarContract.Events.CONTENT_URI
+                    putExtra(CalendarContract.Events.TITLE, title)
+                    putExtra(CalendarContract.Events.DESCRIPTION, description ?: "")
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
+                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
+                    putExtra(CalendarContract.Events.EVENT_LOCATION, location ?: "")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-                if (emails.isNotEmpty()) {
-                    append("Teilnehmer:\n")
-                    emails.forEach { email ->
-                        append("• $email\n")
+                context.startActivity(intent)
+                results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
+            } else {
+                // Direct Calendar insertion with attendees
+                android.util.Log.d("ActionExecutor", "Using CalendarContract for direct insertion")
+
+                val contentResolver = context.contentResolver
+                val eventValues = android.content.ContentValues().apply {
+                    put(CalendarContract.Events.DTSTART, startTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
+                    put(CalendarContract.Events.DTEND, endTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
+                    put(CalendarContract.Events.TITLE, title)
+                    put(CalendarContract.Events.DESCRIPTION, description ?: "")
+                    put(CalendarContract.Events.EVENT_LOCATION, location ?: "")
+                    put(CalendarContract.Events.CALENDAR_ID, getDefaultCalendarId())
+                    put(CalendarContract.Events.EVENT_TIMEZONE, java.time.ZoneId.systemDefault().id)
+                }
+
+                val eventUri = contentResolver.insert(CalendarContract.Events.CONTENT_URI, eventValues)
+                android.util.Log.d("ActionExecutor", "Event created: $eventUri")
+
+                if (eventUri != null && emails.isNotEmpty()) {
+                    val eventId = eventUri.lastPathSegment?.toLongOrNull()
+                    android.util.Log.d("ActionExecutor", "Event ID: $eventId")
+
+                    if (eventId != null) {
+                        // Insert attendees
+                        emails.forEach { email ->
+                            val attendeeValues = android.content.ContentValues().apply {
+                                put(CalendarContract.Attendees.ATTENDEE_EMAIL, email)
+                                put(CalendarContract.Attendees.ATTENDEE_NAME, email.substringBefore("@"))
+                                put(CalendarContract.Attendees.ATTENDEE_RELATIONSHIP, CalendarContract.Attendees.RELATIONSHIP_ATTENDEE)
+                                put(CalendarContract.Attendees.ATTENDEE_TYPE, CalendarContract.Attendees.TYPE_REQUIRED)
+                                put(CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_STATUS_INVITED)
+                                put(CalendarContract.Attendees.EVENT_ID, eventId)
+                            }
+                            val attendeeUri = contentResolver.insert(CalendarContract.Attendees.CONTENT_URI, attendeeValues)
+                            android.util.Log.d("ActionExecutor", "Attendee added: $email -> $attendeeUri")
+                        }
                     }
-                    append("\n(Bitte manuell als Teilnehmer hinzufügen)")
                 }
+
+                results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
+                android.util.Log.d("ActionExecutor", "SUCCESS: Event created with ${emails.size} attendees")
+
+                // Open Calendar app to show the event
+                val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                    data = eventUri
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(viewIntent)
             }
-            android.util.Log.d("ActionExecutor", "Description with attendees: $descriptionWithAttendees")
-
-            val intent = Intent(Intent.ACTION_INSERT).apply {
-                data = CalendarContract.Events.CONTENT_URI
-                putExtra(CalendarContract.Events.TITLE, title)
-                putExtra(CalendarContract.Events.DESCRIPTION, descriptionWithAttendees)
-                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
-                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
-                putExtra(CalendarContract.Events.EVENT_LOCATION, location ?: "")
-
-                // HINWEIS: Google Calendar Intent unterstützt KEINE automatische Teilnehmer-Befüllung
-                // Die Emails werden in der Beschreibung aufgelistet zum manuellen Hinzufügen
-                android.util.Log.d("ActionExecutor", "LIMITATION: Calendar Intent does not support pre-filled attendees")
-                android.util.Log.d("ActionExecutor", "Attendee emails listed in description for manual entry")
-
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-
-            android.util.Log.d("ActionExecutor", "Starting Calendar activity...")
-            context.startActivity(intent)
-            android.util.Log.d("ActionExecutor", "SUCCESS: Calendar opened")
-            results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, true) })
         } catch (e: Exception) {
             android.util.Log.e("ActionExecutor", "EXCEPTION in createMeeting: ${e.message}", e)
             results.addAll(contacts.map { ContactActionResult(it.id, it.displayName, false, e.message) })
@@ -454,6 +485,31 @@ class ActionExecutor @Inject constructor(
         val email = emails.firstOrNull()?.emailAddress
         android.util.Log.d("ActionExecutor", "  Selected email: $email")
         return email
+    }
+
+    /**
+     * Helper: Get default calendar ID for event insertion
+     */
+    private fun getDefaultCalendarId(): Long {
+        val projection = arrayOf(CalendarContract.Calendars._ID)
+        val cursor = context.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            "${CalendarContract.Calendars.VISIBLE} = 1",
+            null,
+            null
+        )
+
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val calendarId = it.getLong(0)
+                android.util.Log.d("ActionExecutor", "Default calendar ID: $calendarId")
+                return calendarId
+            }
+        }
+
+        android.util.Log.w("ActionExecutor", "No calendar found, using ID 1 as fallback")
+        return 1L // Fallback to first calendar
     }
 }
 
