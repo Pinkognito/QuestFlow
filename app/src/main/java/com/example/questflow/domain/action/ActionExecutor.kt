@@ -331,24 +331,37 @@ class ActionExecutor @Inject constructor(
             }
             android.util.Log.d("ActionExecutor", "Valid attendee emails: ${emails.joinToString()}")
 
+            // Google Calendar Intent hat Limitierungen:
+            // - EXTRA_EMAIL funktioniert nicht für Attendees
+            // - Attendees können nur über das UI manuell hinzugefügt werden
+            // - Workaround: Emails in Beschreibung einfügen als Referenz
+            val descriptionWithAttendees = buildString {
+                if (!description.isNullOrBlank()) {
+                    append(description)
+                    append("\n\n")
+                }
+                if (emails.isNotEmpty()) {
+                    append("Teilnehmer:\n")
+                    emails.forEach { email ->
+                        append("• $email\n")
+                    }
+                    append("\n(Bitte manuell als Teilnehmer hinzufügen)")
+                }
+            }
+            android.util.Log.d("ActionExecutor", "Description with attendees: $descriptionWithAttendees")
+
             val intent = Intent(Intent.ACTION_INSERT).apply {
                 data = CalendarContract.Events.CONTENT_URI
                 putExtra(CalendarContract.Events.TITLE, title)
-                putExtra(CalendarContract.Events.DESCRIPTION, description ?: "")
+                putExtra(CalendarContract.Events.DESCRIPTION, descriptionWithAttendees)
                 putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                 putExtra(CalendarContract.EXTRA_EVENT_END_TIME, endTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                 putExtra(CalendarContract.Events.EVENT_LOCATION, location ?: "")
 
-                // Add attendees - Google Calendar uses EXTRA_EMAIL field
-                if (emails.isNotEmpty()) {
-                    // Try multiple approaches for compatibility
-                    putExtra(Intent.EXTRA_EMAIL, emails.toTypedArray())
-                    putExtra("attendees", emails.joinToString(";"))
-                    android.util.Log.d("ActionExecutor", "Added attendees: EXTRA_EMAIL=${emails.toTypedArray().contentToString()}")
-                    android.util.Log.d("ActionExecutor", "Added attendees: attendees=${emails.joinToString(";")}")
-                } else {
-                    android.util.Log.w("ActionExecutor", "No attendees added (no email addresses)")
-                }
+                // HINWEIS: Google Calendar Intent unterstützt KEINE automatische Teilnehmer-Befüllung
+                // Die Emails werden in der Beschreibung aufgelistet zum manuellen Hinzufügen
+                android.util.Log.d("ActionExecutor", "LIMITATION: Calendar Intent does not support pre-filled attendees")
+                android.util.Log.d("ActionExecutor", "Attendee emails listed in description for manual entry")
 
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
