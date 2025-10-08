@@ -367,8 +367,17 @@ fun TaskContactActionsDialog(
         TaskContactTagAssignmentDialog(
             selectedContacts = selectedContacts,
             currentTaskTags = taskContactTags.filterKeys { it in finalSelection },
-            onDismiss = { showTaskTagDialog = false },
+            onDismiss = {
+                android.util.Log.d("TaskTagDialog", "Dialog dismissed without saving")
+                showTaskTagDialog = false
+            },
             onConfirm = { updatedTags ->
+                android.util.Log.d("TaskTagDialog", "=== SAVING TASK TAGS ===")
+                android.util.Log.d("TaskTagDialog", "Updated tags to save: $updatedTags")
+                android.util.Log.d("TaskTagDialog", "Number of contacts with tags: ${updatedTags.size}")
+                updatedTags.forEach { (contactId, tags) ->
+                    android.util.Log.d("TaskTagDialog", "  Contact $contactId: $tags")
+                }
                 onSaveTaskTags(updatedTags)
                 showTaskTagDialog = false
             }
@@ -510,7 +519,19 @@ fun TaskContactTagAssignmentDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(contactTagMap) }) {
+            Button(onClick = {
+                android.util.Log.d("TaskTagDialog", "=== CONFIRM BUTTON CLICKED ===")
+                android.util.Log.d("TaskTagDialog", "Current contactTagMap before save: $contactTagMap")
+                android.util.Log.d("TaskTagDialog", "Selected contacts: ${selectedContacts.map { it.id }}")
+
+                // WICHTIG: Auch Kontakte ohne Tags müssen als leere Liste gespeichert werden!
+                val finalMap = selectedContacts.associate { contact ->
+                    contact.id to (contactTagMap[contact.id] ?: emptyList())
+                }
+                android.util.Log.d("TaskTagDialog", "Final map with all contacts: $finalMap")
+
+                onConfirm(finalMap)
+            }) {
                 Text("Speichern")
             }
         },

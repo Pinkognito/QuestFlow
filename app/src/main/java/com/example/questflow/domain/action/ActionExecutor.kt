@@ -217,8 +217,10 @@ class ActionExecutor @Inject constructor(
             } else {
                 android.util.Log.e("ActionExecutor", "ERROR: No email app found (resolveActivity returned null)")
                 android.util.Log.e("ActionExecutor", "  This might mean no email app is installed or configured")
+                android.util.Log.e("ActionExecutor", "  Available apps: Gmail, Outlook, Samsung Email, etc.")
+                android.util.Log.e("ActionExecutor", "  User should install an email app from Play Store")
                 results.addAll(contacts.map {
-                    ContactActionResult(it.id, it.displayName, false, "Keine Email-App gefunden oder konfiguriert")
+                    ContactActionResult(it.id, it.displayName, false, "Keine Email-App installiert. Bitte Gmail/Outlook installieren.")
                 })
             }
         } catch (e: Exception) {

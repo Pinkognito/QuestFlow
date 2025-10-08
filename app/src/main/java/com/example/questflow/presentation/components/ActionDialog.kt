@@ -44,6 +44,12 @@ fun ActionDialog(
     var personalizeMessages by remember { mutableStateOf(true) }
     var emailSubject by remember { mutableStateOf("") }
 
+    // Meeting-spezifische States
+    var meetingTitle by remember { mutableStateOf("") }
+    var meetingLocation by remember { mutableStateOf("") }
+    var meetingDate by remember { mutableStateOf(LocalDateTime.now().plusDays(1)) }
+    var meetingDuration by remember { mutableStateOf(60) } // Minuten
+
     val coroutineScope = rememberCoroutineScope()
 
     Dialog(onDismissRequest = onDismiss) {
@@ -216,6 +222,69 @@ fun ActionDialog(
                         }
                     }
 
+                    // Meeting Inputs
+                    if (selectedAction == ActionType.MEETING) {
+                        item {
+                            OutlinedTextField(
+                                value = meetingTitle,
+                                onValueChange = { meetingTitle = it },
+                                label = { Text("Meeting-Titel") },
+                                placeholder = { Text("z.B. Projekt-Besprechung") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        item {
+                            OutlinedTextField(
+                                value = meetingLocation,
+                                onValueChange = { meetingLocation = it },
+                                label = { Text("Ort (optional)") },
+                                placeholder = { Text("z.B. Raum 204, Zoom Link") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        item {
+                            Text("Datum & Uhrzeit", style = MaterialTheme.typography.labelMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = meetingDate.toLocalDate().toString(),
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Datum") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = String.format("%02d:%02d", meetingDate.hour, meetingDate.minute),
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Zeit") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        item {
+                            Text("Dauer", style = MaterialTheme.typography.labelMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(30, 60, 90, 120).forEach { duration ->
+                                    FilterChip(
+                                        selected = meetingDuration == duration,
+                                        onClick = { meetingDuration = duration },
+                                        label = { Text("${duration}min") }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // Message Text
                     if (selectedAction in listOf(ActionType.WHATSAPP, ActionType.SMS, ActionType.EMAIL)) {
                         item {
@@ -339,14 +408,22 @@ fun ActionDialog(
                                             actionExecutor.makeCall(taskId, selectedContacts.first())
                                         }
                                         ActionType.MEETING -> {
+                                            android.util.Log.d("ActionDialog", "MEETING action selected")
+                                            android.util.Log.d("ActionDialog", "  Title: $meetingTitle")
+                                            android.util.Log.d("ActionDialog", "  Location: $meetingLocation")
+                                            android.util.Log.d("ActionDialog", "  Date: $meetingDate")
+                                            android.util.Log.d("ActionDialog", "  Duration: $meetingDuration min")
+                                            android.util.Log.d("ActionDialog", "  Attendees: ${selectedContacts.map { it.displayName }}")
+
+                                            val endTime = meetingDate.plusMinutes(meetingDuration.toLong())
                                             actionExecutor.createMeeting(
                                                 taskId,
                                                 selectedContacts,
-                                                "Meeting", // Would need UI input
-                                                messageText,
-                                                LocalDateTime.now().plusHours(1),
-                                                LocalDateTime.now().plusHours(2),
-                                                null
+                                                meetingTitle.ifBlank { "Meeting" },
+                                                messageText.ifBlank { null },
+                                                meetingDate,
+                                                endTime,
+                                                meetingLocation.ifBlank { null }
                                             )
                                         }
                                         null -> {}
