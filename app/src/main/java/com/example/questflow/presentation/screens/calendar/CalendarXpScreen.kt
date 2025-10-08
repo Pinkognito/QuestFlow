@@ -403,6 +403,9 @@ fun EditCalendarTaskDialog(
     var contactTagsMap by remember { mutableStateOf<Map<Long, List<com.example.questflow.data.database.entity.MetadataTagEntity>>>(emptyMap()) }
     var taskContactTagsMap by remember { mutableStateOf<Map<Long, List<String>>>(emptyMap()) }
 
+    // Load text templates for actions
+    val textTemplates by viewModel.getTextTemplates().collectAsState(initial = emptyList())
+
     // Load tags and contact-tag mappings
     LaunchedEffect(availableContacts) {
         if (availableContacts.isNotEmpty()) {
@@ -1086,7 +1089,14 @@ fun EditCalendarTaskDialog(
                                         }
                                     }
                                     OutlinedButton(
-                                        onClick = { showActionDialog = true },
+                                        onClick = {
+                                            android.util.Log.d("CalendarXpScreen", "=== AKTIONEN BUTTON CLICKED ===")
+                                            android.util.Log.d("CalendarXpScreen", "selectedContactIds: $selectedContactIds")
+                                            android.util.Log.d("CalendarXpScreen", "taskId: ${calendarLink.taskId}")
+                                            android.util.Log.d("CalendarXpScreen", "Setting showActionDialog = true")
+                                            showActionDialog = true
+                                            android.util.Log.d("CalendarXpScreen", "showActionDialog is now: $showActionDialog")
+                                        },
                                         enabled = selectedContactIds.isNotEmpty(),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
@@ -1320,15 +1330,22 @@ fun EditCalendarTaskDialog(
     }
 
     // Action Dialog
+    android.util.Log.d("CalendarXpScreen", "ACTION DIALOG CHECK: showActionDialog=$showActionDialog, taskId=${calendarLink.taskId}")
     if (showActionDialog && calendarLink.taskId != null) {
+        android.util.Log.d("CalendarXpScreen", "=== RENDERING TaskContactActionsDialog ===")
         val taskLinkedContacts = availableContacts.filter { it.id in selectedContactIds }
+        android.util.Log.d("CalendarXpScreen", "taskLinkedContacts count: ${taskLinkedContacts.size}")
         val coroutineScope = rememberCoroutineScope()
 
         com.example.questflow.presentation.components.TaskContactActionsDialog(
+            taskId = calendarLink.taskId ?: 0L,
             taskLinkedContacts = taskLinkedContacts,
             contactTags = contactTagsMap,
             availableTags = usedContactTags,
             taskContactTags = taskContactTagsMap,
+            textTemplates = textTemplates,
+            actionExecutor = viewModel.actionExecutor,
+            placeholderResolver = viewModel.placeholderResolver,
             onDismiss = { showActionDialog = false },
             onSaveTaskTags = { updatedTaskTags ->
                 // Save task-specific tags

@@ -7,6 +7,7 @@ import android.provider.CalendarContract
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.repository.ActionHistoryRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,7 +19,9 @@ import javax.inject.Singleton
 @Singleton
 class ActionExecutor @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val actionHistoryRepository: ActionHistoryRepository
+    private val actionHistoryRepository: ActionHistoryRepository,
+    private val metadataPhoneDao: com.example.questflow.data.database.dao.MetadataPhoneDao,
+    private val metadataEmailDao: com.example.questflow.data.database.dao.MetadataEmailDao
 ) {
     /**
      * Send WhatsApp message to contacts
@@ -30,24 +33,39 @@ class ActionExecutor @Inject constructor(
         message: String,
         templateName: String? = null
     ): ActionResult {
+        android.util.Log.d("ActionExecutor", "=== sendWhatsAppMessage CALLED ===")
+        android.util.Log.d("ActionExecutor", "taskId: $taskId")
+        android.util.Log.d("ActionExecutor", "contacts: ${contacts.size}")
+        android.util.Log.d("ActionExecutor", "message: '$message'")
+        android.util.Log.d("ActionExecutor", "templateName: $templateName")
+
         val results = mutableListOf<ContactActionResult>()
 
         for (contact in contacts) {
+            android.util.Log.d("ActionExecutor", "Processing contact: ${contact.displayName}")
             try {
                 val phoneNumber = getPhoneNumber(contact)
+                android.util.Log.d("ActionExecutor", "  Phone number: $phoneNumber")
                 if (phoneNumber == null) {
+                    android.util.Log.e("ActionExecutor", "  ERROR: No phone number for ${contact.displayName}")
                     results.add(ContactActionResult(contact.id, contact.displayName, false, "Keine Telefonnummer"))
                     continue
                 }
 
+                val whatsappUrl = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
+                android.util.Log.d("ActionExecutor", "  WhatsApp URL: $whatsappUrl")
+
                 val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = Uri.parse("https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}")
+                    data = Uri.parse(whatsappUrl)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
 
+                android.util.Log.d("ActionExecutor", "  Starting WhatsApp activity...")
                 context.startActivity(intent)
+                android.util.Log.d("ActionExecutor", "  SUCCESS: WhatsApp opened for ${contact.displayName}")
                 results.add(ContactActionResult(contact.id, contact.displayName, true))
             } catch (e: Exception) {
+                android.util.Log.e("ActionExecutor", "  EXCEPTION: ${e.message}", e)
                 results.add(ContactActionResult(contact.id, contact.displayName, false, e.message))
             }
         }
@@ -291,20 +309,27 @@ class ActionExecutor @Inject constructor(
      * Helper: Extract phone number from contact
      * In real implementation, would query phone DAO
      */
-    private fun getPhoneNumber(contact: MetadataContactEntity): String? {
-        // TODO: Query MetadataPhoneDao for actual phone number
-        // For now, return null - needs to be implemented when integrating
-        return null
+    private suspend fun getPhoneNumber(contact: MetadataContactEntity): String? {
+        android.util.Log.d("ActionExecutor", "  getPhoneNumber for contact ${contact.id}")
+        // Query first phone number for this contact
+        val phones = metadataPhoneDao.getByContactId(contact.id).first()
+        android.util.Log.d("ActionExecutor", "  Found ${phones.size} phone numbers")
+        val phoneNumber = phones.firstOrNull()?.phoneNumber
+        android.util.Log.d("ActionExecutor", "  Selected phone: $phoneNumber")
+        return phoneNumber
     }
 
     /**
      * Helper: Extract email address from contact
-     * In real implementation, would query email DAO
      */
-    private fun getEmailAddress(contact: MetadataContactEntity): String? {
-        // TODO: Query MetadataEmailDao for actual email
-        // For now, return null - needs to be implemented when integrating
-        return null
+    private suspend fun getEmailAddress(contact: MetadataContactEntity): String? {
+        android.util.Log.d("ActionExecutor", "  getEmailAddress for contact ${contact.id}")
+        // Query first email for this contact
+        val emails = metadataEmailDao.getByContactId(contact.id).first()
+        android.util.Log.d("ActionExecutor", "  Found ${emails.size} emails")
+        val email = emails.firstOrNull()?.emailAddress
+        android.util.Log.d("ActionExecutor", "  Selected email: $email")
+        return email
     }
 }
 

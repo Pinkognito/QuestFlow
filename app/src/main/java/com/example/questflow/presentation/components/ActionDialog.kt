@@ -253,31 +253,46 @@ fun ActionDialog(
                     item {
                         Button(
                             onClick = {
+                                android.util.Log.d("ActionDialog", "=== EXECUTE BUTTON CLICKED ===")
+                                android.util.Log.d("ActionDialog", "selectedAction: $selectedAction")
+                                android.util.Log.d("ActionDialog", "selectedContacts: ${selectedContacts.size}")
+                                android.util.Log.d("ActionDialog", "messageText: '$messageText'")
+                                android.util.Log.d("ActionDialog", "personalizeMessages: $personalizeMessages")
+                                android.util.Log.d("ActionDialog", "selectedTemplate: ${selectedTemplate?.title}")
+
                                 coroutineScope.launch {
+                                    android.util.Log.d("ActionDialog", "Coroutine launched, executing action...")
                                     when (selectedAction) {
                                         ActionType.WHATSAPP -> {
+                                            android.util.Log.d("ActionDialog", "WHATSAPP action selected")
                                             if (personalizeMessages) {
+                                                android.util.Log.d("ActionDialog", "Personalizing messages...")
                                                 val messages = placeholderResolver.resolveForContacts(
                                                     messageText,
                                                     taskId,
                                                     selectedContacts.map { it.id }
                                                 )
+                                                android.util.Log.d("ActionDialog", "Resolved ${messages.size} personalized messages")
                                                 // Send personalized messages
                                                 selectedContacts.forEach { contact ->
-                                                    actionExecutor.sendWhatsAppMessage(
+                                                    android.util.Log.d("ActionDialog", "Sending WhatsApp to ${contact.displayName}")
+                                                    val result = actionExecutor.sendWhatsAppMessage(
                                                         taskId,
                                                         listOf(contact),
                                                         messages[contact.id] ?: messageText,
                                                         selectedTemplate?.title
                                                     )
+                                                    android.util.Log.d("ActionDialog", "Result: ${result.success}")
                                                 }
                                             } else {
-                                                actionExecutor.sendWhatsAppMessage(
+                                                android.util.Log.d("ActionDialog", "Sending group WhatsApp message to ${selectedContacts.size} contacts")
+                                                val result = actionExecutor.sendWhatsAppMessage(
                                                     taskId,
                                                     selectedContacts,
                                                     messageText,
                                                     selectedTemplate?.title
                                                 )
+                                                android.util.Log.d("ActionDialog", "Result: ${result.success}, contactResults: ${result.contactResults.size}")
                                             }
                                         }
                                         ActionType.SMS -> {

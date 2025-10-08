@@ -439,6 +439,8 @@ class TodayViewModel @Inject constructor(
         }
     }
 
+    fun getTextTemplates() = textTemplateRepository.getAllTemplatesFlow()
+
     fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
 }
 

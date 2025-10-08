@@ -25,20 +25,28 @@ import com.example.questflow.data.database.entity.MetadataTagEntity
  * 1. Aktionen ausführen (WhatsApp, Call, SMS, Email)
  * 2. Task-spezifische Tags vergeben
  *
+ * @param taskId Task ID für ActionDialog
  * @param taskLinkedContacts Nur Task-verknüpfte Kontakte
  * @param contactTags Map: ContactId -> List<MetadataTagEntity> (globale Contact-Tags)
  * @param availableTags Verfügbare CONTACT-Type Tags für Filter
  * @param taskContactTags Map: ContactId -> List<String> (task-spezifische Tags)
+ * @param textTemplates Verfügbare Text-Templates für Aktionen
+ * @param actionExecutor Executor für Aktionen
+ * @param placeholderResolver Resolver für Platzhalter in Templates
  * @param onDismiss Dialog schließen
  * @param onSaveTaskTags Task-spezifische Tags speichern: Map<ContactId, List<String>>
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskContactActionsDialog(
+    taskId: Long = 0L,
     taskLinkedContacts: List<MetadataContactEntity>,
     contactTags: Map<Long, List<MetadataTagEntity>>,
     availableTags: List<MetadataTagEntity>,
     taskContactTags: Map<Long, List<String>>,
+    textTemplates: List<com.example.questflow.data.database.entity.TextTemplateEntity> = emptyList(),
+    actionExecutor: com.example.questflow.domain.action.ActionExecutor? = null,
+    placeholderResolver: com.example.questflow.domain.placeholder.PlaceholderResolver? = null,
     onDismiss: () -> Unit,
     onSaveTaskTags: (Map<Long, List<String>>) -> Unit
 ) {
@@ -55,7 +63,7 @@ fun TaskContactActionsDialog(
     }
 
     // State für Action Selection
-    var showActionPicker by remember { mutableStateOf(false) }
+    var showActionDialog by remember { mutableStateOf(false) }
     var showTaskTagDialog by remember { mutableStateOf(false) }
 
     // Sammle alle verfügbaren Tags (globale CONTACT-Tags + task-spezifische Tags)
@@ -189,7 +197,10 @@ fun TaskContactActionsDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { showActionPicker = true },
+                            onClick = {
+                                android.util.Log.d("ActionDialog", "Opening ActionDialog with ${selectedContacts.size} contacts")
+                                showActionDialog = true
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.Send, contentDescription = null)
@@ -316,81 +327,36 @@ fun TaskContactActionsDialog(
         dismissButton = null
     )
 
-    // Action Picker Dialog
-    if (showActionPicker) {
-        AlertDialog(
-            onDismissRequest = { showActionPicker = false },
-            title = { Text("Aktion wählen") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            selectedContacts.forEach { contact ->
-                                contact.primaryPhone?.let { phone ->
-                                    callContact(context, phone)
-                                }
-                            }
-                            showActionPicker = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Call, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Anrufen")
-                    }
-
-                    Button(
-                        onClick = {
-                            selectedContacts.forEach { contact ->
-                                contact.primaryPhone?.let { phone ->
-                                    sendWhatsApp(context, phone)
-                                }
-                            }
-                            showActionPicker = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Email, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("WhatsApp")
-                    }
-
-                    Button(
-                        onClick = {
-                            selectedContacts.forEach { contact ->
-                                contact.primaryPhone?.let { phone ->
-                                    sendSMS(context, phone)
-                                }
-                            }
-                            showActionPicker = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Send, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("SMS")
-                    }
-
-                    Button(
-                        onClick = {
-                            selectedContacts.forEach { contact ->
-                                contact.primaryEmail?.let { emailAddr ->
-                                    sendEmail(context, emailAddr)
-                                }
-                            }
-                            showActionPicker = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.MailOutline, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Email")
-                    }
-                }
+    // Action Dialog (WhatsApp, SMS, Email mit Text-Eingabe)
+    if (showActionDialog && selectedContacts.isNotEmpty() && actionExecutor != null && placeholderResolver != null) {
+        android.util.Log.d("ActionDialog", "Rendering ActionDialog for ${selectedContacts.size} contacts")
+        ActionDialog(
+            taskId = taskId,
+            selectedContacts = selectedContacts,
+            availableTemplates = textTemplates,
+            onDismiss = {
+                android.util.Log.d("ActionDialog", "ActionDialog dismissed")
+                showActionDialog = false
             },
+            onActionExecuted = {
+                android.util.Log.d("ActionDialog", "Action executed successfully")
+                showActionDialog = false
+            },
+            actionExecutor = actionExecutor,
+            placeholderResolver = placeholderResolver
+        )
+    } else if (showActionDialog && selectedContacts.isNotEmpty() && (actionExecutor == null || placeholderResolver == null)) {
+        android.util.Log.e("ActionDialog", "ERROR: ActionDialog cannot render - missing actionExecutor or placeholderResolver")
+        android.util.Log.e("ActionDialog", "  actionExecutor = $actionExecutor")
+        android.util.Log.e("ActionDialog", "  placeholderResolver = $placeholderResolver")
+        // Fallback: Show a simple error message
+        AlertDialog(
+            onDismissRequest = { showActionDialog = false },
+            title = { Text("Fehler") },
+            text = { Text("Aktion-System nicht verfügbar. Bitte von Kalender-Ansicht aus öffnen.") },
             confirmButton = {
-                TextButton(onClick = { showActionPicker = false }) {
-                    Text("Abbrechen")
+                TextButton(onClick = { showActionDialog = false }) {
+                    Text("OK")
                 }
             }
         )
@@ -532,31 +498,4 @@ fun TaskContactTagAssignmentDialog(
             }
         }
     )
-}
-
-// Helper functions für Aktionen
-private fun callContact(context: Context, phone: String) {
-    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-    context.startActivity(intent)
-}
-
-private fun sendWhatsApp(context: Context, phone: String) {
-    try {
-        val intent = Intent(Intent.ACTION_VIEW)
-        intent.data = Uri.parse("https://wa.me/$phone")
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        // WhatsApp nicht installiert
-    }
-}
-
-private fun sendSMS(context: Context, phone: String) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:$phone"))
-    context.startActivity(intent)
-}
-
-private fun sendEmail(context: Context, emailAddr: String) {
-    val intent = Intent(Intent.ACTION_SENDTO)
-    intent.data = Uri.parse("mailto:$emailAddr")
-    context.startActivity(intent)
 }
