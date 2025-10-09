@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,7 +92,7 @@ fun QuickDateTimePicker(
                             dateTime.dayOfMonth
                         ).show()
                     }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Datum wählen")
+                        Icon(Icons.Default.DateRange, contentDescription = "Datum wählen")
                     }
                 },
                 keyboardOptions = KeyboardOptions(
@@ -139,7 +139,7 @@ fun QuickDateTimePicker(
                             true
                         ).show()
                     }) {
-                        Icon(Icons.Default.AccessTime, contentDescription = "Uhrzeit wählen")
+                        Icon(Icons.Default.Star, contentDescription = "Uhrzeit wählen")
                     }
                 },
                 keyboardOptions = KeyboardOptions(
