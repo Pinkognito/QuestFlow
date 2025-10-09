@@ -40,11 +40,22 @@ class CompleteTaskUseCase @Inject constructor(
         val xpAmount = calculateXpRewardUseCase(task.xpPercentage, currentLevel)
 
         // Update task completion
+        android.util.Log.d("CompleteTaskUseCase", "=== TASK COMPLETION ===")
+        android.util.Log.d("CompleteTaskUseCase", "Task ID: ${task.id}, Title: ${task.title}")
+        android.util.Log.d("CompleteTaskUseCase", "BEFORE completion - parentTaskId: ${task.parentTaskId}")
+
         val updatedTask = task.copy(
             isCompleted = true,
             completedAt = LocalDateTime.now()
         )
+        android.util.Log.d("CompleteTaskUseCase", "AFTER copy() - parentTaskId: ${updatedTask.parentTaskId}")
+
         taskRepository.updateTask(updatedTask)
+
+        // Verify after database update
+        val verifyTask = taskRepository.getTaskById(task.id)
+        android.util.Log.d("CompleteTaskUseCase", "AFTER DB update - parentTaskId: ${verifyTask?.parentTaskId}")
+        android.util.Log.d("CompleteTaskUseCase", "Parent relationship preserved: ${verifyTask?.parentTaskId == task.parentTaskId}")
 
         // Grant XP to category or general stats
         val (xpResult, categoryXpResult) = if (task.categoryId != null) {

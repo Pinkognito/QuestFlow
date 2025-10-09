@@ -365,7 +365,7 @@ fun TaskContactActionsDialog(
                                         }
                                     ) {
                                         Icon(
-                                            imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                            imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.Check,
                                             contentDescription = if (isLocked) "Gesperrt" else "Entsperrt",
                                             tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                         )

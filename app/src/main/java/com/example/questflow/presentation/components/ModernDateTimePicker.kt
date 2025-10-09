@@ -600,10 +600,13 @@ fun HorizontalScrollWheel(
     var userDidDrag by remember { mutableStateOf(false) }
 
     // Skip snap after direct input to prevent +1 bug
-    var skipNextSnap by remember { mutableStateOf(false) }
+    var skipNextSnap by remember { mutableStateOf(true) }  // CRITICAL: Start with TRUE to skip initial snap!
 
     // Track last forceUpdateKey to detect external changes
     var lastForceUpdateKey by remember { mutableStateOf(forceUpdateKey) }
+
+    // Track if this is first composition
+    var isInitialComposition by remember { mutableStateOf(true) }
 
     // Sync to initialValue changes from parent (direct input)
     LaunchedEffect(initialValue, forceUpdateKey) {
@@ -613,8 +616,49 @@ fun HorizontalScrollWheel(
         android.util.Log.d("TimePicker-Wheel", "║ Current state: currentValue=$currentValue")
         android.util.Log.d("TimePicker-Wheel", "║ New state: initialValue=$initialValue")
         android.util.Log.d("TimePicker-Wheel", "║ forceUpdateKey: $forceUpdateKey (last: $lastForceUpdateKey)")
+        android.util.Log.d("TimePicker-Wheel", "║ isInitialComposition: $isInitialComposition")
 
         val forceUpdateKeyChanged = forceUpdateKey != lastForceUpdateKey
+
+        // Handle initial composition - center the wheel without triggering snap
+        if (isInitialComposition) {
+            android.util.Log.d("TimePicker-Wheel", "║ → INITIAL COMPOSITION - Centering wheel")
+            isInitialComposition = false
+
+            // Wait for layout to settle, then manually center
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(100)
+
+                val layoutInfo = listState.layoutInfo
+                val centerX = layoutInfo.viewportEndOffset / 2f
+
+                // Find the target item
+                val targetItem = layoutInfo.visibleItemsInfo.find {
+                    it.index % (maxValue + 1) == initialValue
+                }
+
+                targetItem?.let { item ->
+                    val itemCenter = item.offset + item.size / 2f
+                    val offsetFromCenter = itemCenter - centerX
+
+                    android.util.Log.d("TimePicker-Wheel", "║ → Initial centering: offsetFromCenter=$offsetFromCenter px")
+
+                    if (offsetFromCenter.absoluteValue > 2f) {
+                        listState.animateScrollToItem(
+                            index = item.index,
+                            scrollOffset = -layoutInfo.viewportEndOffset / 2 + item.size / 2
+                        )
+                    }
+
+                    // After centering, allow future snaps
+                    skipNextSnap = false
+                    android.util.Log.d("TimePicker-Wheel", "║ → Initial centering complete, skipNextSnap=false")
+                }
+            }
+
+            android.util.Log.d("TimePicker-Wheel", "╚═══════════════════════════════════════════════════════════")
+            return@LaunchedEffect
+        }
 
         if (initialValue != currentValue || forceUpdateKeyChanged) {
             android.util.Log.d("TimePicker-Wheel", "║ → SYNC NEEDED (${if (initialValue != currentValue) "value changed" else "forceUpdate"})")

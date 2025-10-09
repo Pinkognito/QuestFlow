@@ -402,6 +402,9 @@ fun CalendarXpScreen(
             onDismiss = {
                 selectedEditLink = null
                 viewModel.loadCalendarLinks()
+            },
+            onNavigateToTask = { newLink ->
+                selectedEditLink = newLink
             }
         )
     }
@@ -413,7 +416,8 @@ fun EditCalendarTaskDialog(
     calendarLink: CalendarEventLinkEntity,
     viewModel: TodayViewModel,
     calendarViewModel: CalendarXpViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onNavigateToTask: (CalendarEventLinkEntity) -> Unit = {}
 ) {
     val availableTasks by calendarViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
@@ -509,22 +513,9 @@ fun EditCalendarTaskDialog(
         mutableStateOf(currentTask?.autoCompleteParent ?: false)
     }
 
-    // Date and time state - START
-    var selectedYear by remember { mutableStateOf(calendarLink.startsAt.year) }
-    var selectedMonth by remember { mutableStateOf(calendarLink.startsAt.monthValue) }
-    var selectedDay by remember { mutableStateOf(calendarLink.startsAt.dayOfMonth) }
-    var selectedHour by remember { mutableStateOf(calendarLink.startsAt.hour) }
-    var selectedMinute by remember { mutableStateOf(calendarLink.startsAt.minute) }
-
-    // Date and time state - END
-    var endYear by remember { mutableStateOf(calendarLink.endsAt.year) }
-    var endMonth by remember { mutableStateOf(calendarLink.endsAt.monthValue) }
-    var endDay by remember { mutableStateOf(calendarLink.endsAt.dayOfMonth) }
-    var endHour by remember { mutableStateOf(calendarLink.endsAt.hour) }
-    var endMinute by remember { mutableStateOf(calendarLink.endsAt.minute) }
-
-    val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
-    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
+    // Date and time state - using QuickDateTimePicker-friendly state
+    var startDateTime by remember { mutableStateOf(calendarLink.startsAt) }
+    var endDateTime by remember { mutableStateOf(calendarLink.endsAt) }
 
     // Track whether task is claimable
     val isClaimable = !calendarLink.rewarded && calendarLink.status != "CLAIMED" && calendarLink.status != "EXPIRED"
@@ -747,6 +738,20 @@ fun EditCalendarTaskDialog(
                                     value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
                                     onValueChange = { },
                                     readOnly = true,
+                                    leadingIcon = if (selectedParentTask != null) {
+                                        {
+                                            IconButton(onClick = {
+                                                // Navigate to parent task
+                                                val parentLink = calendarViewModel.uiState.value.links.find { it.taskId == selectedParentTask?.id }
+                                                if (parentLink != null) {
+                                                    onDismiss()
+                                                    onNavigateToTask(parentLink)
+                                                }
+                                            }) {
+                                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Zum Parent", modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                    } else null,
                                     trailingIcon = {
                                         IconButton(onClick = { parentExpanded = !parentExpanded }) {
                                             Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -868,116 +873,91 @@ fun EditCalendarTaskDialog(
                         }
                     }
 
-                    // Date and Time Selection - START
-                    item {
-                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $dateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            selectedYear = year
-                                            selectedMonth = month + 1
-                                            selectedDay = dayOfMonth
-                                        },
-                                        selectedYear,
-                                        selectedMonth - 1,
-                                        selectedDay
+                    // Show Subtasks if current task is a parent
+                    if (calendarLink.taskId != null) {
+                        val subtasks = availableTasks.filter { it.parentTaskId == calendarLink.taskId }
+                        if (subtasks.isNotEmpty()) {
+                            item {
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "Subtasks (${subtasks.size})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
+                                    Spacer(modifier = Modifier.height(8.dp))
 
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            selectedHour = hourOfDay
-                                            selectedMinute = minute
-                                        },
-                                        selectedHour,
-                                        selectedMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
+                                    subtasks.forEach { subtask ->
+                                        // Find the calendar link for this subtask
+                                        val subtaskLink = calendarViewModel.uiState.value.links.find { it.taskId == subtask.id }
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 8.dp)
+                                                .clickable {
+                                                    // Navigate to subtask
+                                                    if (subtaskLink != null) {
+                                                        onDismiss()
+                                                        onNavigateToTask(subtaskLink)
+                                                    }
+                                                },
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        subtask.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    if (subtask.description.isNotEmpty()) {
+                                                        Text(
+                                                            subtask.description,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = "Zu Subtask",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
 
-                    // Date and Time Selection - END
+                    // Date and Time Selection - START (ModernDateTimePicker)
                     item {
-                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $endDateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        com.example.questflow.presentation.components.ModernDateTimePicker(
+                            label = "Start",
+                            dateTime = startDateTime,
+                            onDateTimeChange = { startDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
                         )
+                    }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            endYear = year
-                                            endMonth = month + 1
-                                            endDay = dayOfMonth
-                                        },
-                                        endYear,
-                                        endMonth - 1,
-                                        endDay
-                                    )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            endHour = hourOfDay
-                                            endMinute = minute
-                                        },
-                                        endHour,
-                                        endMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
-                            }
-                        }
+                    // Date and Time Selection - END (ModernDateTimePicker)
+                    item {
+                        com.example.questflow.presentation.components.ModernDateTimePicker(
+                            label = "Ende",
+                            dateTime = endDateTime,
+                            onDateTimeChange = { endDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     // Calendar Integration Options
@@ -1298,15 +1278,6 @@ fun EditCalendarTaskDialog(
             TextButton(
                 onClick = {
                     if (taskTitle.isNotBlank()) {
-                        val startDateTime = java.time.LocalDateTime.of(
-                            selectedYear, selectedMonth, selectedDay,
-                            selectedHour, selectedMinute
-                        )
-                        val endDateTime = java.time.LocalDateTime.of(
-                            endYear, endMonth, endDay,
-                            endHour, endMinute
-                        )
-
                         // Check if we need to reactivate the task (only for claimed tasks)
                         val isReactivating = shouldReactivate &&
                             (calendarLink.rewarded || calendarLink.status == "CLAIMED")

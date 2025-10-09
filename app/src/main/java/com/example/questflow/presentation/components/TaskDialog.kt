@@ -1,6 +1,7 @@
 package com.example.questflow.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -150,23 +151,9 @@ fun TaskDialog(
         }
     }
 
-    // Date and time state - START datetime
-    var selectedYear by remember { mutableStateOf(initialDateTime.year) }
-    var selectedMonth by remember { mutableStateOf(initialDateTime.monthValue) }
-    var selectedDay by remember { mutableStateOf(initialDateTime.dayOfMonth) }
-    var selectedHour by remember { mutableStateOf(initialDateTime.hour) }
-    var selectedMinute by remember { mutableStateOf(initialDateTime.minute) }
-
-    // END datetime state (default: 1 hour after start)
-    val defaultEndDateTime = initialDateTime.plusHours(1)
-    var endYear by remember { mutableStateOf(defaultEndDateTime.year) }
-    var endMonth by remember { mutableStateOf(defaultEndDateTime.monthValue) }
-    var endDay by remember { mutableStateOf(defaultEndDateTime.dayOfMonth) }
-    var endHour by remember { mutableStateOf(defaultEndDateTime.hour) }
-    var endMinute by remember { mutableStateOf(defaultEndDateTime.minute) }
-
-    val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
-    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
+    // Date and time state - using QuickDateTimePicker-friendly state
+    var startDateTime by remember { mutableStateOf(initialDateTime) }
+    var endDateTime by remember { mutableStateOf(initialDateTime.plusHours(1)) }
 
     // Check if task is claimed (for showing reactivation option)
     val isClaimedTask = calendarLink?.let {
@@ -443,6 +430,69 @@ fun TaskDialog(
                         }
                     }
 
+                    // Show Subtasks if current task is a parent
+                    if (isEditMode && task != null) {
+                        val subtasks = availableTasks.filter { it.parentTaskId == task.id }
+                        if (subtasks.isNotEmpty()) {
+                            item {
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "Subtasks (${subtasks.size})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    subtasks.forEach { subtask ->
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 8.dp)
+                                                .clickable {
+                                                    // Navigate to subtask
+                                                    // TODO: Add navigation callback
+                                                    onDismiss()
+                                                },
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        subtask.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    if (subtask.description.isNotEmpty()) {
+                                                        Text(
+                                                            subtask.description,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = "Zu Subtask",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Difficulty Selection
                     item {
                         Text("Schwierigkeit:", style = MaterialTheme.typography.labelMedium)
@@ -630,116 +680,24 @@ fun TaskDialog(
                         }
                     }
 
-                    // Date & Time Selection - START
+                    // Date & Time Selection - START (ModernDateTimePicker)
                     item {
-                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $dateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        ModernDateTimePicker(
+                            label = "Start",
+                            dateTime = startDateTime,
+                            onDateTimeChange = { startDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
                         )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            selectedYear = year
-                                            selectedMonth = month + 1
-                                            selectedDay = dayOfMonth
-                                        },
-                                        selectedYear,
-                                        selectedMonth - 1,
-                                        selectedDay
-                                    )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            selectedHour = hourOfDay
-                                            selectedMinute = minute
-                                        },
-                                        selectedHour,
-                                        selectedMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
-                            }
-                        }
                     }
 
-                    // Date & Time Selection - END
+                    // Date & Time Selection - END (ModernDateTimePicker)
                     item {
-                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $endDateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        ModernDateTimePicker(
+                            label = "Ende",
+                            dateTime = endDateTime,
+                            onDateTimeChange = { endDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
                         )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            endYear = year
-                                            endMonth = month + 1
-                                            endDay = dayOfMonth
-                                        },
-                                        endYear,
-                                        endMonth - 1,
-                                        endDay
-                                    )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            endHour = hourOfDay
-                                            endMinute = minute
-                                        },
-                                        endHour,
-                                        endMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
-                            }
-                        }
                     }
 
                     // Calendar Integration Options
@@ -930,14 +888,6 @@ fun TaskDialog(
             TextButton(
                 onClick = {
                     if (taskTitle.isNotBlank()) {
-                        val startDateTime = LocalDateTime.of(
-                            selectedYear, selectedMonth, selectedDay,
-                            selectedHour, selectedMinute
-                        )
-                        val endDateTime = LocalDateTime.of(
-                            endYear, endMonth, endDay,
-                            endHour, endMinute
-                        )
                         onConfirm(
                             taskTitle,
                             taskDescription,
