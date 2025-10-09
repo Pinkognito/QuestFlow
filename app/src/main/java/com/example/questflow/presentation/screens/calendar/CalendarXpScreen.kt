@@ -70,6 +70,7 @@ fun CalendarXpScreen(
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var selectedEditLink by remember { mutableStateOf<CalendarEventLinkEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var includeSubtasks by remember { mutableStateOf(false) }
 
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }

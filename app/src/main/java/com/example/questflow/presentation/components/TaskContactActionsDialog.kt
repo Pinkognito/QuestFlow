@@ -59,8 +59,9 @@ fun TaskContactActionsDialog(
     var tagSearchQuery by remember { mutableStateOf("") }
 
     // State für Manual Override (gleiche Logik wie TaskContactSelectionDialog)
+    // Map<ContactId, Triple<hasOverride: Boolean, isSelected: Boolean, isLocked: Boolean>>
     var manualOverrides by remember {
-        mutableStateOf<Map<Long, Pair<Boolean, Boolean>>>(emptyMap())
+        mutableStateOf<Map<Long, Triple<Boolean, Boolean, Boolean>>>(emptyMap())
     }
 
     // State für Action Selection
@@ -79,10 +80,11 @@ fun TaskContactActionsDialog(
         taskLinkedContacts.mapNotNull { contact ->
             val override = manualOverrides[contact.id]
 
-            val isSelected = if (override?.first == true) {
+            val isSelected = if (override?.first == true && override.third == true) {
+                // Locked: use manual selection
                 override.second
             } else if (useTagFilter && selectedFilterTags.isNotEmpty()) {
-                // Prüfe sowohl globale Contact-Tags als auch task-spezifische Tags
+                // Tag filter active (only if not locked)
                 val globalTagNames = contactTags[contact.id]?.map { it.name }?.toSet() ?: emptySet()
                 val taskTagNames = taskContactTags[contact.id]?.toSet() ?: emptySet()
                 val allContactTags = globalTagNames + taskTagNames
@@ -184,6 +186,36 @@ fun TaskContactActionsDialog(
 
                 Divider()
 
+                // Select All / Deselect All Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            // Select all contacts with lock
+                            manualOverrides = taskLinkedContacts.associate { contact ->
+                                contact.id to Triple(true, true, true)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Alle auswählen")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            // Deselect all contacts with lock
+                            manualOverrides = taskLinkedContacts.associate { contact ->
+                                contact.id to Triple(true, false, true)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Alle abwählen")
+                    }
+                }
+
                 // Info
                 Text(
                     "${finalSelection.size} von ${taskLinkedContacts.size} Kontakten ausgewählt",
@@ -230,10 +262,13 @@ fun TaskContactActionsDialog(
                     items(taskLinkedContacts) { contact ->
                         val isSelected = contact.id in finalSelection
                         val taskTags = taskContactTags[contact.id] ?: emptyList()
+                        val override = manualOverrides[contact.id]
+                        val isLocked = override?.third ?: false
 
                         Card(
                             onClick = {
-                                manualOverrides = manualOverrides + (contact.id to (true to !isSelected))
+                                // Toggle selection and lock it
+                                manualOverrides = manualOverrides + (contact.id to Triple(true, !isSelected, true))
                             },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) {
@@ -308,12 +343,42 @@ fun TaskContactActionsDialog(
                                     }
                                 }
 
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = {
-                                        manualOverrides = manualOverrides + (contact.id to (true to it))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Lock Icon
+                                    IconButton(
+                                        onClick = {
+                                            // Toggle lock state
+                                            val currentOverride = manualOverrides[contact.id]
+                                            if (currentOverride != null) {
+                                                manualOverrides = manualOverrides + (contact.id to Triple(
+                                                    true,
+                                                    currentOverride.second,
+                                                    !currentOverride.third
+                                                ))
+                                            } else {
+                                                // First time: lock with current selection state
+                                                manualOverrides = manualOverrides + (contact.id to Triple(true, isSelected, true))
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                            contentDescription = if (isLocked) "Gesperrt" else "Entsperrt",
+                                            tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                )
+
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = {
+                                            // Toggle selection and lock it
+                                            manualOverrides = manualOverrides + (contact.id to Triple(true, it, true))
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
