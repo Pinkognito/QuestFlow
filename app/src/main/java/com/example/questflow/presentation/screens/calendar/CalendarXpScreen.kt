@@ -520,8 +520,8 @@ fun EditCalendarTaskDialog(
         mutableStateOf(currentTask?.autoCompleteParent ?: false)
     }
 
-    // Task family section collapse state
-    var taskFamilyExpanded by remember { mutableStateOf(true) }
+    // Task family section collapse state - persistent
+    val uiSettings by calendarViewModel.uiSettings.collectAsState()
 
     // Date and time state - using QuickDateTimePicker-friendly state
     var startDateTime by remember { mutableStateOf(calendarLink.startsAt) }
@@ -786,7 +786,11 @@ fun EditCalendarTaskDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { taskFamilyExpanded = !taskFamilyExpanded }
+                                        .clickable {
+                                            calendarViewModel.updateUISettings(
+                                                uiSettings.copy(taskFamilyExpanded = !uiSettings.taskFamilyExpanded)
+                                            )
+                                        }
                                         .padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -807,15 +811,15 @@ fun EditCalendarTaskDialog(
                                         }
                                     }
                                     Icon(
-                                        if (taskFamilyExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = if (taskFamilyExpanded) "Zuklappen" else "Aufklappen",
+                                        if (uiSettings.taskFamilyExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = if (uiSettings.taskFamilyExpanded) "Zuklappen" else "Aufklappen",
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
 
                             // Show parent and subtasks only when expanded
-                            if (taskFamilyExpanded) {
+                            if (uiSettings.taskFamilyExpanded) {
                                 // ALWAYS show parent task card
                                 item {
                                     val parentLink = calendarViewModel.uiState.value.links.find { it.taskId == parentTask.id }

@@ -13,6 +13,7 @@ import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.preferences.CalendarFilterPreferences
 import com.example.questflow.data.preferences.CalendarFilterSettings
 import com.example.questflow.data.preferences.DateFilterType
+import com.example.questflow.data.preferences.UIPreferences
 import com.example.questflow.domain.usecase.RecordCalendarXpUseCase
 import com.example.questflow.domain.usecase.CheckExpiredEventsUseCase
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
@@ -36,6 +37,7 @@ class CalendarXpViewModel @Inject constructor(
     private val statsRepository: StatsRepository,
     private val categoryRepository: CategoryRepository,
     private val filterPreferences: CalendarFilterPreferences,
+    private val uiPreferences: UIPreferences,
     private val taskRepository: TaskRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
@@ -57,6 +59,7 @@ class CalendarXpViewModel @Inject constructor(
     val showFilterDialog: StateFlow<Boolean> = _showFilterDialog.asStateFlow()
 
     val filterSettings: StateFlow<CalendarFilterSettings> = filterPreferences.getSettings()
+    val uiSettings: StateFlow<com.example.questflow.data.preferences.UISettings> = uiPreferences.getSettings()
 
     init {
         loadFilterSettings()
@@ -93,6 +96,10 @@ class CalendarXpViewModel @Inject constructor(
             dateFilterType = settings.dateFilterType
         )
         loadCalendarLinks()
+    }
+
+    fun updateUISettings(settings: com.example.questflow.data.preferences.UISettings) {
+        uiPreferences.updateSettings(settings)
     }
 
     private fun loadStats() {
