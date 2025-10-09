@@ -59,6 +59,7 @@ fun TaskDialog(
     onMetadataLinked: (TaskMetadataItem) -> Unit = {}, // Callback for metadata linking
     availableContacts: List<MetadataContactEntity> = emptyList(), // For contact selection
     initialContactIds: Set<Long> = emptySet(), // Initial selected contacts
+    onTaskClick: (Task) -> Unit = {}, // NEW: Callback to open another task dialog
     onDismiss: () -> Unit,
     onConfirm: (
         title: String,
@@ -77,6 +78,7 @@ fun TaskDialog(
         autoCompleteParent: Boolean,
         contactIds: Set<Long>
     ) -> Unit,
+    onCreateSubtask: (parentTaskId: Long) -> Unit = {}, // NEW: Callback to create subtask
     getXpForPercentage: (Int) -> String
 ) {
     val context = LocalContext.current
@@ -203,20 +205,20 @@ fun TaskDialog(
                     }
 
                     item {
-                        var categoryExpanded by remember { mutableStateOf(false) }
-                        var categorySearchQuery by remember { mutableStateOf("") }
-                        val categoryFocusRequester = remember { FocusRequester() }
+                        var showCategoryDialog by remember { mutableStateOf(false) }
 
                         OutlinedTextField(
                             value = taskCategory?.name ?: "Allgemein",
                             onValueChange = { },
                             readOnly = true,
                             trailingIcon = {
-                                IconButton(onClick = { categoryExpanded = !categoryExpanded }) {
+                                IconButton(onClick = { showCategoryDialog = true }) {
                                     Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCategoryDialog = true },
                             leadingIcon = {
                                 taskCategory?.let { cat ->
                                     Box(
@@ -241,74 +243,21 @@ fun TaskDialog(
                             }
                         )
 
-                        DropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = { categoryExpanded = false }
-                        ) {
-                            // Search field
-                            OutlinedTextField(
-                                value = categorySearchQuery,
-                                onValueChange = { categorySearchQuery = it },
-                                placeholder = { Text("Suchen...") },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .focusRequester(categoryFocusRequester),
-                                singleLine = true
+                        if (showCategoryDialog) {
+                            FullscreenSelectionDialog(
+                                title = "Kategorie wählen",
+                                items = categories,
+                                selectedItem = taskCategory,
+                                onItemSelected = { category ->
+                                    taskCategory = category
+                                },
+                                onDismiss = { showCategoryDialog = false },
+                                itemLabel = { it.name },
+                                itemDescription = null,
+                                allowNone = true,
+                                noneLabel = "Allgemein",
+                                searchPlaceholder = "Kategorie suchen..."
                             )
-
-                            // Auto-focus when dropdown opens
-                            LaunchedEffect(categoryExpanded) {
-                                if (categoryExpanded) {
-                                    kotlinx.coroutines.delay(100)
-                                    categoryFocusRequester.requestFocus()
-                                }
-                            }
-
-                            // Filter categories
-                            val filteredCategories = categories.filter { category ->
-                                category.name.contains(categorySearchQuery, ignoreCase = true) ||
-                                category.emoji.contains(categorySearchQuery, ignoreCase = true)
-                            }
-
-                            if (filteredCategories.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall) },
-                                    onClick = { },
-                                    enabled = false
-                                )
-                            } else {
-                                filteredCategories.forEach { category ->
-                                    DropdownMenuItem(
-                                        leadingIcon = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        try {
-                                                            Color(android.graphics.Color.parseColor(category.color))
-                                                        } catch (e: Exception) {
-                                                            MaterialTheme.colorScheme.primary
-                                                        }
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = category.emoji,
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                            }
-                                        },
-                                        text = { Text(category.name) },
-                                        onClick = {
-                                            taskCategory = category
-                                            categoryExpanded = false
-                                            categorySearchQuery = ""
-                                        }
-                                    )
-                                }
-                            }
                         }
                     }
 
@@ -319,86 +268,40 @@ fun TaskDialog(
                         }
 
                         item {
-                            var parentExpanded by remember { mutableStateOf(false) }
-                            var parentSearchQuery by remember { mutableStateOf("") }
-                            val parentFocusRequester = remember { FocusRequester() }
+                            var showParentDialog by remember { mutableStateOf(false) }
 
                             OutlinedTextField(
                                 value = selectedParentTask?.title ?: "Kein (Haupt-Task)",
                                 onValueChange = { },
                                 readOnly = true,
                                 trailingIcon = {
-                                    IconButton(onClick = { parentExpanded = !parentExpanded }) {
+                                    IconButton(onClick = { showParentDialog = true }) {
                                         Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showParentDialog = true }
                             )
 
-                            DropdownMenu(
-                                expanded = parentExpanded,
-                                onDismissRequest = { parentExpanded = false }
-                            ) {
-                                // Search field
-                                OutlinedTextField(
-                                    value = parentSearchQuery,
-                                    onValueChange = { parentSearchQuery = it },
-                                    placeholder = { Text("Suchen...") },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                        .focusRequester(parentFocusRequester),
-                                    singleLine = true
+                            if (showParentDialog) {
+                                // Filter out current task to prevent self-parenting
+                                val availableParentTasks = availableTasks.filter { it.id != task?.id }
+
+                                FullscreenSelectionDialog(
+                                    title = "Übergeordneter Task wählen",
+                                    items = availableParentTasks,
+                                    selectedItem = selectedParentTask,
+                                    onItemSelected = { parentTask ->
+                                        selectedParentTask = parentTask
+                                    },
+                                    onDismiss = { showParentDialog = false },
+                                    itemLabel = { it.title },
+                                    itemDescription = null,
+                                    allowNone = true,
+                                    noneLabel = "Kein (Haupt-Task)",
+                                    searchPlaceholder = "Task suchen..."
                                 )
-
-                                // Auto-focus when dropdown opens
-                                LaunchedEffect(parentExpanded) {
-                                    if (parentExpanded) {
-                                        kotlinx.coroutines.delay(100)
-                                        parentFocusRequester.requestFocus()
-                                    }
-                                }
-
-                                // Option: No parent (main task) - always visible
-                                DropdownMenuItem(
-                                    text = { Text("Kein (Haupt-Task)") },
-                                    onClick = {
-                                        selectedParentTask = null
-                                        parentExpanded = false
-                                        parentSearchQuery = ""
-                                    }
-                                )
-
-                                // Filter tasks
-                                val filteredTasks = availableTasks.filter { it.id != task?.id }.filter { parentTask ->
-                                    parentTask.title.contains(parentSearchQuery, ignoreCase = true) ||
-                                    parentTask.description.contains(parentSearchQuery, ignoreCase = true)
-                                }
-
-                                if (filteredTasks.isEmpty() && parentSearchQuery.isNotEmpty()) {
-                                    DropdownMenuItem(
-                                        text = { Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall) },
-                                        onClick = { },
-                                        enabled = false
-                                    )
-                                } else {
-                                    // Available tasks as parent options
-                                    filteredTasks.forEach { parentTask ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = parentTask.title,
-                                                    maxLines = 1
-                                                )
-                                            },
-                                            onClick = {
-                                                selectedParentTask = parentTask
-                                                parentExpanded = false
-                                                parentSearchQuery = ""
-                                            }
-                                        )
-                                    }
-                                }
                             }
                         }
 
@@ -430,64 +333,178 @@ fun TaskDialog(
                         }
                     }
 
-                    // Show Subtasks if current task is a parent
-                    if (isEditMode && task != null) {
-                        val subtasks = availableTasks.filter { it.parentTaskId == task.id }
-                        if (subtasks.isNotEmpty()) {
+                    // Show Parent Task if current task is a subtask
+                    if (isEditMode && task != null && task.parentTaskId != null) {
+                        android.util.Log.d("TaskDialog", "=== PARENT TASK SECTION ===")
+                        android.util.Log.d("TaskDialog", "isEditMode: $isEditMode")
+                        android.util.Log.d("TaskDialog", "task.id: ${task.id}")
+                        android.util.Log.d("TaskDialog", "task.title: ${task.title}")
+                        android.util.Log.d("TaskDialog", "task.parentTaskId: ${task.parentTaskId}")
+                        android.util.Log.d("TaskDialog", "availableTasks.size: ${availableTasks.size}")
+
+                        val parentTask = availableTasks.find { it.id == task.parentTaskId }
+                        android.util.Log.d("TaskDialog", "parentTask found: ${parentTask != null}")
+                        if (parentTask != null) {
+                            android.util.Log.d("TaskDialog", "parentTask.id: ${parentTask.id}")
+                            android.util.Log.d("TaskDialog", "parentTask.title: ${parentTask.title}")
+
                             item {
                                 Divider(modifier = Modifier.padding(vertical = 8.dp))
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                            }
+                            item {
+                                Text(
+                                    "Parent Task",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            item {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            android.util.Log.d("TaskDialog", "Parent Task Card clicked: ${parentTask.title}")
+                                            onTaskClick(parentTask)
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                parentTask.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            if (parentTask.description.isNotEmpty()) {
+                                                Text(
+                                                    parentTask.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = "Zum Parent Task",
+                                            modifier = Modifier.size(24.dp),
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Show Subtasks if current task is a parent
+                    if (isEditMode && task != null) {
+                        android.util.Log.d("TaskDialog", "=== SUBTASKS SECTION ===")
+                        val subtasks = availableTasks.filter { it.parentTaskId == task.id }
+                        android.util.Log.d("TaskDialog", "Subtasks found: ${subtasks.size}")
+                        subtasks.forEachIndexed { idx, st ->
+                            android.util.Log.d("TaskDialog", "  [$idx] Subtask: ${st.title} (id=${st.id})")
+                        }
+
+                        if (subtasks.isNotEmpty() || task.parentTaskId == null) {
+                            // Only show section if has subtasks OR is a main task (not a subtask itself)
+                            item {
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Text(
                                         "Subtasks (${subtasks.size})",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    Spacer(modifier = Modifier.height(8.dp))
 
-                                    subtasks.forEach { subtask ->
-                                        Card(
+                                    // Create Subtask Button
+                                    OutlinedButton(
+                                        onClick = {
+                                            android.util.Log.d("TaskDialog", "Create Subtask button clicked for parent: ${task.id}")
+                                            onCreateSubtask(task.id)
+                                        },
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Neu", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+
+                            // Render each subtask as separate item - CRITICAL FIX
+                            if (subtasks.isNotEmpty()) {
+                                android.util.Log.d("TaskDialog", "Rendering ${subtasks.size} subtask items")
+                                items(subtasks.size) { index ->
+                                    val subtask = subtasks[index]
+                                    android.util.Log.d("TaskDialog", "Rendering subtask item [$index]: ${subtask.title}")
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp)
+                                            .clickable {
+                                                android.util.Log.d("TaskDialog", "Subtask Card clicked [$index]: ${subtask.title} (id=${subtask.id})")
+                                                onTaskClick(subtask)
+                                            },
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(bottom = 8.dp)
-                                                .clickable {
-                                                    // Navigate to subtask
-                                                    // TODO: Add navigation callback
-                                                    onDismiss()
-                                                },
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                            )
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        subtask.title,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                    if (subtask.description.isNotEmpty()) {
-                                                        Text(
-                                                            subtask.description,
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 1
-                                                        )
-                                                    }
-                                                }
-                                                Icon(
-                                                    Icons.Default.ArrowDropDown,
-                                                    contentDescription = "Zu Subtask",
-                                                    modifier = Modifier.size(24.dp)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    subtask.title,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium
                                                 )
+                                                if (subtask.description.isNotEmpty()) {
+                                                    Text(
+                                                        subtask.description,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1
+                                                    )
+                                                }
                                             }
+                                            Icon(
+                                                Icons.Default.ArrowDropDown,
+                                                contentDescription = "Zu Subtask",
+                                                modifier = Modifier.size(24.dp)
+                                            )
                                         }
                                     }
+                                }
+                            } else {
+                                item {
+                                    Text(
+                                        "Keine Subtasks. Klicke 'Neu' um einen zu erstellen.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
                                 }
                             }
                         }
