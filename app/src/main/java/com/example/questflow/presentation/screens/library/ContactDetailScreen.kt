@@ -40,7 +40,7 @@ fun ContactDetailScreen(
     navController: NavController,
     viewModel: MetadataLibraryViewModel = hiltViewModel(),
     todayViewModel: com.example.questflow.presentation.viewmodels.TodayViewModel = hiltViewModel(),
-    calendarViewModel: com.example.questflow.presentation.screens.calendar.CalendarXpViewModel = hiltViewModel()
+    tasksViewModel: com.example.questflow.presentation.screens.tasks.TasksViewModel = hiltViewModel()
 ) {
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
     val categories by appViewModel.categories.collectAsState()
@@ -352,7 +352,7 @@ fun ContactDetailScreen(
                         onClick = {
                             // Load the calendar link for this task and open edit dialog
                             coroutineScope.launch {
-                                val link = calendarViewModel.getLinkByTaskId(task.id)
+                                val link = tasksViewModel.getLinkByTaskId(task.id)
                                 if (link != null) {
                                     selectedEditLink = link
                                 }
@@ -412,10 +412,10 @@ fun ContactDetailScreen(
 
     // Edit Task Dialog
     selectedEditLink?.let { link ->
-        com.example.questflow.presentation.screens.calendar.EditCalendarTaskDialog(
+        com.example.questflow.presentation.screens.tasks.EditCalendarTaskDialog(
             calendarLink = link,
             viewModel = todayViewModel,
-            calendarViewModel = calendarViewModel,
+            tasksViewModel = tasksViewModel,
             onDismiss = {
                 selectedEditLink = null
                 // Refresh the linked tasks

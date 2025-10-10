@@ -7,7 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.questflow.presentation.AppViewModel
-import com.example.questflow.presentation.screens.calendar.CalendarXpScreen
+import com.example.questflow.presentation.screens.tasks.TasksScreen
 import com.example.questflow.presentation.screens.collection.CollectionScreen
 import com.example.questflow.presentation.screens.collection.CollectionManageScreen
 import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementScreen
@@ -28,10 +28,10 @@ fun QuestFlowNavHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "calendar_xp"
+        startDestination = "tasks"
     ) {
-        composable("calendar_xp") {
-            CalendarXpScreen(
+        composable("tasks") {
+            TasksScreen(
                 appViewModel = appViewModel,
                 navController = navController,
                 deepLinkTaskId = deepLinkTaskId

@@ -1,4 +1,4 @@
-package com.example.questflow.presentation.screens.calendar
+package com.example.questflow.presentation.screens.tasks
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,7 +30,7 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 @HiltViewModel
-class CalendarXpViewModel @Inject constructor(
+class TasksViewModel @Inject constructor(
     private val calendarLinkRepository: CalendarLinkRepository,
     private val recordCalendarXpUseCase: RecordCalendarXpUseCase,
     private val calendarManager: CalendarManager,
@@ -119,7 +119,7 @@ class CalendarXpViewModel @Inject constructor(
             try {
                 checkExpiredEventsUseCase()
             } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Failed to check expired events", e)
+                android.util.Log.e("TasksViewModel", "Failed to check expired events", e)
             }
 
             calendarLinkRepository.getAllLinks().collect { allLinks ->
@@ -314,7 +314,7 @@ class CalendarXpViewModel @Inject constructor(
                 loadCalendarEvents()
                 loadCalendarLinks()
             } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Failed to create task: ${e.message}")
+                android.util.Log.e("TasksViewModel", "Failed to create task: ${e.message}")
             }
         }
     }
@@ -364,12 +364,12 @@ class CalendarXpViewModel @Inject constructor(
 
             when (val result = updateTaskWithCalendarUseCase(params)) {
                 is UpdateTaskWithCalendarUseCase.UpdateResult.Success -> {
-                    android.util.Log.d("CalendarXpViewModel", "Task updated successfully via UseCase")
+                    android.util.Log.d("TasksViewModel", "Task updated successfully via UseCase")
                     loadCalendarEvents()
                     loadCalendarLinks()
                 }
                 is UpdateTaskWithCalendarUseCase.UpdateResult.Error -> {
-                    android.util.Log.e("CalendarXpViewModel", "Update failed: ${result.message}", result.throwable)
+                    android.util.Log.e("TasksViewModel", "Update failed: ${result.message}", result.throwable)
                 }
             }
         }
@@ -386,21 +386,21 @@ class CalendarXpViewModel @Inject constructor(
     fun openTaskFromDeepLink(taskId: Long, onLinkFound: (CalendarEventLinkEntity?) -> Unit) {
         viewModelScope.launch {
             try {
-                android.util.Log.d("CalendarXpViewModel", "openTaskFromDeepLink: $taskId")
+                android.util.Log.d("TasksViewModel", "openTaskFromDeepLink: $taskId")
 
                 // First try to find calendar link
                 val link = _uiState.value.links.find { it.taskId == taskId }
                 if (link != null) {
-                    android.util.Log.d("CalendarXpViewModel", "Found calendar link")
+                    android.util.Log.d("TasksViewModel", "Found calendar link")
                     onLinkFound(link)
                     return@launch
                 }
 
                 // If no link, find task and create temp link
-                android.util.Log.d("CalendarXpViewModel", "No link, finding task...")
+                android.util.Log.d("TasksViewModel", "No link, finding task...")
                 val task = taskRepository.getTaskById(taskId)
                 if (task != null) {
-                    android.util.Log.d("CalendarXpViewModel", "Found task: ${task.title}")
+                    android.util.Log.d("TasksViewModel", "Found task: ${task.title}")
                     val tempLink = CalendarEventLinkEntity(
                         id = 0,
                         calendarEventId = task.calendarEventId ?: 0,
@@ -414,11 +414,11 @@ class CalendarXpViewModel @Inject constructor(
                     )
                     onLinkFound(tempLink)
                 } else {
-                    android.util.Log.w("CalendarXpViewModel", "Task not found")
+                    android.util.Log.w("TasksViewModel", "Task not found")
                     onLinkFound(null)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("CalendarXpViewModel", "Error in openTaskFromDeepLink", e)
+                android.util.Log.e("TasksViewModel", "Error in openTaskFromDeepLink", e)
                 onLinkFound(null)
             }
         }
@@ -462,7 +462,7 @@ class CalendarXpViewModel @Inject constructor(
                 null
             }
         } catch (e: Exception) {
-            android.util.Log.e("CalendarXpViewModel", "Error getting link by task ID", e)
+            android.util.Log.e("TasksViewModel", "Error getting link by task ID", e)
             null
         }
     }

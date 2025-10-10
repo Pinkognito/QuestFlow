@@ -20,7 +20,7 @@ import javax.inject.Singleton
  * - Konsistente Status-Verwaltung
  * - Deterministische Calendar-Operations (DELETE/CREATE/UPDATE/NONE)
  *
- * Ersetzt die duplizierten Update-Methoden in TodayViewModel und CalendarXpViewModel.
+ * Ersetzt die duplizierten Update-Methoden in TodayViewModel und TasksViewModel.
  */
 @Singleton
 class UpdateTaskWithCalendarUseCase @Inject constructor(

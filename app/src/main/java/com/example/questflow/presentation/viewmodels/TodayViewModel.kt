@@ -377,7 +377,7 @@ class TodayViewModel @Inject constructor(
         )
     }
 
-    // NOTE: updateCalendarTask removed - use CalendarXpViewModel.updateCalendarTask instead
+    // NOTE: updateCalendarTask removed - use TasksViewModel.updateCalendarTask instead
 
     fun toggleTaskCompletion(taskId: Long, isCompleted: Boolean) {
         viewModelScope.launch {

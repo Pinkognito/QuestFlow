@@ -1,4 +1,4 @@
-package com.example.questflow.presentation.screens.calendar
+package com.example.questflow.presentation.screens.tasks
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,10 +52,10 @@ import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarXpScreen(
+fun TasksScreen(
     appViewModel: AppViewModel,
     navController: NavController,
-    viewModel: CalendarXpViewModel = hiltViewModel(),
+    viewModel: TasksViewModel = hiltViewModel(),
     todayViewModel: TodayViewModel = hiltViewModel(),
     deepLinkTaskId: Long? = null
 ) {
@@ -90,14 +90,14 @@ fun CalendarXpScreen(
     // Handle deep link - open edit dialog for specific task
     LaunchedEffect(deepLinkTaskId) {
         deepLinkTaskId?.let { taskId ->
-            android.util.Log.d("CalendarXpScreen", "Deep link received for taskId: $taskId")
+            android.util.Log.d("TasksScreen", "Deep link received for taskId: $taskId")
             viewModel.openTaskFromDeepLink(taskId) { link ->
-                android.util.Log.d("CalendarXpScreen", "Callback received, link: ${link != null}")
+                android.util.Log.d("TasksScreen", "Callback received, link: ${link != null}")
                 if (link != null) {
-                    android.util.Log.d("CalendarXpScreen", "Setting selectedEditLink to: ${link.title}")
+                    android.util.Log.d("TasksScreen", "Setting selectedEditLink to: ${link.title}")
                     selectedEditLink = link
                 } else {
-                    android.util.Log.w("CalendarXpScreen", "No link returned from viewModel")
+                    android.util.Log.w("TasksScreen", "No link returned from viewModel")
                 }
             }
         }
@@ -217,7 +217,7 @@ fun CalendarXpScreen(
                             .clickable {
                                 // Allow editing for ALL tasks
                                 selectedEditLink = link
-                                android.util.Log.d("CalendarXpScreen", "Task clicked: ${link.title}, taskId: ${link.taskId}, status: ${link.status}, expired: $isExpired")
+                                android.util.Log.d("TasksScreen", "Task clicked: ${link.title}, taskId: ${link.taskId}, status: ${link.status}, expired: $isExpired")
                             },
                         colors = CardDefaults.cardColors(
                             containerColor = when {
@@ -400,7 +400,7 @@ fun CalendarXpScreen(
             EditCalendarTaskDialog(
                 calendarLink = link,
                 viewModel = todayViewModel,
-                calendarViewModel = viewModel,
+                tasksViewModel = viewModel,
                 onDismiss = {
                     selectedEditLink = null
                     viewModel.loadCalendarLinks()
@@ -418,11 +418,11 @@ fun CalendarXpScreen(
 fun EditCalendarTaskDialog(
     calendarLink: CalendarEventLinkEntity,
     viewModel: TodayViewModel,
-    calendarViewModel: CalendarXpViewModel,
+    tasksViewModel: TasksViewModel,
     onDismiss: () -> Unit,
     onNavigateToTask: (CalendarEventLinkEntity) -> Unit = {}
 ) {
-    val availableTasks by calendarViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
+    val availableTasks by tasksViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
     var taskTitle by remember { mutableStateOf(calendarLink.title) }
     var taskDescription by remember { mutableStateOf("") }
@@ -476,7 +476,7 @@ fun EditCalendarTaskDialog(
 
             // Load task-specific contact tags
             android.util.Log.d("TaskTags", "LOADING task-tags from DB for task $taskId...")
-            taskContactTagsMap = calendarViewModel.loadTaskContactTags(taskId)
+            taskContactTagsMap = tasksViewModel.loadTaskContactTags(taskId)
             android.util.Log.d("TaskTags", "LOADED task-tags from DB: $taskContactTagsMap")
         }
     }
@@ -525,7 +525,7 @@ fun EditCalendarTaskDialog(
     }
 
     // Task family section collapse state - persistent
-    val uiSettings by calendarViewModel.uiSettings.collectAsState()
+    val uiSettings by tasksViewModel.uiSettings.collectAsState()
 
     // Date and time state - using QuickDateTimePicker-friendly state
     var startDateTime by remember { mutableStateOf(calendarLink.startsAt) }
@@ -547,7 +547,7 @@ fun EditCalendarTaskDialog(
                     FilledTonalButton(
                         onClick = {
                             android.util.Log.d("QuickClaim", "Quick claim for linkId: ${calendarLink.id}")
-                            calendarViewModel.claimXp(calendarLink.id) {
+                            tasksViewModel.claimXp(calendarLink.id) {
                                 android.util.Log.d("QuickClaim", "Claim successful")
                                 onDismiss()
                             }
@@ -714,7 +714,7 @@ fun EditCalendarTaskDialog(
                                     {
                                         IconButton(onClick = {
                                             // Navigate to parent task
-                                            val parentLink = calendarViewModel.uiState.value.links.find { it.taskId == selectedParentTask?.id }
+                                            val parentLink = tasksViewModel.uiState.value.links.find { it.taskId == selectedParentTask?.id }
                                             if (parentLink != null) {
                                                 onDismiss()
                                                 onNavigateToTask(parentLink)
@@ -791,7 +791,7 @@ fun EditCalendarTaskDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            calendarViewModel.updateUISettings(
+                                            tasksViewModel.updateUISettings(
                                                 uiSettings.copy(taskFamilyExpanded = !uiSettings.taskFamilyExpanded)
                                             )
                                         }
@@ -826,7 +826,7 @@ fun EditCalendarTaskDialog(
                             if (uiSettings.taskFamilyExpanded) {
                                 // ALWAYS show parent task card
                                 item {
-                                    val parentLink = calendarViewModel.uiState.value.links.find { it.taskId == parentTask.id }
+                                    val parentLink = tasksViewModel.uiState.value.links.find { it.taskId == parentTask.id }
                                     val isCurrentTask = parentTask.id == currentTask?.id
 
                                     Card(
@@ -904,7 +904,7 @@ fun EditCalendarTaskDialog(
 
                                 items(allSubtasks.size) { index ->
                                     val subtask = allSubtasks[index]
-                                    val subtaskLink = calendarViewModel.uiState.value.links.find { it.taskId == subtask.id }
+                                    val subtaskLink = tasksViewModel.uiState.value.links.find { it.taskId == subtask.id }
                                     val isCurrentTask = subtask.id == currentTask?.id
 
                                     Card(
@@ -1164,12 +1164,12 @@ fun EditCalendarTaskDialog(
                                     }
                                     OutlinedButton(
                                         onClick = {
-                                            android.util.Log.d("CalendarXpScreen", "=== AKTIONEN BUTTON CLICKED ===")
-                                            android.util.Log.d("CalendarXpScreen", "selectedContactIds: $selectedContactIds")
-                                            android.util.Log.d("CalendarXpScreen", "taskId: ${calendarLink.taskId}")
-                                            android.util.Log.d("CalendarXpScreen", "Setting showActionDialog = true")
+                                            android.util.Log.d("TasksScreen", "=== AKTIONEN BUTTON CLICKED ===")
+                                            android.util.Log.d("TasksScreen", "selectedContactIds: $selectedContactIds")
+                                            android.util.Log.d("TasksScreen", "taskId: ${calendarLink.taskId}")
+                                            android.util.Log.d("TasksScreen", "Setting showActionDialog = true")
                                             showActionDialog = true
-                                            android.util.Log.d("CalendarXpScreen", "showActionDialog is now: $showActionDialog")
+                                            android.util.Log.d("TasksScreen", "showActionDialog is now: $showActionDialog")
                                         },
                                         enabled = selectedContactIds.isNotEmpty(),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -1202,7 +1202,7 @@ fun EditCalendarTaskDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            calendarViewModel.updateUISettings(
+                                            tasksViewModel.updateUISettings(
                                                 uiSettings.copy(taskContactListExpanded = !uiSettings.taskContactListExpanded)
                                             )
                                         }
@@ -1386,9 +1386,9 @@ fun EditCalendarTaskDialog(
                         val isReactivating = shouldReactivate &&
                             (calendarLink.rewarded || calendarLink.status == "CLAIMED")
 
-                        // UNIFIED: Always use calendarViewModel.updateCalendarTask()
+                        // UNIFIED: Always use tasksViewModel.updateCalendarTask()
                         // Works for both tasks (with taskId) and calendar-only events (taskId = null)
-                        calendarViewModel.updateCalendarTask(
+                        tasksViewModel.updateCalendarTask(
                             linkId = calendarLink.id,
                             taskId = calendarLink.taskId, // Can be null
                             title = taskTitle,
@@ -1411,7 +1411,7 @@ fun EditCalendarTaskDialog(
                         calendarLink.taskId?.let { taskId ->
                             viewModel.saveTaskContactLinks(taskId, selectedContactIds)
                             android.util.Log.d("TaskTags", "FINAL SAVE on dialog close - task $taskId: $taskContactTagsMap")
-                            calendarViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                            tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
                             android.util.Log.d("TaskTags", "FINAL SAVE completed")
                         }
 
@@ -1468,11 +1468,11 @@ fun EditCalendarTaskDialog(
     }
 
     // Action Dialog
-    android.util.Log.d("CalendarXpScreen", "ACTION DIALOG CHECK: showActionDialog=$showActionDialog, taskId=${calendarLink.taskId}")
+    android.util.Log.d("TasksScreen", "ACTION DIALOG CHECK: showActionDialog=$showActionDialog, taskId=${calendarLink.taskId}")
     if (showActionDialog && calendarLink.taskId != null) {
-        android.util.Log.d("CalendarXpScreen", "=== RENDERING TaskContactActionsDialog ===")
+        android.util.Log.d("TasksScreen", "=== RENDERING TaskContactActionsDialog ===")
         val taskLinkedContacts = availableContacts.filter { it.id in selectedContactIds }
-        android.util.Log.d("CalendarXpScreen", "taskLinkedContacts count: ${taskLinkedContacts.size}")
+        android.util.Log.d("TasksScreen", "taskLinkedContacts count: ${taskLinkedContacts.size}")
         val coroutineScope = rememberCoroutineScope()
 
         com.example.questflow.presentation.components.TaskContactActionsDialog(
@@ -1499,7 +1499,7 @@ fun EditCalendarTaskDialog(
                 calendarLink.taskId?.let { taskId ->
                     coroutineScope.launch {
                         android.util.Log.d("TaskTags", "Saving merged tags to DB for task $taskId: $taskContactTagsMap")
-                        calendarViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                        tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
                         android.util.Log.d("TaskTags", "Tags saved successfully")
                     }
                 }
