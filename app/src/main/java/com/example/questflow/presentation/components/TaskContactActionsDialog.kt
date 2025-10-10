@@ -7,14 +7,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.MetadataTagEntity
 
@@ -44,6 +48,7 @@ fun TaskContactActionsDialog(
     contactTags: Map<Long, List<MetadataTagEntity>>,
     availableTags: List<MetadataTagEntity>,
     taskContactTags: Map<Long, List<String>>,
+    allMedia: List<com.example.questflow.data.database.entity.MediaLibraryEntity> = emptyList(),
     textTemplates: List<com.example.questflow.data.database.entity.TextTemplateEntity> = emptyList(),
     actionExecutor: com.example.questflow.domain.action.ActionExecutor? = null,
     placeholderResolver: com.example.questflow.domain.placeholder.PlaceholderResolver? = null,
@@ -105,7 +110,16 @@ fun TaskContactActionsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kontakt-Aktionen") },
+        title = {
+            Column {
+                Text("Kontakt-Aktionen")
+                Text(
+                    "🔧 CLAUDE HAT HIER GEARBEITET 🔧",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -285,11 +299,59 @@ fun TaskContactActionsDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = contact.displayName,
-                                        style = MaterialTheme.typography.bodyLarge
+                                // Contact photo
+                                val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                    allMedia.find { it.id == mediaId }
+                                }
+
+                                if (photoMedia != null) {
+                                    AsyncImage(
+                                        model = java.io.File(photoMedia.filePath),
+                                        contentDescription = "Kontaktfoto",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
+                                } else if (contact.photoUri != null) {
+                                    AsyncImage(
+                                        model = android.net.Uri.parse(contact.photoUri),
+                                        contentDescription = "Kontaktfoto",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Emoji icon if present
+                                        contact.iconEmoji?.let { emoji ->
+                                            if (emoji.isNotBlank()) {
+                                                Text(
+                                                    text = emoji,
+                                                    style = MaterialTheme.typography.titleMedium
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = contact.displayName,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                    }
 
                                     // Globale Contact-Tags
                                     val globalTags = contactTags[contact.id] ?: emptyList()

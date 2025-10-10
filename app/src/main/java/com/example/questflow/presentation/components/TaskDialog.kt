@@ -1,5 +1,6 @@
 package com.example.questflow.presentation.components
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
@@ -20,11 +23,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import coil.compose.AsyncImage
 import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
@@ -126,6 +131,16 @@ fun TaskDialog(
 
     // Tag-Related State for Contact Selection
     val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = hiltViewModel()
+
+    // Media Library for contact photos
+    val mediaLibraryViewModel: com.example.questflow.presentation.screens.medialibrary.MediaLibraryViewModel = hiltViewModel()
+    val allMedia by mediaLibraryViewModel.getAllMedia().collectAsState(initial = emptyList())
+
+    // UI Preferences for collapsible contact list
+    val sharedPrefs = context.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE)
+    var isContactListExpanded by remember {
+        mutableStateOf(sharedPrefs.getBoolean("task_contact_list_expanded", true))
+    }
 
     // Lade nur verwendete CONTACT-Tags (die mindestens einem Kontakt zugewiesen sind)
     var usedContactTags by remember { mutableStateOf<List<com.example.questflow.data.database.entity.MetadataTagEntity>>(emptyList()) }
@@ -641,15 +656,16 @@ fun TaskDialog(
 
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                "Kontakte & Aktionen",
+                                "🔧 CLAUDE WAR HIER 🔧 Kontakte & Aktionen",
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
                             )
                             Text(
                                 if (selectedContactIds.isEmpty()) "Keine verknüpft"
-                                else "${selectedContactIds.size} verknüpft",
+                                else "🔧 ${selectedContactIds.size} verknüpft - CLAUDE TEST 🔧",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
 
@@ -693,6 +709,121 @@ fun TaskDialog(
                                         Text("Aktionen", style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
+                            }
+
+                            // Collapsible Contact List
+                            if (selectedContactIds.isNotEmpty()) {
+                                android.util.Log.d("TaskDialog", "=== COLLAPSIBLE CONTACT LIST ===")
+                                android.util.Log.d("TaskDialog", "selectedContactIds: $selectedContactIds")
+                                android.util.Log.d("TaskDialog", "availableContacts.size: ${availableContacts.size}")
+                                android.util.Log.d("TaskDialog", "isContactListExpanded: $isContactListExpanded")
+                                android.util.Log.d("TaskDialog", "allMedia.size: ${allMedia.size}")
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Expand/Collapse Header
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            android.util.Log.d("TaskDialog", "Collapse header clicked! Old state: $isContactListExpanded")
+                                            isContactListExpanded = !isContactListExpanded
+                                            android.util.Log.d("TaskDialog", "New state: $isContactListExpanded")
+                                            sharedPrefs.edit().putBoolean("task_contact_list_expanded", isContactListExpanded).apply()
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "Verknüpfte Kontakte",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Icon(
+                                        imageVector = if (isContactListExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = if (isContactListExpanded) "Einklappen" else "Ausklappen"
+                                    )
+                                }
+
+                                // Contact List
+                                if (isContactListExpanded) {
+                                    val linkedContacts = availableContacts.filter { it.id in selectedContactIds }
+                                    android.util.Log.d("TaskDialog", "linkedContacts.size: ${linkedContacts.size}")
+
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        linkedContacts.forEachIndexed { index, contact ->
+                                            android.util.Log.d("TaskDialog", "Rendering contact [$index]: ${contact.displayName}, photoMediaId=${contact.photoMediaId}, photoUri=${contact.photoUri}, iconEmoji=${contact.iconEmoji}")
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Photo from Media Library or fallback to photoUri
+                                                val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                                    allMedia.find { it.id == mediaId }
+                                                }
+                                                android.util.Log.d("TaskDialog", "  photoMedia: ${photoMedia?.id}, filePath=${photoMedia?.filePath}")
+
+                                                if (photoMedia != null) {
+                                                    AsyncImage(
+                                                        model = java.io.File(photoMedia.filePath),
+                                                        contentDescription = "Kontaktfoto",
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .clip(CircleShape),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                } else if (contact.photoUri != null) {
+                                                    // Fallback für alte photoUri
+                                                    AsyncImage(
+                                                        model = Uri.parse(contact.photoUri),
+                                                        contentDescription = "Kontaktfoto",
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .clip(CircleShape),
+                                                        contentScale = ContentScale.Crop
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Person,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(32.dp)
+                                                    )
+                                                }
+
+                                                // Emoji icon if present
+                                                contact.iconEmoji?.let { emoji ->
+                                                    if (emoji.isNotBlank()) {
+                                                        android.util.Log.d("TaskDialog", "  Rendering emoji: $emoji")
+                                                        Text(
+                                                            text = emoji,
+                                                            style = MaterialTheme.typography.titleMedium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Contact name
+                                                Text(
+                                                    text = contact.displayName,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    android.util.Log.d("TaskDialog", "Contact list is collapsed")
+                                }
+                            } else {
+                                android.util.Log.d("TaskDialog", "No selected contacts - list hidden")
                             }
                         }
                     }
@@ -967,6 +1098,7 @@ fun TaskDialog(
             contactTags = contactTagsMap,
             availableTags = usedContactTags,
             initialSelectedContactIds = selectedContactIds,
+            allMedia = allMedia,
             onDismiss = { showTaskContactsDialog = false },
             onConfirm = { newContactIds ->
                 selectedContactIds = newContactIds
@@ -984,6 +1116,7 @@ fun TaskDialog(
             contactTags = contactTagsMap,
             availableTags = usedContactTags,
             taskContactTags = taskContactTagsMap,
+            allMedia = allMedia,
             onDismiss = { showActionsDialog = false },
             onSaveTaskTags = { updatedTaskTags ->
                 taskContactTagsMap = updatedTaskTags

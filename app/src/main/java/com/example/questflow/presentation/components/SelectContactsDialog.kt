@@ -25,6 +25,7 @@ import com.example.questflow.data.database.entity.MetadataContactEntity
 fun SelectContactsDialog(
     contacts: List<MetadataContactEntity>,
     selectedContactIds: Set<Long>,
+    allMedia: List<com.example.questflow.data.database.entity.MediaLibraryEntity> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (Set<Long>) -> Unit
 ) {
@@ -96,7 +97,22 @@ fun SelectContactsDialog(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (contact.photoUri != null) {
+                                // Photo from Media Library or fallback to photoUri
+                                val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                    allMedia.find { it.id == mediaId }
+                                }
+
+                                if (photoMedia != null) {
+                                    AsyncImage(
+                                        model = java.io.File(photoMedia.filePath),
+                                        contentDescription = "Kontaktfoto",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else if (contact.photoUri != null) {
+                                    // Fallback für alte photoUri
                                     AsyncImage(
                                         model = Uri.parse(contact.photoUri),
                                         contentDescription = "Kontaktfoto",
@@ -115,11 +131,25 @@ fun SelectContactsDialog(
                                 }
 
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = contact.displayName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Emoji icon if present
+                                        contact.iconEmoji?.let { emoji ->
+                                            if (emoji.isNotBlank()) {
+                                                Text(
+                                                    text = emoji,
+                                                    style = MaterialTheme.typography.titleLarge
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = contact.displayName,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     contact.organization?.let {
                                         Text(
                                             text = it,

@@ -15,6 +15,7 @@ import javax.inject.Singleton
  */
 data class UISettings(
     val taskFamilyExpanded: Boolean = true,  // Task family section expanded/collapsed
+    val taskContactListExpanded: Boolean = true,  // Task contact list expanded/collapsed
     // Add more UI preferences here as needed
 ) {
     companion object {
@@ -33,6 +34,7 @@ class UIPreferences @Inject constructor(
 
     companion object {
         private const val KEY_TASK_FAMILY_EXPANDED = "task_family_expanded"
+        private const val KEY_TASK_CONTACT_LIST_EXPANDED = "task_contact_list_expanded"
     }
 
     private val _settings = MutableStateFlow(loadSettings())
@@ -41,13 +43,15 @@ class UIPreferences @Inject constructor(
 
     private fun loadSettings(): UISettings {
         return UISettings(
-            taskFamilyExpanded = prefs.getBoolean(KEY_TASK_FAMILY_EXPANDED, true)
+            taskFamilyExpanded = prefs.getBoolean(KEY_TASK_FAMILY_EXPANDED, true),
+            taskContactListExpanded = prefs.getBoolean(KEY_TASK_CONTACT_LIST_EXPANDED, true)
         )
     }
 
     fun updateSettings(settings: UISettings) {
         prefs.edit()
             .putBoolean(KEY_TASK_FAMILY_EXPANDED, settings.taskFamilyExpanded)
+            .putBoolean(KEY_TASK_CONTACT_LIST_EXPANDED, settings.taskContactListExpanded)
             .apply()
 
         _settings.value = settings
@@ -57,5 +61,11 @@ class UIPreferences @Inject constructor(
         get() = _settings.value.taskFamilyExpanded
         set(value) {
             updateSettings(_settings.value.copy(taskFamilyExpanded = value))
+        }
+
+    var taskContactListExpanded: Boolean
+        get() = _settings.value.taskContactListExpanded
+        set(value) {
+            updateSettings(_settings.value.copy(taskContactListExpanded = value))
         }
 }

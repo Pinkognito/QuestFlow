@@ -6,7 +6,8 @@ import androidx.room.PrimaryKey
 enum class MediaType {
     IMAGE,
     GIF,
-    AUDIO
+    AUDIO,
+    VIDEO
 }
 
 @Entity(tableName = "media_library")

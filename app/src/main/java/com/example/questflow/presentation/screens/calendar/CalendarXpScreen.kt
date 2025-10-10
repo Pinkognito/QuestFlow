@@ -439,6 +439,10 @@ fun EditCalendarTaskDialog(
     var showContactDialog by remember { mutableStateOf(false) }
     var showActionDialog by remember { mutableStateOf(false) }
 
+    // Media Library support for contact photos
+    val mediaLibraryViewModel: com.example.questflow.presentation.screens.medialibrary.MediaLibraryViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val allMedia by mediaLibraryViewModel.getAllMedia().collectAsState(initial = emptyList())
+
     // Fullscreen selection dialogs state
     var showCategorySelectionDialog by remember { mutableStateOf(false) }
     var showParentSelectionDialog by remember { mutableStateOf(false) }
@@ -1189,60 +1193,132 @@ fun EditCalendarTaskDialog(
                                 }
                             }
 
-                            // Show selected contacts with tags
+                            // Show selected contacts with tags - COLLAPSIBLE
                             if (selectedContactIds.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
+
+                                // Collapsible Header
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            calendarViewModel.updateUISettings(
+                                                uiSettings.copy(taskContactListExpanded = !uiSettings.taskContactListExpanded)
+                                            )
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
-                                        selectedContacts.forEach { contact ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Person,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        contact.displayName,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = FontWeight.Medium
-                                                    )
-                                                    // Show task-tags for this contact
-                                                    val contactTags = taskContactTagsMap[contact.id] ?: emptyList()
-                                                    if (contactTags.isNotEmpty()) {
+                                    Text(
+                                        "Verknüpfte Kontakte (${selectedContactIds.size})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Icon(
+                                        if (uiSettings.taskContactListExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = if (uiSettings.taskContactListExpanded) "Zuklappen" else "Aufklappen",
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                // Contact List - only show when expanded
+                                if (uiSettings.taskContactListExpanded) {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
+                                            selectedContacts.forEach { contact ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    // Photo from Media Library or fallback to photoUri
+                                                    val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                                        allMedia.find { media -> media.id == mediaId }
+                                                    }
+
+                                                    if (photoMedia != null) {
+                                                        coil.compose.AsyncImage(
+                                                            model = java.io.File(photoMedia.filePath),
+                                                            contentDescription = "Kontaktfoto",
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .clip(CircleShape),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    } else if (contact.photoUri != null) {
+                                                        // Fallback für alte photoUri
+                                                        coil.compose.AsyncImage(
+                                                            model = android.net.Uri.parse(contact.photoUri),
+                                                            contentDescription = "Kontaktfoto",
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .clip(CircleShape),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Person,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(32.dp)
+                                                        )
+                                                    }
+
+                                                    Column(modifier = Modifier.weight(1f)) {
                                                         Row(
-                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                            modifier = Modifier.padding(top = 2.dp)
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            contactTags.take(3).forEach { tag ->
-                                                                AssistChip(
-                                                                    onClick = { },
-                                                                    label = {
-                                                                        Text(
-                                                                            tag,
-                                                                            style = MaterialTheme.typography.labelSmall
-                                                                        )
-                                                                    },
-                                                                    modifier = Modifier.height(24.dp)
-                                                                )
+                                                            // Emoji icon if present
+                                                            contact.iconEmoji?.let { emoji ->
+                                                                if (emoji.isNotBlank()) {
+                                                                    Text(
+                                                                        text = emoji,
+                                                                        style = MaterialTheme.typography.titleMedium
+                                                                    )
+                                                                }
                                                             }
-                                                            if (contactTags.size > 3) {
-                                                                Text(
-                                                                    "+${contactTags.size - 3}",
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                                )
+                                                            Text(
+                                                                contact.displayName,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                        // Show task-tags for this contact
+                                                        val contactTags = taskContactTagsMap[contact.id] ?: emptyList()
+                                                        if (contactTags.isNotEmpty()) {
+                                                            Row(
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                modifier = Modifier.padding(top = 2.dp)
+                                                            ) {
+                                                                contactTags.take(3).forEach { tag ->
+                                                                    AssistChip(
+                                                                        onClick = { },
+                                                                        label = {
+                                                                            Text(
+                                                                                tag,
+                                                                                style = MaterialTheme.typography.labelSmall
+                                                                            )
+                                                                        },
+                                                                        modifier = Modifier.height(24.dp)
+                                                                    )
+                                                                }
+                                                                if (contactTags.size > 3) {
+                                                                    Text(
+                                                                        "+${contactTags.size - 3}",
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -1374,6 +1450,7 @@ fun EditCalendarTaskDialog(
             contactTags = contactTagsMap,
             availableTags = usedContactTags,
             initialSelectedContactIds = selectedContactIds,
+            allMedia = allMedia,  // Pass media library data
             onDismiss = { showContactDialog = false },
             onConfirm = { newContactIds ->
                 selectedContactIds = newContactIds

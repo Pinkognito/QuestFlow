@@ -66,6 +66,7 @@ class MediaLibraryViewModel @Inject constructor(
                     mimeType.startsWith("image/gif") -> MediaType.GIF
                     mimeType.startsWith("image/") -> MediaType.IMAGE
                     mimeType.startsWith("audio/") -> MediaType.AUDIO
+                    mimeType.startsWith("video/") -> MediaType.VIDEO
                     else -> mediaType // Fallback to provided type
                 }
 

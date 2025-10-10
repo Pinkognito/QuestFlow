@@ -193,6 +193,7 @@ fun TagEditDialog(
     var type by remember { mutableStateOf(tag?.type ?: TagType.GENERAL) }
     var color by remember { mutableStateOf(tag?.color ?: "#2196F3") }
     var description by remember { mutableStateOf(tag?.description ?: "") }
+    var showColorPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -238,12 +239,29 @@ fun TagEditDialog(
                     }
                 }
 
-                OutlinedTextField(
-                    value = color,
-                    onValueChange = { color = it },
-                    label = { Text("Farbe (Hex)") },
+                // Color Picker Button
+                OutlinedButton(
+                    onClick = { showColorPicker = true },
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = Color(android.graphics.Color.parseColor(color)),
+                                shape = MaterialTheme.shapes.small
+                            ) {}
+                        }
+                        Text("Farbe: $color")
+                    }
+                }
 
                 OutlinedTextField(
                     value = description,
@@ -268,4 +286,15 @@ fun TagEditDialog(
             }
         }
     )
+
+    // Color Picker Dialog
+    if (showColorPicker) {
+        com.example.questflow.presentation.components.ColorPickerDialog(
+            currentColor = color,
+            onColorSelected = { selectedColor ->
+                color = selectedColor
+            },
+            onDismiss = { showColorPicker = false }
+        )
+    }
 }

@@ -1,17 +1,24 @@
 package com.example.questflow.presentation.components
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.example.questflow.data.database.entity.MediaLibraryEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.MetadataTagEntity
 
@@ -22,6 +29,7 @@ import com.example.questflow.data.database.entity.MetadataTagEntity
  * @param contactTags Map: ContactId -> List<MetadataTagEntity>
  * @param availableTags Verfügbare CONTACT-Type Tags für Filter
  * @param initialSelectedContactIds Initial ausgewählte Kontakt-IDs
+ * @param allMedia List of all media library entities for contact photos
  * @param onDismiss Dialog schließen
  * @param onConfirm Bestätigung mit ausgewählten Kontakt-IDs
  */
@@ -32,6 +40,7 @@ fun TaskContactSelectionDialog(
     contactTags: Map<Long, List<MetadataTagEntity>>,
     availableTags: List<MetadataTagEntity>,
     initialSelectedContactIds: Set<Long>,
+    allMedia: List<MediaLibraryEntity> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (Set<Long>) -> Unit
 ) {
@@ -200,44 +209,92 @@ fun TaskContactSelectionDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = contact.displayName,
-                                            style = MaterialTheme.typography.bodyLarge
-                                        )
-                                        if (isManuallyOverridden) {
-                                            // Indikator für manuelle Override
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = "Manuell ausgewählt",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Photo from Media Library or fallback to photoUri
+                                    val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                        allMedia.find { it.id == mediaId }
                                     }
 
-                                    // Zeige Tags des Kontakts
-                                    val tags = contactTags[contact.id] ?: emptyList()
-                                    if (tags.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        LazyRow(
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    if (photoMedia != null) {
+                                        AsyncImage(
+                                            model = java.io.File(photoMedia.filePath),
+                                            contentDescription = "Kontaktfoto",
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else if (contact.photoUri != null) {
+                                        // Fallback für alte photoUri
+                                        AsyncImage(
+                                            model = Uri.parse(contact.photoUri),
+                                            contentDescription = "Kontaktfoto",
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            items(tags) { tag ->
-                                                AssistChip(
-                                                    onClick = { },
-                                                    label = {
-                                                        Text(
-                                                            tag.name,
-                                                            style = MaterialTheme.typography.labelSmall
-                                                        )
-                                                    },
-                                                    modifier = Modifier.height(24.dp)
+                                            // Emoji icon if present
+                                            contact.iconEmoji?.let { emoji ->
+                                                if (emoji.isNotBlank()) {
+                                                    Text(
+                                                        text = emoji,
+                                                        style = MaterialTheme.typography.titleLarge
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = contact.displayName,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            if (isManuallyOverridden) {
+                                                // Indikator für manuelle Override
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = "Manuell ausgewählt",
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
                                                 )
+                                            }
+                                        }
+
+                                        // Zeige Tags des Kontakts
+                                        val tags = contactTags[contact.id] ?: emptyList()
+                                        if (tags.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            LazyRow(
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                items(tags) { tag ->
+                                                    AssistChip(
+                                                        onClick = { },
+                                                        label = {
+                                                            Text(
+                                                                tag.name,
+                                                                style = MaterialTheme.typography.labelSmall
+                                                            )
+                                                        },
+                                                        modifier = Modifier.height(24.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }

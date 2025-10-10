@@ -929,6 +929,20 @@ fun MediaGridItem(
                     )
                 }
             }
+            MediaType.VIDEO -> {
+                // TODO: Add thumbnail support for videos
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = media.fileName,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
         }
 
         // Media type badge
@@ -944,6 +958,7 @@ fun MediaGridItem(
                     MediaType.IMAGE -> "IMG"
                     MediaType.GIF -> "GIF"
                     MediaType.AUDIO -> "AUD"
+                    MediaType.VIDEO -> "VID"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),

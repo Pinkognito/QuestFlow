@@ -30,7 +30,10 @@ data class MetadataContactEntity(
     val primaryEmail: String? = null,
 
     // Additional
+    @Deprecated("Use photoMediaId instead for streamed media")
     val photoUri: String? = null,
+    val photoMediaId: String? = null,     // Reference to MediaLibraryEntity for streamed photo
+    val iconEmoji: String? = null,        // Emoji/Text icon for calendar identification (e.g. 🐟 for Tom)
     val organization: String? = null,
     val jobTitle: String? = null,
     val note: String? = null

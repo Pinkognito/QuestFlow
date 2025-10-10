@@ -59,6 +59,13 @@ fun MediaViewerDialog(
                         onShowDetails = onShowDetails
                     )
                 }
+                MediaType.VIDEO -> {
+                    VideoPlayer(
+                        media = media,
+                        onDismiss = onDismiss,
+                        onShowDetails = onShowDetails
+                    )
+                }
             }
         }
     }

@@ -72,6 +72,7 @@ fun MediaDetailsDialog(
                                 com.example.questflow.data.database.entity.MediaType.IMAGE -> "Bild"
                                 com.example.questflow.data.database.entity.MediaType.GIF -> "GIF"
                                 com.example.questflow.data.database.entity.MediaType.AUDIO -> "Audio"
+                                com.example.questflow.data.database.entity.MediaType.VIDEO -> "Video"
                             })
                             DetailRow("Größe", formatFileSize(media.fileSize))
                             DetailRow("Hochgeladen", dateFormat.format(Date(media.uploadedAt)))

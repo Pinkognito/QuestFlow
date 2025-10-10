@@ -9,6 +9,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -86,25 +88,12 @@ fun ContactDetailScreen(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let {
-            // Take persistable URI permission to keep access after app restart
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    it,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("ContactDetailScreen", "Failed to take persistable permission", e)
-            }
-
-            contact?.let { c ->
-                viewModel.updateContact(c.copy(photoUri = it.toString()))
-            }
-        }
-    }
+    // Media Library for contact photos
+    var showPhotoMediaPicker by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val mediaLibraryViewModel: com.example.questflow.presentation.screens.medialibrary.MediaLibraryViewModel = hiltViewModel()
+    val mediaLibraryState by mediaLibraryViewModel.uiState.collectAsState()
+    val allMedia by mediaLibraryViewModel.getAllMedia().collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -146,7 +135,21 @@ fun ContactDetailScreen(
                 item {
                     ContactInfoCard(
                         contact = contact,
-                        onPhotoClick = { photoPickerLauncher.launch(arrayOf("image/*")) }
+                        photoMediaEntity = contact.photoMediaId?.let { mediaId ->
+                            allMedia.find { it.id == mediaId }
+                        },
+                        onPhotoClick = { showPhotoMediaPicker = true }
+                    )
+                }
+
+                // Emoji Icon Section
+                item {
+                    ContactEmojiIconCard(
+                        contact = contact,
+                        onIconClick = { showEmojiPicker = true },
+                        onRemoveIcon = {
+                            viewModel.updateContact(contact.copy(iconEmoji = null))
+                        }
                     )
                 }
 
@@ -420,11 +423,237 @@ fun ContactDetailScreen(
             }
         )
     }
+
+    // Media Library Picker for Photo
+    if (showPhotoMediaPicker) {
+        com.example.questflow.presentation.components.MediaLibraryPickerDialog(
+            mediaList = allMedia,
+            filterTypes = setOf(
+                com.example.questflow.data.database.entity.MediaType.IMAGE,
+                com.example.questflow.data.database.entity.MediaType.GIF
+            ),
+            selectedMediaId = contact?.photoMediaId,
+            onDismiss = { showPhotoMediaPicker = false },
+            onMediaSelected = { mediaId ->
+                contact?.let { c ->
+                    viewModel.updateContact(c.copy(photoMediaId = mediaId))
+                }
+                showPhotoMediaPicker = false
+            }
+        )
+    }
+
+    // Emoji Picker Dialog
+    if (showEmojiPicker && contact != null) {
+        EmojiPickerDialog(
+            currentEmoji = contact.iconEmoji ?: "",
+            onDismiss = { showEmojiPicker = false },
+            onEmojiSelected = { emoji ->
+                viewModel.updateContact(contact.copy(iconEmoji = emoji))
+                showEmojiPicker = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ContactEmojiIconCard(
+    contact: MetadataContactEntity,
+    onIconClick: () -> Unit,
+    onRemoveIcon: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Kontakt-Icon (Emoji/Text)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                if (!contact.iconEmoji.isNullOrBlank()) {
+                    IconButton(onClick = onRemoveIcon) {
+                        Icon(Icons.Default.Delete, "Icon entfernen", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            Text(
+                text = "Ein Emoji oder Text-Zeichen zur schnellen Identifikation im Kalender (z.B. 🐟 für Tom).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clickable(onClick = onIconClick),
+                    color = if (contact.iconEmoji.isNullOrBlank())
+                        MaterialTheme.colorScheme.secondaryContainer
+                    else
+                        MaterialTheme.colorScheme.primaryContainer,
+                    shape = CircleShape
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (contact.iconEmoji.isNullOrBlank()) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = "Icon auswählen",
+                                modifier = Modifier.size(32.dp),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        } else {
+                            Text(
+                                text = contact.iconEmoji!!,
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontSize = MaterialTheme.typography.headlineLarge.fontSize * 1.5
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onIconClick,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (contact.iconEmoji.isNullOrBlank()) "Icon auswählen" else "Icon ändern")
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmojiPickerDialog(
+    currentEmoji: String,
+    onDismiss: () -> Unit,
+    onEmojiSelected: (String) -> Unit
+) {
+    var customInput by remember { mutableStateOf(currentEmoji) }
+
+    // Häufig verwendete Emojis
+    val commonEmojis = listOf(
+        "🐟", "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨",
+        "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤",
+        "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛",
+        "🦋", "🐌", "🐞", "🐜", "🦗", "🕷️", "🦂", "🐢", "🐍", "🦎",
+        "🦖", "🦕", "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟",
+        "⭐", "🌟", "💫", "✨", "⚡", "🔥", "💧", "🌊", "❄️", "☀️",
+        "🌈", "🌸", "🌺", "🌻", "🌷", "🌹", "🌼", "🌱", "🍀", "🌿",
+        "🎵", "🎶", "🎨", "🎭", "🎪", "🎬", "🎮", "🎯", "🎲", "🎰",
+        "💡", "📱", "💻", "⌚", "📷", "🎥", "📺", "📻", "🎧", "📚",
+        "✏️", "📝", "🔧", "🔨", "⚒️", "🛠️", "⚙️", "🔒", "🔑", "🏆",
+        "🎁", "🎀", "🎈", "🎉", "🎊", "👑", "💎", "💰", "💸", "💵"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Icon/Emoji auswählen") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Custom Input
+                OutlinedTextField(
+                    value = customInput,
+                    onValueChange = {
+                        // Limit to 3 characters (emoji can be multi-char)
+                        if (it.length <= 3) customInput = it
+                    },
+                    label = { Text("Eigenes Emoji/Text") },
+                    placeholder = { Text("z.B. 🐟 oder TM") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                Text(
+                    "Häufige Emojis:",
+                    style = MaterialTheme.typography.labelLarge
+                )
+
+                // Emoji Grid
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(8),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(commonEmojis.size) { index ->
+                        val emoji = commonEmojis[index]
+                        Surface(
+                            onClick = {
+                                customInput = emoji
+                            },
+                            modifier = Modifier
+                                .aspectRatio(1f),
+                            color = if (customInput == emoji)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
+                                MaterialTheme.colorScheme.surface,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = emoji,
+                                    style = MaterialTheme.typography.headlineSmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onEmojiSelected(customInput.trim())
+                },
+                enabled = customInput.trim().isNotBlank()
+            ) {
+                Text("Übernehmen")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Abbrechen")
+            }
+        }
+    )
 }
 
 @Composable
 private fun ContactInfoCard(
     contact: MetadataContactEntity,
+    photoMediaEntity: com.example.questflow.data.database.entity.MediaLibraryEntity? = null,
     onPhotoClick: () -> Unit
 ) {
     Card(
@@ -447,7 +676,16 @@ private fun ContactInfoCard(
                     .clickable(onClick = onPhotoClick),
                 contentAlignment = Alignment.Center
             ) {
-                if (contact.photoUri != null) {
+                // Priorität: photoMediaId > photoUri (deprecated)
+                if (photoMediaEntity != null) {
+                    AsyncImage(
+                        model = java.io.File(photoMediaEntity.filePath),
+                        contentDescription = "Kontaktfoto",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (contact.photoUri != null) {
+                    // Fallback für alte photoUri
                     AsyncImage(
                         model = Uri.parse(contact.photoUri),
                         contentDescription = "Kontaktfoto",
