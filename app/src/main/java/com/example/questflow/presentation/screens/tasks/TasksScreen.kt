@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -38,6 +39,7 @@ import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import com.example.questflow.presentation.components.AddTaskDialog
+import com.example.questflow.presentation.components.RecurringConfig
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
@@ -424,6 +426,43 @@ fun EditCalendarTaskDialog(
 ) {
     val availableTasks by tasksViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
+
+    // Auto-Save Feature: Snapshot initial state for reset functionality
+    data class TaskSnapshot(
+        val title: String,
+        val description: String,
+        val xpPercentage: Int,
+        val categoryId: Long?,
+        val startDateTime: LocalDateTime,
+        val endDateTime: LocalDateTime,
+        val addToCalendar: Boolean,
+        val deleteOnClaim: Boolean,
+        val deleteOnExpiry: Boolean,
+        val isRecurring: Boolean,
+        val recurringConfig: RecurringConfig,
+        val parentTaskId: Long?,
+        val autoCompleteParent: Boolean
+    )
+
+    val initialSnapshot = remember {
+        val currentTask = availableTasks.find { it.id == calendarLink.taskId }
+        TaskSnapshot(
+            title = calendarLink.title,
+            description = "",
+            xpPercentage = calendarLink.xpPercentage,
+            categoryId = calendarLink.categoryId,
+            startDateTime = calendarLink.startsAt,
+            endDateTime = calendarLink.endsAt,
+            addToCalendar = calendarLink.calendarEventId != 0L || calendarLink.deleteOnClaim || calendarLink.deleteOnExpiry,
+            deleteOnClaim = calendarLink.deleteOnClaim,
+            deleteOnExpiry = calendarLink.deleteOnExpiry,
+            isRecurring = calendarLink.isRecurring,
+            recurringConfig = RecurringConfig(),
+            parentTaskId = currentTask?.parentTaskId,
+            autoCompleteParent = currentTask?.autoCompleteParent ?: false
+        )
+    }
+
     var taskTitle by remember { mutableStateOf(calendarLink.title) }
     var taskDescription by remember { mutableStateOf("") }
     var selectedPercentage by remember { mutableStateOf(calendarLink.xpPercentage) }
@@ -531,6 +570,15 @@ fun EditCalendarTaskDialog(
     var startDateTime by remember { mutableStateOf(calendarLink.startsAt) }
     var endDateTime by remember { mutableStateOf(calendarLink.endsAt) }
 
+    // DateTime Validation: End must be >= Start
+    LaunchedEffect(startDateTime, endDateTime) {
+        if (endDateTime < startDateTime) {
+            // Auto-correct: set end to start + 1 hour
+            endDateTime = startDateTime.plusHours(1)
+            android.util.Log.d("TaskDialog", "Auto-corrected endDateTime: end was before start")
+        }
+    }
+
     // Track whether task is claimable
     val isClaimable = !calendarLink.rewarded && calendarLink.status != "CLAIMED" && calendarLink.status != "EXPIRED"
 
@@ -544,7 +592,8 @@ fun EditCalendarTaskDialog(
             ) {
                 Text("Aufgabe bearbeiten")
                 if (isClaimable) {
-                    FilledTonalButton(
+                    // Match styling from Tasks list (line 313-330) - use Button instead of FilledTonalButton
+                    Button(
                         onClick = {
                             android.util.Log.d("QuickClaim", "Quick claim for linkId: ${calendarLink.id}")
                             tasksViewModel.claimXp(calendarLink.id) {
@@ -554,14 +603,51 @@ fun EditCalendarTaskDialog(
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = "Claim", modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Claimen", style = MaterialTheme.typography.labelMedium)
+                        Text("Claim XP", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
         },
         text = {
+            // Auto-Save: Save changes whenever any field changes
+            LaunchedEffect(
+                taskTitle, taskDescription, selectedPercentage, taskCategory,
+                startDateTime, endDateTime, addToCalendar, deleteOnClaim,
+                deleteOnExpiry, isRecurring, recurringConfig, selectedParentTask,
+                autoCompleteParent
+            ) {
+                // Debounce: wait 500ms before saving
+                kotlinx.coroutines.delay(500)
+
+                if (taskTitle.isNotBlank() && taskTitle != initialSnapshot.title ||
+                    selectedPercentage != initialSnapshot.xpPercentage ||
+                    taskCategory?.id != initialSnapshot.categoryId ||
+                    startDateTime != initialSnapshot.startDateTime ||
+                    endDateTime != initialSnapshot.endDateTime
+                ) {
+                    android.util.Log.d("TaskDialog-AutoSave", "Auto-saving changes...")
+
+                    tasksViewModel.updateCalendarTask(
+                        linkId = calendarLink.id,
+                        taskId = calendarLink.taskId,
+                        title = taskTitle,
+                        description = taskDescription,
+                        xpPercentage = selectedPercentage,
+                        startDateTime = startDateTime,
+                        endDateTime = endDateTime,
+                        categoryId = taskCategory?.id,
+                        shouldReactivate = shouldReactivate && (calendarLink.rewarded || calendarLink.status == "CLAIMED"),
+                        addToCalendar = addToCalendar,
+                        deleteOnClaim = deleteOnClaim,
+                        deleteOnExpiry = deleteOnExpiry,
+                        isRecurring = isRecurring,
+                        recurringConfig = if (isRecurring) recurringConfig else null,
+                        parentTaskId = selectedParentTask?.id,
+                        autoCompleteParent = autoCompleteParent
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -702,7 +788,29 @@ fun EditCalendarTaskDialog(
                     // Parent Task Selection (Subtask) - only if we have a task
                     if (availableTasks.isNotEmpty() && calendarLink.taskId != null) {
                         item {
-                            Text("Übergeordneter Task (optional):", style = MaterialTheme.typography.labelMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Übergeordneter Task (optional):", style = MaterialTheme.typography.labelMedium)
+                                // + Button to create new sub-task with current task as parent
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        // TODO: Create new task with current task as parent
+                                        android.util.Log.d("SubTask", "Creating new sub-task with parent: ${calendarLink.taskId}")
+                                        // For now, just show parent selection
+                                        showParentSelectionDialog = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Sub-Task erstellen",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
 
                         item {
@@ -1375,56 +1483,107 @@ fun EditCalendarTaskDialog(
                             }
                         }
                     }
+
+                    // Delete Task Button
+                    if (calendarLink.taskId != null) {
+                        item {
+                            Divider(modifier = Modifier.padding(vertical = 16.dp))
+                        }
+
+                        item {
+                            var showDeleteDialog by remember { mutableStateOf(false) }
+
+                            OutlinedButton(
+                                onClick = { showDeleteDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Löschen",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Task löschen")
+                            }
+
+                            // Confirmation Dialog
+                            if (showDeleteDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showDeleteDialog = false },
+                                    title = { Text("Task löschen?") },
+                                    text = {
+                                        Text("Möchtest du \"$taskTitle\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.")
+                                    },
+                                    confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                // TODO: Implement task deletion in ViewModel
+                                                android.util.Log.d("TaskDelete", "Deleting task: ${calendarLink.taskId}")
+                                                showDeleteDialog = false
+                                                onDismiss()
+                                            },
+                                            colors = ButtonDefaults.textButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.error
+                                            )
+                                        ) {
+                                            Text("Löschen")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showDeleteDialog = false }) {
+                                            Text("Abbrechen")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    if (taskTitle.isNotBlank()) {
-                        // Check if we need to reactivate the task (only for claimed tasks)
-                        val isReactivating = shouldReactivate &&
-                            (calendarLink.rewarded || calendarLink.status == "CLAIMED")
-
-                        // UNIFIED: Always use tasksViewModel.updateCalendarTask()
-                        // Works for both tasks (with taskId) and calendar-only events (taskId = null)
-                        tasksViewModel.updateCalendarTask(
-                            linkId = calendarLink.id,
-                            taskId = calendarLink.taskId, // Can be null
-                            title = taskTitle,
-                            description = taskDescription,
-                            xpPercentage = selectedPercentage,
-                            startDateTime = startDateTime,
-                            endDateTime = endDateTime,
-                            categoryId = taskCategory?.id,
-                            shouldReactivate = isReactivating,
-                            addToCalendar = addToCalendar, // User's calendar integration checkbox
-                            deleteOnClaim = deleteOnClaim,
-                            deleteOnExpiry = deleteOnExpiry,
-                            isRecurring = isRecurring,
-                            recurringConfig = if (isRecurring) recurringConfig else null,
-                            parentTaskId = selectedParentTask?.id,
-                            autoCompleteParent = autoCompleteParent
-                        )
-
-                        // Update contact links and task-tags if task has an ID
-                        calendarLink.taskId?.let { taskId ->
-                            viewModel.saveTaskContactLinks(taskId, selectedContactIds)
-                            android.util.Log.d("TaskTags", "FINAL SAVE on dialog close - task $taskId: $taskContactTagsMap")
-                            tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
-                            android.util.Log.d("TaskTags", "FINAL SAVE completed")
-                        }
-
-                        onDismiss()
-                    }
+            // Changed from "Speichern" to "Schließen" since auto-save is active
+            TextButton(onClick = {
+                // Update contact links and task-tags if task has an ID
+                calendarLink.taskId?.let { taskId ->
+                    viewModel.saveTaskContactLinks(taskId, selectedContactIds)
+                    android.util.Log.d("TaskTags", "FINAL SAVE on dialog close - task $taskId: $taskContactTagsMap")
+                    tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                    android.util.Log.d("TaskTags", "FINAL SAVE completed")
                 }
-            ) {
-                Text("Speichern")
+                onDismiss()
+            }) {
+                Text("Schließen")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Abbrechen")
+            // Changed from "Abbrechen" to "Zurücksetzen" to restore initial state
+            TextButton(
+                onClick = {
+                    android.util.Log.d("TaskDialog-Reset", "Resetting all fields to initial state")
+                    taskTitle = initialSnapshot.title
+                    taskDescription = initialSnapshot.description
+                    selectedPercentage = initialSnapshot.xpPercentage
+                    taskCategory = categories.find { it.id == initialSnapshot.categoryId }
+                    startDateTime = initialSnapshot.startDateTime
+                    endDateTime = initialSnapshot.endDateTime
+                    addToCalendar = initialSnapshot.addToCalendar
+                    deleteOnClaim = initialSnapshot.deleteOnClaim
+                    deleteOnExpiry = initialSnapshot.deleteOnExpiry
+                    isRecurring = initialSnapshot.isRecurring
+                    recurringConfig = initialSnapshot.recurringConfig
+                    selectedParentTask = availableTasks.find { it.id == initialSnapshot.parentTaskId }
+                    autoCompleteParent = initialSnapshot.autoCompleteParent
+                },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("Zurücksetzen")
             }
         }
     )
