@@ -16,6 +16,7 @@ data class TextTemplateEntity(
     val title: String,                      // "Meeting-Einladung", "Status-Update"
     val content: String,                    // Template-Text mit Platzhaltern
     val description: String? = null,        // Optional: Was macht dieser Baustein?
+    val subject: String? = null,            // Optional: Betreff für E-Mails/Termine
 
     val usageCount: Int = 0,                // Wie oft wurde er verwendet?
     val lastUsedAt: LocalDateTime? = null,  // Wann zuletzt verwendet?

@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -257,10 +258,12 @@ fun TextTemplateEditorDialog(
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf(template?.title ?: "") }
-    var content by remember { mutableStateOf(template?.content ?: "") }
+    var subject by remember { mutableStateOf(template?.subject ?: "") }
+    var contentField by remember { mutableStateOf(TextFieldValue(template?.content ?: "")) }
     var description by remember { mutableStateOf(template?.description ?: "") }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by remember { mutableStateOf("") }
+    var showPlaceholderDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(template) {
         if (template != null) {
@@ -285,6 +288,14 @@ fun TextTemplateEditorDialog(
                 }
                 item {
                     OutlinedTextField(
+                        value = subject,
+                        onValueChange = { subject = it },
+                        label = { Text("Betreff (optional, für E-Mails/Termine)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                item {
+                    OutlinedTextField(
                         value = description,
                         onValueChange = { description = it },
                         label = { Text("Beschreibung (optional)") },
@@ -293,17 +304,30 @@ fun TextTemplateEditorDialog(
                 }
                 item {
                     OutlinedTextField(
-                        value = content,
-                        onValueChange = { content = it },
+                        value = contentField,
+                        onValueChange = { contentField = it },
                         label = { Text("Text") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 120.dp),
-                        maxLines = 8
+                        maxLines = 8,
+                        trailingIcon = {
+                            IconButton(onClick = { showPlaceholderDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Platzhalter einfügen",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     )
                 }
                 item {
-                    Text("Platzhalter: {kontakt.name}, {task.title}, {standort.plz}, {datum.heute}", style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        "Tipp: Drücke '+' um Platzhalter einzufügen",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 item {
                     Row(
@@ -345,15 +369,23 @@ fun TextTemplateEditorDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val content = contentField.text
                     if (title.isNotBlank() && content.isNotBlank()) {
                         if (template == null) {
-                            viewModel.createTemplate(title, content, description.ifBlank { null }, tags)
+                            viewModel.createTemplate(
+                                title = title,
+                                content = content,
+                                description = description.ifBlank { null },
+                                subject = subject.ifBlank { null },
+                                tags = tags
+                            )
                         } else {
                             viewModel.updateTemplate(
                                 template.copy(
                                     title = title,
                                     content = content,
-                                    description = description.ifBlank { null }
+                                    description = description.ifBlank { null },
+                                    subject = subject.ifBlank { null }
                                 ),
                                 tags
                             )
@@ -361,7 +393,7 @@ fun TextTemplateEditorDialog(
                         onDismiss()
                     }
                 },
-                enabled = title.isNotBlank() && content.isNotBlank()
+                enabled = title.isNotBlank() && contentField.text.isNotBlank()
             ) {
                 Text("Speichern")
             }
@@ -372,4 +404,26 @@ fun TextTemplateEditorDialog(
             }
         }
     )
+
+    // Platzhalter-Auswahl Dialog
+    if (showPlaceholderDialog) {
+        com.example.questflow.presentation.components.PlaceholderSelectorDialog(
+            onDismiss = { showPlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                // Füge Platzhalter an Cursor-Position ein
+                val currentText = contentField.text
+                val selection = contentField.selection
+                val newText = currentText.substring(0, selection.start) +
+                              placeholder +
+                              currentText.substring(selection.end)
+
+                contentField = TextFieldValue(
+                    text = newText,
+                    selection = androidx.compose.ui.text.TextRange(
+                        selection.start + placeholder.length
+                    )
+                )
+            }
+        )
+    }
 }

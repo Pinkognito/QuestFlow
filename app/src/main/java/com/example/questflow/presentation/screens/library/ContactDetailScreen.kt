@@ -1,9 +1,11 @@
 package com.example.questflow.presentation.screens.library
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -82,11 +84,22 @@ fun ContactDetailScreen(
 
     // Coroutine scope for async operations
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
+            // Take persistable URI permission to keep access after app restart
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ContactDetailScreen", "Failed to take persistable permission", e)
+            }
+
             contact?.let { c ->
                 viewModel.updateContact(c.copy(photoUri = it.toString()))
             }
@@ -133,7 +146,7 @@ fun ContactDetailScreen(
                 item {
                     ContactInfoCard(
                         contact = contact,
-                        onPhotoClick = { photoPickerLauncher.launch("image/*") }
+                        onPhotoClick = { photoPickerLauncher.launch(arrayOf("image/*")) }
                     )
                 }
 

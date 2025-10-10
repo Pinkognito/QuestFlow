@@ -170,7 +170,7 @@ fun ActionDialog(
                     }
 
                     // Template Selection
-                    if (selectedAction in listOf(ActionType.WHATSAPP, ActionType.SMS, ActionType.EMAIL)) {
+                    if (selectedAction in listOf(ActionType.WHATSAPP, ActionType.SMS, ActionType.EMAIL, ActionType.MEETING)) {
                         item {
                             var expanded by remember { mutableStateOf(false) }
                             ExposedDropdownMenuBox(
@@ -194,6 +194,8 @@ fun ActionDialog(
                                         onClick = {
                                             selectedTemplate = null
                                             messageText = ""
+                                            emailSubject = ""
+                                            meetingTitle = ""
                                             expanded = false
                                         }
                                     )
@@ -203,6 +205,14 @@ fun ActionDialog(
                                             onClick = {
                                                 selectedTemplate = template
                                                 messageText = template.content
+                                                // Übernehme Betreff wenn vorhanden
+                                                if (template.subject != null) {
+                                                    when (selectedAction) {
+                                                        ActionType.EMAIL -> emailSubject = template.subject
+                                                        ActionType.MEETING -> meetingTitle = template.subject
+                                                        else -> {}
+                                                    }
+                                                }
                                                 expanded = false
                                             }
                                         )
