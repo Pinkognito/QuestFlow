@@ -28,7 +28,8 @@ import com.example.questflow.presentation.viewmodels.TodayViewModel
 fun AddTaskDialog(
     viewModel: TodayViewModel,
     onDismiss: () -> Unit,
-    isCalendarMode: Boolean = false  // Add parameter to distinguish context
+    isCalendarMode: Boolean = false,  // Add parameter to distinguish context
+    preSelectedParentId: Long? = null  // Pre-select parent task (for sub-task creation)
 ) {
     val context = LocalContext.current
     var taskTitle by remember { mutableStateOf("") }
@@ -45,7 +46,15 @@ fun AddTaskDialog(
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val availableTasks by viewModel.uiState.collectAsState()
     var taskCategory by remember(selectedCategory) { mutableStateOf(selectedCategory) }
-    var selectedParentTask by remember { mutableStateOf<com.example.questflow.domain.model.Task?>(null) }
+
+    // Pre-select parent task if provided
+    var selectedParentTask by remember(preSelectedParentId) {
+        mutableStateOf(
+            preSelectedParentId?.let { parentId ->
+                availableTasks.tasks.find { it.id == parentId }
+            }
+        )
+    }
     var autoCompleteParent by remember { mutableStateOf(false) }
 
     // Contact selection state
