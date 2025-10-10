@@ -3,7 +3,9 @@ package com.example.questflow.presentation.screens.tasks
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -52,7 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TasksScreen(
     appViewModel: AppViewModel,
@@ -73,6 +75,12 @@ fun TasksScreen(
     var selectedEditLink by remember { mutableStateOf<CalendarEventLinkEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var includeSubtasks by remember { mutableStateOf(false) }
+
+    // Multi-Select State
+    var multiSelectMode by remember { mutableStateOf(false) }
+    var selectedTaskLinks by remember { mutableStateOf<Set<CalendarEventLinkEntity>>(emptySet()) }
+    var showBatchEditDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
@@ -105,62 +113,124 @@ fun TasksScreen(
         }
     }
 
+    // Filter links based on search query - calculated before Scaffold for TopBar access
+    val filteredLinks = if (searchQuery.isEmpty()) {
+        uiState.links
+    } else {
+        uiState.links.filter { link ->
+            // Search in title
+            link.title.contains(searchQuery, ignoreCase = true) ||
+            // Search in category name
+            (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { showAddTaskDialog = true }
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Task")
+                if (multiSelectMode) {
+                    // Multi-Select: Two action buttons
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        // Delete button
+                        FloatingActionButton(
+                            onClick = { showBatchDeleteDialog = true },
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Löschen")
+                        }
+
+                        // Edit button with count
+                        ExtendedFloatingActionButton(
+                            onClick = { showBatchEditDialog = true },
+                            text = { Text("${selectedTaskLinks.size} bearbeiten") },
+                            icon = { Icon(Icons.Default.Edit, contentDescription = "Bearbeiten") }
+                        )
+                    }
+                } else {
+                    // Normal FAB: Add new task
+                    FloatingActionButton(
+                        onClick = { showAddTaskDialog = true }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Task")
+                    }
                 }
             },
             topBar = {
-                QuestFlowTopBar(
-                    title = "Tasks",
-                    selectedCategory = selectedCategory,
-                    categories = categories,
-                    onCategorySelected = appViewModel::selectCategory,
-                    onManageCategoriesClick = {
-                        navController.navigate("categories")
-                    },
-                    level = globalStats?.level ?: 1,
-                    totalXp = globalStats?.xp ?: 0,
-                    previousXp = previousXp,
-                    actions = {
-                        IconButton(onClick = { viewModel.toggleFilterDialog() }) {
-                            Badge(
-                                containerColor = if (filterSettings.isActive())
-                                    MaterialTheme.colorScheme.tertiary
-                                else
-                                    MaterialTheme.colorScheme.surface
-                            ) {
+                if (multiSelectMode) {
+                    // Multi-Select TopBar
+                    TopAppBar(
+                        title = { Text("${selectedTaskLinks.size} ausgewählt") },
+                        navigationIcon = {
+                            IconButton(onClick = {
+                                multiSelectMode = false
+                                selectedTaskLinks = emptySet()
+                            }) {
+                                Icon(Icons.Default.Close, contentDescription = "Exit Multi-Select")
+                            }
+                        },
+                        actions = {
+                            // Select All button
+                            IconButton(onClick = {
+                                selectedTaskLinks = if (selectedTaskLinks.size == filteredLinks.size) {
+                                    emptySet()
+                                } else {
+                                    filteredLinks.toSet()
+                                }
+                            }) {
                                 Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Filter",
-                                    modifier = Modifier.size(24.dp),
-                                    tint = if (filterSettings.isActive())
-                                        MaterialTheme.colorScheme.onTertiary
+                                    if (selectedTaskLinks.size == filteredLinks.size)
+                                        Icons.Default.Clear
                                     else
-                                        MaterialTheme.colorScheme.onSurface
+                                        Icons.Default.CheckCircle,
+                                    contentDescription = if (selectedTaskLinks.size == filteredLinks.size)
+                                        "Deselect All"
+                                    else
+                                        "Select All"
                                 )
                             }
                         }
-                    }
-                )
-            }
-        ) { paddingValues ->
-            // Filter links based on search query
-            val filteredLinks = if (searchQuery.isEmpty()) {
-                uiState.links
-            } else {
-                uiState.links.filter { link ->
-                    // Search in title
-                    link.title.contains(searchQuery, ignoreCase = true) ||
-                    // Search in category name
-                    (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+                    )
+                } else {
+                    // Normal TopBar
+                    QuestFlowTopBar(
+                        title = "Tasks",
+                        selectedCategory = selectedCategory,
+                        categories = categories,
+                        onCategorySelected = appViewModel::selectCategory,
+                        onManageCategoriesClick = {
+                            navController.navigate("categories")
+                        },
+                        level = globalStats?.level ?: 1,
+                        totalXp = globalStats?.xp ?: 0,
+                        previousXp = previousXp,
+                        actions = {
+                            IconButton(onClick = { viewModel.toggleFilterDialog() }) {
+                                Badge(
+                                    containerColor = if (filterSettings.isActive())
+                                        MaterialTheme.colorScheme.tertiary
+                                    else
+                                        MaterialTheme.colorScheme.surface
+                                ) {
+                                    Icon(
+                                        Icons.Default.Settings,
+                                        contentDescription = "Filter",
+                                        modifier = Modifier.size(24.dp),
+                                        tint = if (filterSettings.isActive())
+                                            MaterialTheme.colorScheme.onTertiary
+                                        else
+                                            MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    )
                 }
             }
-
+        ) { paddingValues ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -213,76 +283,171 @@ fun TasksScreen(
                         availableTasks.find { it.id == taskData?.parentTaskId }
                     } else null
 
+                    // Track if this task is selected in multi-select mode
+                    val isSelected = selectedTaskLinks.contains(link)
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                // Allow editing for ALL tasks
-                                selectedEditLink = link
-                                android.util.Log.d("TasksScreen", "Task clicked: ${link.title}, taskId: ${link.taskId}, status: ${link.status}, expired: $isExpired")
-                            },
+                            .combinedClickable(
+                                onClick = {
+                                    if (multiSelectMode) {
+                                        // Toggle selection
+                                        selectedTaskLinks = if (isSelected) {
+                                            selectedTaskLinks - link
+                                        } else {
+                                            selectedTaskLinks + link
+                                        }
+                                    } else {
+                                        // Normal: Open task for editing
+                                        selectedEditLink = link
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!multiSelectMode) {
+                                        // Enter multi-select mode and select this task
+                                        multiSelectMode = true
+                                        selectedTaskLinks = setOf(link)
+                                    }
+                                }
+                            ),
                         colors = CardDefaults.cardColors(
                             containerColor = when {
+                                isSelected -> MaterialTheme.colorScheme.primaryContainer
                                 isClaimed -> MaterialTheme.colorScheme.surfaceVariant
                                 isExpired -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
                                 else -> MaterialTheme.colorScheme.surface
                             }
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = if (isSelected) 4.dp else 1.dp
                         )
                     ) {
-                        ListItem(
-                            headlineContent = {
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        // Modern Card Layout with Golden Ratio proportions
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp), // Primary padding (golden ratio base)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp), // Secondary padding (16/1.618)
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Leading: Checkbox in multi-select mode
+                            if (multiSelectMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = null,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+
+                            // Content: Main task information (takes remaining space)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(6.dp) // Tertiary padding (10/1.618)
+                            ) {
+                                // Title Row with badges - 62% visual weight
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Build title with path and icons
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        // Show full path for subtasks: "ParentName / SubtaskName"
+                                        // Parent path (if subtask)
                                         if (isSubtask && parentTask != null) {
                                             Text(
-                                                "${parentTask.title} / ",
-                                                fontWeight = FontWeight.Normal,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                text = "${parentTask.title} /",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
                                         }
 
-                                        // Visual indicator for parent/subtask
-                                        if (isParentTask) {
-                                            Text("📁 ", style = MaterialTheme.typography.bodyLarge)
+                                        // Task title with icon
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (isParentTask) {
+                                                Text(
+                                                    "📁",
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                            Text(
+                                                text = link.title,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isExpired && !isClaimed)
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                else
+                                                    MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 2,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
                                         }
+                                    }
 
-                                        Text(
-                                            link.title,
-                                            fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isExpired && !isClaimed)
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                            else
-                                                MaterialTheme.colorScheme.onSurface
-                                        )
+                                    // Badges Column (right aligned)
+                                    Column(
+                                        horizontalAlignment = Alignment.End,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
                                         if (isExpired && !isClaimed) {
                                             Badge(
-                                                containerColor = MaterialTheme.colorScheme.error
+                                                containerColor = MaterialTheme.colorScheme.error,
+                                                contentColor = MaterialTheme.colorScheme.onError
                                             ) {
-                                                Text("Abgelaufen", fontSize = 10.sp)
+                                                Text(
+                                                    "Abgelaufen",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
                                             }
                                         }
                                         if (isParentTask) {
                                             val subtaskCount = availableTasks.count { it.parentTaskId == taskData?.id }
                                             Badge(
-                                                containerColor = MaterialTheme.colorScheme.primary
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
                                             ) {
-                                                Text("$subtaskCount", fontSize = 10.sp)
+                                                Text(
+                                                    "$subtaskCount",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
                                             }
                                         }
                                     }
                                 }
-                            },
-                            supportingContent = {
-                                Column {
+
+                                // Metadata Row - 38% visual weight
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Start date
                                     Text(
-                                        "Starts: ${link.startsAt.format(dateFormatter)}",
-                                        style = MaterialTheme.typography.bodySmall
+                                        text = link.startsAt.format(dateFormatter),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
                                     )
+
+                                    // Separator
+                                    Text(
+                                        "•",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // Difficulty
                                     val difficultyText = when (link.xpPercentage) {
                                         20 -> "Trivial"
                                         40 -> "Einfach"
@@ -292,47 +457,51 @@ fun TasksScreen(
                                         else -> "Mittel"
                                     }
                                     Text(
-                                        "Schwierigkeit: $difficultyText",
+                                        text = difficultyText,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = if (isExpired && !isClaimed)
-                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                         else
-                                            MaterialTheme.colorScheme.primary
+                                            MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1
                                     )
-                                }
-                            },
-                            trailingContent = {
-                                // Check if XP has been claimed (rewarded flag)
-                                if (link.rewarded || link.status == "CLAIMED") {
-                                    Text(
-                                        "Erhalten",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                } else {
-                                    // Show claim button for all unclaimed tasks (including expired)
-                                    val isExpired = link.endsAt < java.time.LocalDateTime.now()
-                                    Button(
-                                        onClick = {
-                                            viewModel.claimXp(link.id) {
-                                                // Refresh stats after claiming
-                                                appViewModel.refreshStats()
-                                            }
-                                        },
-                                        colors = if (isExpired) {
-                                            ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                            )
-                                        } else {
-                                            ButtonDefaults.buttonColors()
-                                        }
-                                    ) {
-                                        Text(if (isExpired) "Claim (Verspätet)" else "Claim XP")
-                                    }
                                 }
                             }
-                        )
+
+                            // Trailing: Claim button or status
+                            if (link.rewarded || link.status == "CLAIMED") {
+                                Text(
+                                    "✓",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            } else {
+                                Button(
+                                    onClick = {
+                                        viewModel.claimXp(link.id) {
+                                            appViewModel.refreshStats()
+                                        }
+                                    },
+                                    colors = if (isExpired) {
+                                        ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            contentColor = MaterialTheme.colorScheme.onError
+                                        )
+                                    } else {
+                                        ButtonDefaults.buttonColors()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.heightIn(min = 36.dp)
+                                ) {
+                                    Text(
+                                        if (isExpired) "Claim" else "Claim",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -413,6 +582,76 @@ fun TasksScreen(
             )
         }
     }
+
+    // Batch Delete Dialog with confirmation
+    if (showBatchDeleteDialog && selectedTaskLinks.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteDialog = false },
+            title = { Text("${selectedTaskLinks.size} Tasks löschen?") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Möchtest du wirklich ${selectedTaskLinks.size} Tasks löschen?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "Diese Aktion kann nicht rückgängig gemacht werden.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // Delete all selected tasks
+                        selectedTaskLinks.forEach { link ->
+                            link.taskId?.let { taskId ->
+                                // TODO: Implement actual delete in ViewModel
+                                android.util.Log.d("BatchDelete", "Deleting task: $taskId")
+                            }
+                        }
+
+                        // Exit multi-select mode and refresh
+                        multiSelectMode = false
+                        selectedTaskLinks = emptySet()
+                        showBatchDeleteDialog = false
+                        viewModel.loadCalendarLinks()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Batch Edit Dialog - Opens the normal edit dialog with multiple tasks
+    if (showBatchEditDialog && selectedTaskLinks.isNotEmpty()) {
+        // Use the normal EditCalendarTaskDialog but in multi-edit mode
+        EditCalendarTaskDialog(
+            calendarLink = selectedTaskLinks.first(), // Use first as reference
+            viewModel = todayViewModel,
+            tasksViewModel = viewModel,
+            onDismiss = {
+                showBatchEditDialog = false
+                multiSelectMode = false
+                selectedTaskLinks = emptySet()
+                viewModel.loadCalendarLinks()
+            },
+            onNavigateToTask = { }, // Disabled in batch mode
+            batchEditLinks = selectedTaskLinks.toList() // Pass all selected tasks
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -422,10 +661,15 @@ fun EditCalendarTaskDialog(
     viewModel: TodayViewModel,
     tasksViewModel: TasksViewModel,
     onDismiss: () -> Unit,
-    onNavigateToTask: (CalendarEventLinkEntity) -> Unit = {}
+    onNavigateToTask: (CalendarEventLinkEntity) -> Unit = {},
+    batchEditLinks: List<CalendarEventLinkEntity>? = null // NULL = single edit, NON-NULL = batch edit
 ) {
     val availableTasks by tasksViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
+
+    // Batch edit mode detection
+    val isBatchEdit = batchEditLinks != null && batchEditLinks.size > 1
+    val allLinks = batchEditLinks ?: listOf(calendarLink)
 
     // Auto-Save Feature: Snapshot initial state for reset functionality
     data class TaskSnapshot(
@@ -441,34 +685,77 @@ fun EditCalendarTaskDialog(
         val isRecurring: Boolean,
         val recurringConfig: RecurringConfig,
         val parentTaskId: Long?,
-        val autoCompleteParent: Boolean
+        val autoCompleteParent: Boolean,
+        val shouldReactivate: Boolean
     )
 
-    val initialSnapshot = remember {
-        val currentTask = availableTasks.find { it.id == calendarLink.taskId }
+    // Helper: Find common value across all tasks, or null if different
+    fun <T> findCommonValue(selector: (CalendarEventLinkEntity) -> T): T? {
+        if (!isBatchEdit) return selector(calendarLink)
+        val values = allLinks.map(selector).distinct()
+        return if (values.size == 1) values.first() else null
+    }
+
+    fun <T> findCommonTaskValue(selector: (com.example.questflow.domain.model.Task) -> T): T? {
+        if (!isBatchEdit) {
+            val task = availableTasks.find { it.id == calendarLink.taskId }
+            return task?.let(selector)
+        }
+        val taskValues = allLinks.mapNotNull { link ->
+            availableTasks.find { it.id == link.taskId }?.let(selector)
+        }.distinct()
+        return if (taskValues.size == 1) taskValues.first() else null
+    }
+
+    // Load current task data
+    val currentTaskData = remember(availableTasks, calendarLink.taskId) {
+        availableTasks.find { it.id == calendarLink.taskId }
+    }
+
+    // Calculate common values across all selected tasks
+    val commonTitle = remember(allLinks) { findCommonValue { it.title } }
+    val commonDescription = remember(allLinks, availableTasks) { findCommonTaskValue { it.description } }
+    val commonPercentage = remember(allLinks) { findCommonValue { it.xpPercentage } }
+    val commonCategoryId = remember(allLinks) { findCommonValue { it.categoryId } }
+    val commonStartDateTime = remember(allLinks) { findCommonValue { it.startsAt } }
+    val commonEndDateTime = remember(allLinks) { findCommonValue { it.endsAt } }
+    val commonDeleteOnClaim = remember(allLinks) { findCommonValue { it.deleteOnClaim } }
+    val commonDeleteOnExpiry = remember(allLinks) { findCommonValue { it.deleteOnExpiry } }
+    val commonParentTaskId = remember(allLinks, availableTasks) { findCommonTaskValue { it.parentTaskId } }
+    val commonAutoCompleteParent = remember(allLinks, availableTasks) { findCommonTaskValue { it.autoCompleteParent } }
+
+    val initialSnapshot = remember(calendarLink.id, currentTaskData, isBatchEdit) {
         TaskSnapshot(
-            title = calendarLink.title,
-            description = "",
-            xpPercentage = calendarLink.xpPercentage,
-            categoryId = calendarLink.categoryId,
-            startDateTime = calendarLink.startsAt,
-            endDateTime = calendarLink.endsAt,
+            title = commonTitle ?: "",
+            description = commonDescription ?: "",
+            xpPercentage = commonPercentage ?: 60,
+            categoryId = commonCategoryId,
+            startDateTime = commonStartDateTime ?: calendarLink.startsAt,
+            endDateTime = commonEndDateTime ?: calendarLink.endsAt,
             addToCalendar = calendarLink.calendarEventId != 0L || calendarLink.deleteOnClaim || calendarLink.deleteOnExpiry,
-            deleteOnClaim = calendarLink.deleteOnClaim,
-            deleteOnExpiry = calendarLink.deleteOnExpiry,
+            deleteOnClaim = commonDeleteOnClaim ?: false,
+            deleteOnExpiry = commonDeleteOnExpiry ?: false,
             isRecurring = calendarLink.isRecurring,
             recurringConfig = RecurringConfig(),
-            parentTaskId = currentTask?.parentTaskId,
-            autoCompleteParent = currentTask?.autoCompleteParent ?: false
+            parentTaskId = commonParentTaskId,
+            autoCompleteParent = commonAutoCompleteParent ?: false,
+            shouldReactivate = false
         )
     }
 
-    var taskTitle by remember { mutableStateOf(calendarLink.title) }
-    var taskDescription by remember { mutableStateOf("") }
-    var selectedPercentage by remember { mutableStateOf(calendarLink.xpPercentage) }
+    // Track initial values to detect changes
+    var taskTitle by remember { mutableStateOf(commonTitle ?: "") }
+    var taskDescription by remember(currentTaskData, isBatchEdit) { mutableStateOf(commonDescription ?: "") }
+    var selectedPercentage by remember { mutableStateOf(commonPercentage ?: 60) }
     val categories by viewModel.categories.collectAsState()
-    var taskCategory by remember(categories) {
-        mutableStateOf(categories.find { it.id == calendarLink.categoryId })
+    var taskCategory by remember(categories, isBatchEdit) {
+        mutableStateOf(
+            if (isBatchEdit) {
+                commonCategoryId?.let { id -> categories.find { it.id == id } }
+            } else {
+                categories.find { it.id == calendarLink.categoryId }
+            }
+        )
     }
     var shouldReactivate by remember { mutableStateOf(false) }
 
@@ -485,6 +772,7 @@ fun EditCalendarTaskDialog(
     // Fullscreen selection dialogs state
     var showCategorySelectionDialog by remember { mutableStateOf(false) }
     var showParentSelectionDialog by remember { mutableStateOf(false) }
+    var showCreateSubTaskDialog by remember { mutableStateOf(false) }
 
     // Tag-Related State for Contact Selection
     val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = androidx.hilt.navigation.compose.hiltViewModel()
@@ -527,18 +815,23 @@ fun EditCalendarTaskDialog(
 
     // addToCalendar: Wenn irgendeine Kalender-Option gesetzt ist ODER Event existiert
     // → User-Intention, nicht aktueller Event-Status!
-    var addToCalendar by remember(calendarLink.id) {
+    var addToCalendar by remember(calendarLink.id, isBatchEdit) {
         mutableStateOf(
-            calendarLink.calendarEventId != 0L ||
-            calendarLink.deleteOnClaim ||
-            calendarLink.deleteOnExpiry
+            if (isBatchEdit) {
+                // Batch: addToCalendar wenn IRGENDEINE Task das hat
+                allLinks.any { it.calendarEventId != 0L || it.deleteOnClaim || it.deleteOnExpiry }
+            } else {
+                calendarLink.calendarEventId != 0L ||
+                calendarLink.deleteOnClaim ||
+                calendarLink.deleteOnExpiry
+            }
         )
     }
-    var deleteOnClaim by remember(calendarLink.id) {
-        mutableStateOf(calendarLink.deleteOnClaim)
+    var deleteOnClaim by remember(calendarLink.id, isBatchEdit) {
+        mutableStateOf(commonDeleteOnClaim ?: false)
     }
-    var deleteOnExpiry by remember(calendarLink.id) {
-        mutableStateOf(calendarLink.deleteOnExpiry)
+    var deleteOnExpiry by remember(calendarLink.id, isBatchEdit) {
+        mutableStateOf(commonDeleteOnExpiry ?: false)
     }
 
     // Recurring task options
@@ -567,8 +860,12 @@ fun EditCalendarTaskDialog(
     val uiSettings by tasksViewModel.uiSettings.collectAsState()
 
     // Date and time state - using QuickDateTimePicker-friendly state
-    var startDateTime by remember { mutableStateOf(calendarLink.startsAt) }
-    var endDateTime by remember { mutableStateOf(calendarLink.endsAt) }
+    var startDateTime by remember(isBatchEdit) {
+        mutableStateOf(commonStartDateTime ?: calendarLink.startsAt)
+    }
+    var endDateTime by remember(isBatchEdit) {
+        mutableStateOf(commonEndDateTime ?: calendarLink.endsAt)
+    }
 
     // DateTime Validation: End must be >= Start
     LaunchedEffect(startDateTime, endDateTime) {
@@ -590,9 +887,8 @@ fun EditCalendarTaskDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Aufgabe bearbeiten")
-                if (isClaimable) {
-                    // Match styling from Tasks list (line 313-330) - use Button instead of FilledTonalButton
+                Text(if (isBatchEdit) "${allLinks.size} Tasks bearbeiten" else "Aufgabe bearbeiten")
+                if (isClaimable && !isBatchEdit) {
                     Button(
                         onClick = {
                             android.util.Log.d("QuickClaim", "Quick claim for linkId: ${calendarLink.id}")
@@ -609,24 +905,69 @@ fun EditCalendarTaskDialog(
             }
         },
         text = {
-            // Auto-Save: Save changes whenever any field changes
+            // Auto-Save: Save changes to ALL selected tasks in batch mode
             LaunchedEffect(
                 taskTitle, taskDescription, selectedPercentage, taskCategory,
                 startDateTime, endDateTime, addToCalendar, deleteOnClaim,
                 deleteOnExpiry, isRecurring, recurringConfig, selectedParentTask,
-                autoCompleteParent
+                autoCompleteParent, shouldReactivate
             ) {
-                // Debounce: wait 500ms before saving
-                kotlinx.coroutines.delay(500)
+                kotlinx.coroutines.delay(500) // Debounce
 
-                if (taskTitle.isNotBlank() && taskTitle != initialSnapshot.title ||
-                    selectedPercentage != initialSnapshot.xpPercentage ||
-                    taskCategory?.id != initialSnapshot.categoryId ||
-                    startDateTime != initialSnapshot.startDateTime ||
-                    endDateTime != initialSnapshot.endDateTime
-                ) {
-                    android.util.Log.d("TaskDialog-AutoSave", "Auto-saving changes...")
+                if (isBatchEdit) {
+                    // Batch Edit Mode: Apply ONLY changed fields to all selected tasks
+                    android.util.Log.d("TaskDialog-BatchSave", "Auto-saving changes to ${allLinks.size} tasks...")
 
+                    // Detect which fields have changed from initial/common values
+                    val titleChanged = taskTitle != (commonTitle ?: "")
+                    val descriptionChanged = taskDescription != (commonDescription ?: "")
+                    val percentageChanged = selectedPercentage != (commonPercentage ?: 60)
+                    val categoryChanged = taskCategory?.id != commonCategoryId
+                    val startDateTimeChanged = startDateTime != (commonStartDateTime ?: calendarLink.startsAt)
+                    val endDateTimeChanged = endDateTime != (commonEndDateTime ?: calendarLink.endsAt)
+
+                    // Calendar options change detection
+                    val initialAddToCalendar = allLinks.any { it.calendarEventId != 0L || it.deleteOnClaim || it.deleteOnExpiry }
+                    val addToCalendarChanged = addToCalendar != initialAddToCalendar
+                    val deleteOnClaimChanged = deleteOnClaim != (commonDeleteOnClaim ?: false)
+                    val deleteOnExpiryChanged = deleteOnExpiry != (commonDeleteOnExpiry ?: false)
+
+                    val parentTaskChanged = selectedParentTask?.id != commonParentTaskId
+                    val autoCompleteParentChanged = autoCompleteParent != (commonAutoCompleteParent ?: false)
+
+                    // shouldReactivate: User must explicitly enable it (initial is false)
+                    val shouldReactivateChanged = shouldReactivate == true
+
+                    allLinks.forEach { link ->
+                        link.taskId?.let { taskId ->
+                            val linkTask = availableTasks.find { it.id == taskId }
+
+                            // Use changed values OR preserve original values
+                            val linkAddToCalendar = link.calendarEventId != 0L || link.deleteOnClaim || link.deleteOnExpiry
+
+                            tasksViewModel.updateCalendarTask(
+                                linkId = link.id,
+                                taskId = taskId,
+                                title = if (titleChanged) taskTitle else link.title,
+                                description = if (descriptionChanged) taskDescription else (linkTask?.description ?: ""),
+                                xpPercentage = if (percentageChanged) selectedPercentage else link.xpPercentage,
+                                startDateTime = if (startDateTimeChanged) startDateTime else link.startsAt,
+                                endDateTime = if (endDateTimeChanged) endDateTime else link.endsAt,
+                                categoryId = if (categoryChanged) taskCategory?.id else link.categoryId,
+                                shouldReactivate = if (shouldReactivateChanged) shouldReactivate else false,
+                                addToCalendar = if (addToCalendarChanged) addToCalendar else linkAddToCalendar,
+                                deleteOnClaim = if (deleteOnClaimChanged) deleteOnClaim else link.deleteOnClaim,
+                                deleteOnExpiry = if (deleteOnExpiryChanged) deleteOnExpiry else link.deleteOnExpiry,
+                                isRecurring = link.isRecurring,
+                                recurringConfig = null,
+                                parentTaskId = if (parentTaskChanged) selectedParentTask?.id else linkTask?.parentTaskId,
+                                autoCompleteParent = if (autoCompleteParentChanged) autoCompleteParent else (linkTask?.autoCompleteParent ?: false)
+                            )
+                        }
+                    }
+                } else if (taskTitle.isNotBlank()) {
+                    // Single Edit Mode
+                    android.util.Log.d("TaskDialog-AutoSave", "Auto-saving ALL changes...")
                     tasksViewModel.updateCalendarTask(
                         linkId = calendarLink.id,
                         taskId = calendarLink.taskId,
@@ -797,10 +1138,8 @@ fun EditCalendarTaskDialog(
                                 // + Button to create new sub-task with current task as parent
                                 FilledTonalIconButton(
                                     onClick = {
-                                        // TODO: Create new task with current task as parent
-                                        android.util.Log.d("SubTask", "Creating new sub-task with parent: ${calendarLink.taskId}")
-                                        // For now, just show parent selection
-                                        showParentSelectionDialog = true
+                                        android.util.Log.d("SubTask", "Opening create sub-task dialog with parent: ${calendarLink.taskId}")
+                                        showCreateSubTaskDialog = true
                                     },
                                     modifier = Modifier.size(32.dp)
                                 ) {
@@ -1080,23 +1419,47 @@ fun EditCalendarTaskDialog(
                         }
                     }
 
-                    // Date and Time Selection - START (ModernDateTimePicker)
+                    // Date and Time Selection - START with inline +/- controls
                     item {
-                        com.example.questflow.presentation.components.ModernDateTimePicker(
+                        com.example.questflow.presentation.components.CompactDateTimeSection(
                             label = "Start",
                             dateTime = startDateTime,
                             onDateTimeChange = { startDateTime = it },
+                            dayIncrement = uiSettings.startDayIncrement,
+                            minuteIncrement = uiSettings.startMinuteIncrement,
+                            onDayIncrementChange = { newValue ->
+                                tasksViewModel.updateUISettings(uiSettings.copy(startDayIncrement = newValue))
+                            },
+                            onMinuteIncrementChange = { newValue ->
+                                tasksViewModel.updateUISettings(uiSettings.copy(startMinuteIncrement = newValue))
+                            }
+                        )
+                    }
+
+                    // Duration Row - between start and end
+                    item {
+                        com.example.questflow.presentation.components.DurationRow(
+                            startDateTime = startDateTime,
+                            endDateTime = endDateTime,
+                            onEndDateTimeChange = { endDateTime = it },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    // Date and Time Selection - END (ModernDateTimePicker)
+                    // Date and Time Selection - END with inline +/- controls
                     item {
-                        com.example.questflow.presentation.components.ModernDateTimePicker(
+                        com.example.questflow.presentation.components.CompactDateTimeSection(
                             label = "Ende",
                             dateTime = endDateTime,
                             onDateTimeChange = { endDateTime = it },
-                            modifier = Modifier.fillMaxWidth()
+                            dayIncrement = uiSettings.endDayIncrement,
+                            minuteIncrement = uiSettings.endMinuteIncrement,
+                            onDayIncrementChange = { newValue ->
+                                tasksViewModel.updateUISettings(uiSettings.copy(endDayIncrement = newValue))
+                            },
+                            onMinuteIncrementChange = { newValue ->
+                                tasksViewModel.updateUISettings(uiSettings.copy(endMinuteIncrement = newValue))
+                            }
                         )
                     }
 
@@ -1564,7 +1927,7 @@ fun EditCalendarTaskDialog(
             // Changed from "Abbrechen" to "Zurücksetzen" to restore initial state
             TextButton(
                 onClick = {
-                    android.util.Log.d("TaskDialog-Reset", "Resetting all fields to initial state")
+                    android.util.Log.d("TaskDialog-Reset", "Resetting ALL fields to initial state")
                     taskTitle = initialSnapshot.title
                     taskDescription = initialSnapshot.description
                     selectedPercentage = initialSnapshot.xpPercentage
@@ -1578,6 +1941,7 @@ fun EditCalendarTaskDialog(
                     recurringConfig = initialSnapshot.recurringConfig
                     selectedParentTask = availableTasks.find { it.id == initialSnapshot.parentTaskId }
                     autoCompleteParent = initialSnapshot.autoCompleteParent
+                    shouldReactivate = initialSnapshot.shouldReactivate
                 },
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.secondary
@@ -1702,6 +2066,25 @@ fun EditCalendarTaskDialog(
             allowNone = true,
             noneLabel = "Kein (Haupt-Task)",
             searchPlaceholder = "Task suchen..."
+        )
+    }
+
+    // Create Sub-Task Dialog - with current task pre-selected as parent
+    if (showCreateSubTaskDialog && calendarLink.taskId != null) {
+        // Sync category with Today ViewModel
+        LaunchedEffect(viewModel.selectedCategory.collectAsState().value) {
+            viewModel.syncSelectedCategory(viewModel.selectedCategory.value)
+        }
+
+        AddTaskDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showCreateSubTaskDialog = false
+                // Refresh calendar links after creating sub-task
+                tasksViewModel.loadCalendarLinks()
+            },
+            isCalendarMode = true,
+            preSelectedParentId = calendarLink.taskId  // Pre-select current task as parent
         )
     }
 }
