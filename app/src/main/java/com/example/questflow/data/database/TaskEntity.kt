@@ -30,7 +30,8 @@ data class TaskEntity(
     val isRecurring: Boolean = false,
     val recurringType: String? = null, // DAILY, WEEKLY, MONTHLY, CUSTOM
     val recurringInterval: Int? = null, // Minutes for CUSTOM
-    val recurringDays: String? = null, // JSON array of weekdays for WEEKLY
+    val recurringDays: String? = null, // Comma-separated weekdays for WEEKLY (MONDAY,FRIDAY)
+    val specificTime: String? = null, // Specific time for DAILY/WEEKLY/MONTHLY (HH:mm format)
     val lastCompletedAt: LocalDateTime? = null,
     val nextDueDate: LocalDateTime? = null,
     val triggerMode: String? = null, // FIXED_INTERVAL, AFTER_COMPLETION, AFTER_EXPIRY

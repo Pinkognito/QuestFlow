@@ -20,6 +20,7 @@ data class Task(
     val recurringType: String? = null,
     val recurringInterval: Int? = null,
     val recurringDays: String? = null,
+    val specificTime: String? = null,
     val triggerMode: String? = null,
     val lastCompletedAt: LocalDateTime? = null,
     val nextDueDate: LocalDateTime? = null,

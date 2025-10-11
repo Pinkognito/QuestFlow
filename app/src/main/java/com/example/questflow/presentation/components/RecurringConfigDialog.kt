@@ -14,8 +14,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.TextStyle
@@ -475,57 +479,62 @@ private fun CustomConfig(
     onHoursChange: (Int) -> Unit,
     onMinutesChange: (Int) -> Unit
 ) {
+    var minutesText by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus beim ersten Anzeigen
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Intervall", style = MaterialTheme.typography.labelMedium)
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = if (hours == 0) "" else hours.toString(),
-                onValueChange = { text ->
-                    when {
-                        text.isEmpty() -> onHoursChange(0)
-                        text.all { it.isDigit() } -> {
-                            text.toIntOrNull()?.let { value ->
-                                if (value >= 0 && value < 1000) onHoursChange(value)
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.width(80.dp),
-                label = { Text("Std") },
-                singleLine = true,
-                placeholder = { Text("0") }
-            )
-
-            Text(":")
-
-            OutlinedTextField(
-                value = if (minutes == 0) "" else minutes.toString(),
-                onValueChange = { text ->
-                    when {
-                        text.isEmpty() -> onMinutesChange(0)
-                        text.all { it.isDigit() } -> {
-                            text.toIntOrNull()?.let { value ->
-                                if (value >= 0 && value < 60) onMinutesChange(value)
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.width(80.dp),
-                label = { Text("Min") },
-                singleLine = true,
-                placeholder = { Text("0") }
-            )
-        }
-
         Text(
-            "Gesamt: ${hours * 60 + minutes} Minuten",
+            "Minuten eingeben (wird automatisch in Stunden umgerechnet)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        OutlinedTextField(
+            value = minutesText,
+            onValueChange = { text ->
+                if (text.all { it.isDigit() }) {
+                    minutesText = text
+                    text.toIntOrNull()?.let { totalMinutes ->
+                        if (totalMinutes >= 0) {
+                            val h = totalMinutes / 60
+                            val m = totalMinutes % 60
+                            onHoursChange(h)
+                            onMinutesChange(m)
+                        }
+                    } ?: run {
+                        if (text.isEmpty()) {
+                            onHoursChange(0)
+                            onMinutesChange(0)
+                        }
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
+            label = { Text("Minuten") },
+            placeholder = { Text("z.B. 60, 90, 120...") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number
+            )
+        )
+
+        if (hours > 0 || minutes > 0) {
+            Text(
+                "= ${hours}h ${minutes}min (${hours * 60 + minutes} Minuten gesamt)",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 

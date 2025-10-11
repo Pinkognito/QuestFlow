@@ -3,6 +3,7 @@ package com.example.questflow
 import android.app.Application
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.example.questflow.data.debug.DebugDataInitializer
 import com.example.questflow.data.repository.TagRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,9 @@ class QuestFlowApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var tagRepository: TagRepository
+
+    @Inject
+    lateinit var debugDataInitializer: DebugDataInitializer
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -31,6 +35,15 @@ class QuestFlowApplication : Application(), Configuration.Provider {
         // Initialize standard tags if database is empty
         applicationScope.launch {
             tagRepository.initializeStandardTagsIfEmpty()
+        }
+
+        // Initialize debug data if database is empty
+        applicationScope.launch {
+            if (debugDataInitializer.shouldInitialize()) {
+                android.util.Log.d("QuestFlowApp", "🐛 Initializing debug test data...")
+                debugDataInitializer.initialize()
+                android.util.Log.d("QuestFlowApp", "✅ Debug test data initialized!")
+            }
         }
     }
 }

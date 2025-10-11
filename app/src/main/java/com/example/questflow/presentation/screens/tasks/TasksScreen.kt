@@ -724,6 +724,22 @@ fun EditCalendarTaskDialog(
     val commonParentTaskId = remember(allLinks, availableTasks) { findCommonTaskValue { it.parentTaskId } }
     val commonAutoCompleteParent = remember(allLinks, availableTasks) { findCommonTaskValue { it.autoCompleteParent } }
 
+    // Recurring task common values
+    val commonIsRecurring = remember(allLinks) { findCommonValue { it.isRecurring } }
+    val commonRecurringConfig = remember(allLinks, availableTasks) {
+        if (!isBatchEdit) null
+        else {
+            // Get all tasks' recurring configs
+            val configs = allLinks.mapNotNull { link ->
+                availableTasks.find { it.id == link.taskId }?.let { task ->
+                    taskToRecurringConfig(task)
+                }
+            }
+            // Check if all configs are identical
+            if (configs.distinct().size == 1) configs.firstOrNull() else null
+        }
+    }
+
     val initialSnapshot = remember(calendarLink.id, currentTaskData, isBatchEdit) {
         TaskSnapshot(
             title = commonTitle ?: "",
@@ -834,17 +850,32 @@ fun EditCalendarTaskDialog(
         mutableStateOf(commonDeleteOnExpiry ?: false)
     }
 
-    // Recurring task options
-    var isRecurring by remember { mutableStateOf(calendarLink.isRecurring) }
-    var recurringConfig by remember {
-        mutableStateOf(com.example.questflow.presentation.components.RecurringConfig())
-    }
-    var showRecurringDialog by remember { mutableStateOf(false) }
-
-    // Subtask options
+    // Subtask options - MOVED UP to be available for recurringConfig
     val currentTask = remember(availableTasks, calendarLink.taskId) {
         availableTasks.find { it.id == calendarLink.taskId }
     }
+
+    // Recurring task options - Load from currentTask or common value in batch mode
+    var isRecurring by remember(isBatchEdit) {
+        mutableStateOf(
+            if (isBatchEdit) (commonIsRecurring ?: false)
+            else calendarLink.isRecurring
+        )
+    }
+    var recurringConfig by remember(currentTask, isBatchEdit) {
+        mutableStateOf(
+            if (isBatchEdit) {
+                // Batch mode: use common config or default
+                commonRecurringConfig ?: com.example.questflow.presentation.components.RecurringConfig()
+            } else {
+                // Single mode: load from current task
+                currentTask?.let { task ->
+                    taskToRecurringConfig(task)
+                } ?: com.example.questflow.presentation.components.RecurringConfig()
+            }
+        )
+    }
+    var showRecurringDialog by remember { mutableStateOf(false) }
     var selectedParentTask by remember(availableTasks, currentTask) {
         mutableStateOf(
             currentTask?.parentTaskId?.let { parentId ->
@@ -938,6 +969,10 @@ fun EditCalendarTaskDialog(
                     // shouldReactivate: User must explicitly enable it (initial is false)
                     val shouldReactivateChanged = shouldReactivate == true
 
+                    // Recurring task change detection
+                    val isRecurringChanged = isRecurring != (commonIsRecurring ?: false)
+                    val recurringConfigChanged = recurringConfig != commonRecurringConfig
+
                     allLinks.forEach { link ->
                         link.taskId?.let { taskId ->
                             val linkTask = availableTasks.find { it.id == taskId }
@@ -958,8 +993,8 @@ fun EditCalendarTaskDialog(
                                 addToCalendar = if (addToCalendarChanged) addToCalendar else linkAddToCalendar,
                                 deleteOnClaim = if (deleteOnClaimChanged) deleteOnClaim else link.deleteOnClaim,
                                 deleteOnExpiry = if (deleteOnExpiryChanged) deleteOnExpiry else link.deleteOnExpiry,
-                                isRecurring = link.isRecurring,
-                                recurringConfig = null,
+                                isRecurring = if (isRecurringChanged) isRecurring else link.isRecurring,
+                                recurringConfig = if (recurringConfigChanged) recurringConfig else null,
                                 parentTaskId = if (parentTaskChanged) selectedParentTask?.id else linkTask?.parentTaskId,
                                 autoCompleteParent = if (autoCompleteParentChanged) autoCompleteParent else (linkTask?.autoCompleteParent ?: false)
                             )
@@ -2379,5 +2414,82 @@ fun CalendarFilterDialog(
                 Text("Cancel")
             }
         }
+    )
+}
+
+/**
+ * Convert Task recurring fields to RecurringConfig object
+ */
+private fun taskToRecurringConfig(task: com.example.questflow.domain.model.Task): com.example.questflow.presentation.components.RecurringConfig {
+    // Parse recurringType
+    val mode = when (task.recurringType) {
+        "DAILY" -> com.example.questflow.presentation.components.RecurringMode.DAILY
+        "WEEKLY" -> com.example.questflow.presentation.components.RecurringMode.WEEKLY
+        "MONTHLY" -> com.example.questflow.presentation.components.RecurringMode.MONTHLY
+        "CUSTOM" -> com.example.questflow.presentation.components.RecurringMode.CUSTOM
+        else -> com.example.questflow.presentation.components.RecurringMode.DAILY
+    }
+
+    // Parse triggerMode
+    val triggerMode = when (task.triggerMode) {
+        "AFTER_COMPLETION" -> com.example.questflow.presentation.components.TriggerMode.AFTER_COMPLETION
+        "AFTER_EXPIRY" -> com.example.questflow.presentation.components.TriggerMode.AFTER_EXPIRY
+        else -> com.example.questflow.presentation.components.TriggerMode.FIXED_INTERVAL
+    }
+
+    // Parse weeklyDays (comma-separated string like "MONDAY,FRIDAY")
+    val weeklyDays = task.recurringDays?.split(",")?.mapNotNull { dayStr ->
+        try {
+            java.time.DayOfWeek.valueOf(dayStr.trim())
+        } catch (e: Exception) {
+            null
+        }
+    }?.toSet() ?: emptySet()
+
+    // Parse specificTime (HH:mm format string)
+    val specificTime = task.specificTime?.let { timeStr ->
+        try {
+            android.util.Log.d("TasksScreen", "Parsing specificTime: '$timeStr'")
+            java.time.LocalTime.parse(timeStr, java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        } catch (e: Exception) {
+            android.util.Log.e("TasksScreen", "Failed to parse specificTime: '$timeStr'", e)
+            null
+        }
+    }
+
+    android.util.Log.d("TasksScreen", "taskToRecurringConfig - task.id=${task.id}, recurringType=${task.recurringType}, specificTime=${task.specificTime}, parsed=$specificTime")
+
+    // Deserialisierung: recurringInterval ist IMMER in MINUTEN gespeichert!
+    // DAILY: dailyInterval * 24 * 60 → zurück: / (24 * 60)
+    // WEEKLY: 7 * 24 * 60 (fixiert)
+    // MONTHLY: monthlyDay * 24 * 60 → zurück: / (24 * 60)
+    // CUSTOM: customHours * 60 + customMinutes (direkt)
+    val intervalMinutes = task.recurringInterval ?: 60
+
+    return com.example.questflow.presentation.components.RecurringConfig(
+        mode = mode,
+        dailyInterval = when (mode) {
+            com.example.questflow.presentation.components.RecurringMode.DAILY ->
+                intervalMinutes / (24 * 60)  // Minuten → Tage
+            else -> 1
+        },
+        weeklyDays = weeklyDays,
+        monthlyDay = when (mode) {
+            com.example.questflow.presentation.components.RecurringMode.MONTHLY ->
+                intervalMinutes / (24 * 60)  // Minuten → Tag des Monats
+            else -> 1
+        },
+        customMinutes = when (mode) {
+            com.example.questflow.presentation.components.RecurringMode.CUSTOM ->
+                intervalMinutes % 60  // Restminuten
+            else -> 60
+        },
+        customHours = when (mode) {
+            com.example.questflow.presentation.components.RecurringMode.CUSTOM ->
+                intervalMinutes / 60  // Gesamtminuten → Stunden
+            else -> 0
+        },
+        specificTime = specificTime,
+        triggerMode = triggerMode
     )
 }

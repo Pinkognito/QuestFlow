@@ -131,9 +131,17 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             val recurringDays = params.recurringConfig?.let {
                 if (it.mode == RecurringMode.WEEKLY) {
-                    it.weeklyDays.map { day -> day.value }.joinToString(",")
+                    it.weeklyDays.map { day -> day.name }.joinToString(",")
                 } else null
             }
+
+            val specificTime = params.recurringConfig?.specificTime?.let {
+                val formatted = it.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                android.util.Log.d(TAG, "Saving specificTime: LocalTime=$it, formatted='$formatted'")
+                formatted
+            }
+
+            android.util.Log.d(TAG, "Updating task - recurringType=$recurringType, recurringInterval=$recurringInterval, recurringDays=$recurringDays, specificTime=$specificTime, triggerMode=${params.recurringConfig?.triggerMode?.name}")
 
             val updatedTask = task.copy(
                 title = params.title,
@@ -147,6 +155,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 recurringType = recurringType,
                 recurringInterval = recurringInterval,
                 recurringDays = recurringDays,
+                specificTime = specificTime,
                 triggerMode = params.recurringConfig?.triggerMode?.name,
                 isCompleted = if (params.shouldReactivate) false else task.isCompleted,
                 calendarEventId = newCalendarEventId ?: task.calendarEventId,

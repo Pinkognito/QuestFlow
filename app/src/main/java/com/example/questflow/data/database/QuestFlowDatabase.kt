@@ -46,7 +46,7 @@ import com.example.questflow.data.database.entity.*
         MetadataTagEntity::class,
         ContactTagEntity::class
     ],
-    version = 33,
+    version = 34,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
