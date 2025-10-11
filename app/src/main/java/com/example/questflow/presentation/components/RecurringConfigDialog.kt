@@ -230,7 +230,9 @@ fun RecurringConfigDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(config) }
+                onClick = {
+                    onConfirm(config)
+                }
             ) {
                 Text("Speichern")
             }
@@ -479,7 +481,11 @@ private fun CustomConfig(
     onHoursChange: (Int) -> Unit,
     onMinutesChange: (Int) -> Unit
 ) {
-    var minutesText by remember { mutableStateOf("") }
+    // Initialize minutesText with current total minutes value
+    val initialTotalMinutes = hours * 60 + minutes
+    var minutesText by remember(initialTotalMinutes) {
+        mutableStateOf(if (initialTotalMinutes > 0) initialTotalMinutes.toString() else "")
+    }
     val focusRequester = remember { FocusRequester() }
 
     // Auto-focus beim ersten Anzeigen
@@ -499,7 +505,7 @@ private fun CustomConfig(
         OutlinedTextField(
             value = minutesText,
             onValueChange = { text ->
-                if (text.all { it.isDigit() }) {
+                if (text.all { it.isDigit() } || text.isEmpty()) {
                     minutesText = text
                     text.toIntOrNull()?.let { totalMinutes ->
                         if (totalMinutes >= 0) {

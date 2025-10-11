@@ -740,7 +740,9 @@ fun EditCalendarTaskDialog(
         }
     }
 
-    val initialSnapshot = remember(calendarLink.id, currentTaskData, isBatchEdit) {
+    // IMPORTANT: initialSnapshot should be created ONCE when dialog opens
+    // Remove currentTaskData from remember keys to prevent reset on task updates
+    val initialSnapshot = remember(calendarLink.id, isBatchEdit) {
         TaskSnapshot(
             title = commonTitle ?: "",
             description = commonDescription ?: "",
@@ -752,7 +754,7 @@ fun EditCalendarTaskDialog(
             deleteOnClaim = commonDeleteOnClaim ?: false,
             deleteOnExpiry = commonDeleteOnExpiry ?: false,
             isRecurring = calendarLink.isRecurring,
-            recurringConfig = RecurringConfig(),
+            recurringConfig = com.example.questflow.presentation.components.RecurringConfig(),  // Not used - dummy value
             parentTaskId = commonParentTaskId,
             autoCompleteParent = commonAutoCompleteParent ?: false,
             shouldReactivate = false
@@ -862,19 +864,32 @@ fun EditCalendarTaskDialog(
             else calendarLink.isRecurring
         )
     }
-    var recurringConfig by remember(currentTask, isBatchEdit) {
-        mutableStateOf(
-            if (isBatchEdit) {
-                // Batch mode: use common config or default
-                commonRecurringConfig ?: com.example.questflow.presentation.components.RecurringConfig()
-            } else {
-                // Single mode: load from current task
-                currentTask?.let { task ->
-                    taskToRecurringConfig(task)
-                } ?: com.example.questflow.presentation.components.RecurringConfig()
-            }
-        )
+    // Initialize recurringConfig ONCE when dialog opens, don't reset on task updates
+    val initialRecurringConfig = remember(calendarLink.id, isBatchEdit) {
+        if (isBatchEdit) {
+            commonRecurringConfig ?: com.example.questflow.presentation.components.RecurringConfig()
+        } else {
+            currentTask?.let { taskToRecurringConfig(it) }
+                ?: com.example.questflow.presentation.components.RecurringConfig()
+        }
     }
+    var recurringConfig by remember(calendarLink.id, isBatchEdit) {
+        mutableStateOf(initialRecurringConfig)
+    }
+
+    // Track if initial data has been loaded to prevent premature Auto-Save
+    var isDataLoaded by remember(calendarLink.id, isBatchEdit) { mutableStateOf(false) }
+
+    // Update recurringConfig when currentTask loads (race condition fix)
+    LaunchedEffect(currentTask, calendarLink.id, isBatchEdit) {
+        if (!isBatchEdit && currentTask != null && !isDataLoaded) {
+            recurringConfig = taskToRecurringConfig(currentTask)
+            isDataLoaded = true
+        } else if (isBatchEdit && !isDataLoaded) {
+            isDataLoaded = true
+        }
+    }
+
     var showRecurringDialog by remember { mutableStateOf(false) }
     var selectedParentTask by remember(availableTasks, currentTask) {
         mutableStateOf(
@@ -941,13 +956,15 @@ fun EditCalendarTaskDialog(
                 taskTitle, taskDescription, selectedPercentage, taskCategory,
                 startDateTime, endDateTime, addToCalendar, deleteOnClaim,
                 deleteOnExpiry, isRecurring, recurringConfig, selectedParentTask,
-                autoCompleteParent, shouldReactivate
+                autoCompleteParent, shouldReactivate, isDataLoaded
             ) {
+                // Don't auto-save until initial data is loaded (prevents race condition)
+                if (!isDataLoaded) return@LaunchedEffect
+
                 kotlinx.coroutines.delay(500) // Debounce
 
                 if (isBatchEdit) {
                     // Batch Edit Mode: Apply ONLY changed fields to all selected tasks
-                    android.util.Log.d("TaskDialog-BatchSave", "Auto-saving changes to ${allLinks.size} tasks...")
 
                     // Detect which fields have changed from initial/common values
                     val titleChanged = taskTitle != (commonTitle ?: "")
@@ -1002,7 +1019,6 @@ fun EditCalendarTaskDialog(
                     }
                 } else if (taskTitle.isNotBlank()) {
                     // Single Edit Mode
-                    android.util.Log.d("TaskDialog-AutoSave", "Auto-saving ALL changes...")
                     tasksViewModel.updateCalendarTask(
                         linkId = calendarLink.id,
                         taskId = calendarLink.taskId,
@@ -1962,7 +1978,6 @@ fun EditCalendarTaskDialog(
             // Changed from "Abbrechen" to "Zurücksetzen" to restore initial state
             TextButton(
                 onClick = {
-                    android.util.Log.d("TaskDialog-Reset", "Resetting ALL fields to initial state")
                     taskTitle = initialSnapshot.title
                     taskDescription = initialSnapshot.description
                     selectedPercentage = initialSnapshot.xpPercentage
@@ -1973,7 +1988,7 @@ fun EditCalendarTaskDialog(
                     deleteOnClaim = initialSnapshot.deleteOnClaim
                     deleteOnExpiry = initialSnapshot.deleteOnExpiry
                     isRecurring = initialSnapshot.isRecurring
-                    recurringConfig = initialSnapshot.recurringConfig
+                    recurringConfig = initialRecurringConfig  // Use initialRecurringConfig directly instead of from snapshot
                     selectedParentTask = availableTasks.find { it.id == initialSnapshot.parentTaskId }
                     autoCompleteParent = initialSnapshot.autoCompleteParent
                     shouldReactivate = initialSnapshot.shouldReactivate
@@ -2456,8 +2471,6 @@ private fun taskToRecurringConfig(task: com.example.questflow.domain.model.Task)
             null
         }
     }
-
-    android.util.Log.d("TasksScreen", "taskToRecurringConfig - task.id=${task.id}, recurringType=${task.recurringType}, specificTime=${task.specificTime}, parsed=$specificTime")
 
     // Deserialisierung: recurringInterval ist IMMER in MINUTEN gespeichert!
     // DAILY: dailyInterval * 24 * 60 → zurück: / (24 * 60)
