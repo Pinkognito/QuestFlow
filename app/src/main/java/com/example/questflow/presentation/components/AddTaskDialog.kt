@@ -29,7 +29,9 @@ fun AddTaskDialog(
     viewModel: TodayViewModel,
     onDismiss: () -> Unit,
     isCalendarMode: Boolean = false,  // Add parameter to distinguish context
-    preSelectedParentId: Long? = null  // Pre-select parent task (for sub-task creation)
+    preSelectedParentId: Long? = null,  // Pre-select parent task (for sub-task creation)
+    inheritFromTask: com.example.questflow.domain.model.Task? = null,  // Inherit category from parent
+    inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null  // Inherit time from parent
 ) {
     val context = LocalContext.current
     var taskTitle by remember { mutableStateOf("") }
@@ -45,16 +47,32 @@ fun AddTaskDialog(
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val availableTasks by viewModel.uiState.collectAsState()
-    var taskCategory by remember(selectedCategory) { mutableStateOf(selectedCategory) }
 
-    // Pre-select parent task if provided
-    var selectedParentTask by remember(preSelectedParentId) {
-        mutableStateOf(
-            preSelectedParentId?.let { parentId ->
-                availableTasks.tasks.find { it.id == parentId }
-            }
-        )
+    // Inherit category from parent task if provided
+    val inheritedCategory = remember(inheritFromTask, categories) {
+        inheritFromTask?.categoryId?.let { categoryId ->
+            categories.find { it.id == categoryId }
+        } ?: selectedCategory
     }
+    var taskCategory by remember(inheritedCategory) { mutableStateOf(inheritedCategory) }
+
+    // Pre-select parent task if provided - use inheritFromTask directly if available
+    var selectedParentTask by remember(preSelectedParentId, inheritFromTask) {
+        // First try to use inheritFromTask directly (most reliable)
+        val found = inheritFromTask ?: preSelectedParentId?.let { parentId ->
+            availableTasks.tasks.find { it.id == parentId }
+        }
+        mutableStateOf(found)
+    }
+
+    // Update selectedParentTask when tasks are loaded (race condition fix)
+    LaunchedEffect(availableTasks.tasks, preSelectedParentId, inheritFromTask) {
+        if (preSelectedParentId != null && selectedParentTask == null && availableTasks.tasks.isNotEmpty()) {
+            val found = inheritFromTask ?: availableTasks.tasks.find { it.id == preSelectedParentId }
+            selectedParentTask = found
+        }
+    }
+
     var autoCompleteParent by remember { mutableStateOf(false) }
 
     // Contact selection state
@@ -62,16 +80,18 @@ fun AddTaskDialog(
     var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showContactDialog by remember { mutableStateOf(false) }
 
-    // Date and time state - START
-    val currentDateTime = remember { java.time.LocalDateTime.now() }
+    // Date and time state - START (inherit from parent calendar link if provided)
+    val currentDateTime = remember {
+        inheritFromCalendarLink?.startsAt ?: java.time.LocalDateTime.now()
+    }
     var selectedYear by remember { mutableStateOf(currentDateTime.year) }
     var selectedMonth by remember { mutableStateOf(currentDateTime.monthValue) }
     var selectedDay by remember { mutableStateOf(currentDateTime.dayOfMonth) }
     var selectedHour by remember { mutableStateOf(currentDateTime.hour) }
     var selectedMinute by remember { mutableStateOf(currentDateTime.minute) }
 
-    // Date and time state - END (default: 1 hour after start)
-    val defaultEndDateTime = currentDateTime.plusHours(1)
+    // Date and time state - END (inherit from parent calendar link if provided, otherwise 1 hour after start)
+    val defaultEndDateTime = inheritFromCalendarLink?.endsAt ?: currentDateTime.plusHours(1)
     var endYear by remember { mutableStateOf(defaultEndDateTime.year) }
     var endMonth by remember { mutableStateOf(defaultEndDateTime.monthValue) }
     var endDay by remember { mutableStateOf(defaultEndDateTime.dayOfMonth) }
@@ -730,33 +750,40 @@ fun AddTaskDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (taskTitle.isNotBlank()) {
-                        val startDateTime = java.time.LocalDateTime.of(
-                            selectedYear, selectedMonth, selectedDay,
-                            selectedHour, selectedMinute
-                        )
-                        val endDateTime = java.time.LocalDateTime.of(
-                            endYear, endMonth, endDay,
-                            endHour, endMinute
-                        )
-                        viewModel.createTaskWithCalendar(
-                            title = taskTitle,
-                            description = taskDescription,
-                            xpPercentage = selectedPercentage,
-                            startDateTime = startDateTime,
-                            endDateTime = endDateTime,
-                            addToCalendar = addToCalendar,
-                            categoryId = taskCategory?.id,
-                            deleteOnClaim = deleteOnClaim,
-                            deleteOnExpiry = deleteOnExpiry,
-                            isRecurring = isRecurring,
-                            recurringConfig = if (isRecurring) recurringConfig else null,
-                            parentTaskId = selectedParentTask?.id,
-                            autoCompleteParent = autoCompleteParent,
-                            contactIds = selectedContactIds
-                        )
-                        onDismiss()
+                    // Auto-generate title if empty: yyMMddHHmmss
+                    val finalTitle = if (taskTitle.isBlank()) {
+                        val now = java.time.LocalDateTime.now()
+                        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyMMddHHmmss")
+                        now.format(formatter)
+                    } else {
+                        taskTitle
                     }
+
+                    val startDateTime = java.time.LocalDateTime.of(
+                        selectedYear, selectedMonth, selectedDay,
+                        selectedHour, selectedMinute
+                    )
+                    val endDateTime = java.time.LocalDateTime.of(
+                        endYear, endMonth, endDay,
+                        endHour, endMinute
+                    )
+                    viewModel.createTaskWithCalendar(
+                        title = finalTitle,
+                        description = taskDescription,
+                        xpPercentage = selectedPercentage,
+                        startDateTime = startDateTime,
+                        endDateTime = endDateTime,
+                        addToCalendar = addToCalendar,
+                        categoryId = taskCategory?.id,
+                        deleteOnClaim = deleteOnClaim,
+                        deleteOnExpiry = deleteOnExpiry,
+                        isRecurring = isRecurring,
+                        recurringConfig = if (isRecurring) recurringConfig else null,
+                        parentTaskId = selectedParentTask?.id,
+                        autoCompleteParent = autoCompleteParent,
+                        contactIds = selectedContactIds
+                    )
+                    onDismiss()
                 }
             ) {
                 Text("Erstellen")

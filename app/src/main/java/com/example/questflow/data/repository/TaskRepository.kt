@@ -23,8 +23,13 @@ class TaskRepository @Inject constructor(
             entities.map { it.toDomainModel() }
         }
     
-    suspend fun getTaskById(id: Long): Task? =
-        taskDao.getTaskById(id)?.toDomainModel()
+    suspend fun getTaskById(id: Long): Task? {
+        android.util.Log.d("DescriptionFlow-Repository", "🔍 CALLING DAO.getTaskById($id)")
+        val entity = taskDao.getTaskById(id)
+        val task = entity?.toDomainModel()
+        android.util.Log.d("DescriptionFlow-Repository", "📖 LOADED from DB: taskId=$id, entity=${if(entity==null) "NULL" else "present"}, description='${task?.description ?: "N/A"}'")
+        return task
+    }
 
     suspend fun getTaskByCalendarEventId(calendarEventId: Long): Task? =
         taskDao.getTaskByCalendarEventId(calendarEventId)?.toDomainModel()
@@ -32,9 +37,14 @@ class TaskRepository @Inject constructor(
     suspend fun insertTask(task: Task): Long =
         taskDao.insertTask(task.toEntity())
     
-    suspend fun updateTask(task: Task) =
-        taskDao.updateTask(task.toEntity())
-    
+    suspend fun updateTask(task: Task) {
+        android.util.Log.d("DescriptionFlow-Repository", "💾 CALLING DAO.updateTask() for taskId=${task.id}, description='${task.description}'")
+        val entity = task.toEntity()
+        android.util.Log.d("DescriptionFlow-Repository", "🔄 TaskEntity created: id=${entity.id}, description='${entity.description}'")
+        taskDao.updateTask(entity)
+        android.util.Log.d("DescriptionFlow-Repository", "✅ DAO.updateTask() completed for taskId=${task.id}")
+    }
+
     suspend fun deleteTask(task: Task) =
         taskDao.deleteTask(task.toEntity())
     

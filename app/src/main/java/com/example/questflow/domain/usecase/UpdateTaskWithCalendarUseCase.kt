@@ -110,6 +110,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         )
 
         // 5. Update Task in DB (falls vorhanden)
+        android.util.Log.d(TAG, "🔍 existingTask is ${if (existingTask == null) "NULL" else "present (id=${existingTask.id})"}")
         existingTask?.let { task ->
             val recurringType = params.recurringConfig?.let {
                 when (it.mode) {
@@ -142,6 +143,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             }
 
             android.util.Log.d(TAG, "Updating task - recurringType=$recurringType, recurringInterval=$recurringInterval, recurringDays=$recurringDays, specificTime=$specificTime, triggerMode=${params.recurringConfig?.triggerMode?.name}")
+            android.util.Log.d(TAG, "🔍 Updating task description: '${params.description}' (was: '${task.description}')")
 
             val updatedTask = task.copy(
                 title = params.title,
@@ -162,8 +164,10 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 parentTaskId = params.parentTaskId,
                 autoCompleteParent = params.autoCompleteParent
             )
+            android.util.Log.d("DescriptionFlow-UseCase", "📝 CALLING repository.updateTask() with description='${updatedTask.description}'")
 
             taskRepository.updateTask(updatedTask)
+            android.util.Log.d("DescriptionFlow-UseCase", "✅ repository.updateTask() completed for taskId=${task.id}")
         }
 
         // 6. Update Link in DB

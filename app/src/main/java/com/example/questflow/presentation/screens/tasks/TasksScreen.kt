@@ -699,7 +699,9 @@ fun EditCalendarTaskDialog(
     fun <T> findCommonTaskValue(selector: (com.example.questflow.domain.model.Task) -> T): T? {
         if (!isBatchEdit) {
             val task = availableTasks.find { it.id == calendarLink.taskId }
-            return task?.let(selector)
+            val result = task?.let(selector)
+            android.util.Log.d("TaskDialog-Description", "🔎 findCommonTaskValue: taskId=${calendarLink.taskId}, task found=${task != null}, description='${if (selector == com.example.questflow.domain.model.Task::description) result else "N/A"}'")
+            return result
         }
         val taskValues = allLinks.mapNotNull { link ->
             availableTasks.find { it.id == link.taskId }?.let(selector)
@@ -761,10 +763,14 @@ fun EditCalendarTaskDialog(
         )
     }
 
-    // Track initial values to detect changes
-    var taskTitle by remember { mutableStateOf(commonTitle ?: "") }
-    var taskDescription by remember(currentTaskData, isBatchEdit) { mutableStateOf(commonDescription ?: "") }
-    var selectedPercentage by remember { mutableStateOf(commonPercentage ?: 60) }
+    // Track initial values to detect changes - STABLE keys to prevent reset on recomposition
+    var taskTitle by remember(calendarLink.id, isBatchEdit) { mutableStateOf(commonTitle ?: "") }
+
+    // Keep task description stable - Initialize from task, but persist user edits
+    // The description is stored in the Task entity, so we need to wait for it to load
+    var taskDescription by remember(calendarLink.id, isBatchEdit) { mutableStateOf("") }
+
+    var selectedPercentage by remember(calendarLink.id, isBatchEdit) { mutableStateOf(commonPercentage ?: 60) }
     val categories by viewModel.categories.collectAsState()
     var taskCategory by remember(categories, isBatchEdit) {
         mutableStateOf(
@@ -775,11 +781,11 @@ fun EditCalendarTaskDialog(
             }
         )
     }
-    var shouldReactivate by remember { mutableStateOf(false) }
+    var shouldReactivate by remember(calendarLink.id, isBatchEdit) { mutableStateOf(false) }
 
     // Contact selection state
     val availableContacts by viewModel.contacts.collectAsState()
-    var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectedContactIds by remember(calendarLink.id, isBatchEdit) { mutableStateOf<Set<Long>>(emptySet()) }
     var showContactDialog by remember { mutableStateOf(false) }
     var showActionDialog by remember { mutableStateOf(false) }
 
@@ -853,12 +859,11 @@ fun EditCalendarTaskDialog(
     }
 
     // Subtask options - MOVED UP to be available for recurringConfig
-    val currentTask = remember(availableTasks, calendarLink.taskId) {
-        availableTasks.find { it.id == calendarLink.taskId }
-    }
+    // IMPORTANT: Use derived state instead of remember() so it updates when availableTasks changes!
+    val currentTask = availableTasks.find { it.id == calendarLink.taskId }
 
     // Recurring task options - Load from currentTask or common value in batch mode
-    var isRecurring by remember(isBatchEdit) {
+    var isRecurring by remember(calendarLink.id, isBatchEdit) {
         mutableStateOf(
             if (isBatchEdit) (commonIsRecurring ?: false)
             else calendarLink.isRecurring
@@ -880,25 +885,41 @@ fun EditCalendarTaskDialog(
     // Track if initial data has been loaded to prevent premature Auto-Save
     var isDataLoaded by remember(calendarLink.id, isBatchEdit) { mutableStateOf(false) }
 
-    // Update recurringConfig when currentTask loads (race condition fix)
-    LaunchedEffect(currentTask, calendarLink.id, isBatchEdit) {
-        if (!isBatchEdit && currentTask != null && !isDataLoaded) {
-            recurringConfig = taskToRecurringConfig(currentTask)
-            isDataLoaded = true
-        } else if (isBatchEdit && !isDataLoaded) {
-            isDataLoaded = true
+    // Update recurringConfig and description when currentTask loads (race condition fix)
+    // LOAD DIRECTLY FROM DATABASE - Don't rely on availableTasks Flow!
+    LaunchedEffect(calendarLink.id, isBatchEdit) {
+        android.util.Log.d("TaskDialog-Description", "🚀 LaunchedEffect START: isBatchEdit=$isBatchEdit, taskId=${calendarLink.taskId}, linkId=${calendarLink.id}")
+        // Load task data DIRECTLY from repository in single mode
+        if (!isBatchEdit && calendarLink.taskId != null) {
+            android.util.Log.d("TaskDialog-Description", "🔍 Loading task DIRECTLY from DB: taskId=${calendarLink.taskId}")
+            val loadedTask = tasksViewModel.findTaskById(calendarLink.taskId)
+            android.util.Log.d("TaskDialog-Description", "📖 Task loaded from DB: ${if (loadedTask == null) "NULL" else "present (id=${loadedTask.id})"}")
+
+            if (loadedTask != null) {
+                recurringConfig = taskToRecurringConfig(loadedTask)
+                // Load description from task - ALWAYS set it, even if empty!
+                val loadedDescription = loadedTask.description
+                android.util.Log.d("TaskDialog-Description", "🔤 Loading description from task: '$loadedDescription' for linkId=${calendarLink.id}")
+                taskDescription = loadedDescription  // Set description ALWAYS (even if empty) to prevent Auto-Save from overwriting!
+                android.util.Log.d("TaskDialog-Description", "✅ Description set to: '$taskDescription'")
+            } else {
+                android.util.Log.d("TaskDialog-Description", "❌ Task is NULL after DB load, can't load description")
+            }
+        } else {
+            android.util.Log.d("TaskDialog-Description", "⏭️ Batch edit mode or no taskId, skipping description load")
         }
+        isDataLoaded = true
     }
 
     var showRecurringDialog by remember { mutableStateOf(false) }
-    var selectedParentTask by remember(availableTasks, currentTask) {
+    var selectedParentTask by remember(calendarLink.id, isBatchEdit) {
         mutableStateOf(
             currentTask?.parentTaskId?.let { parentId ->
                 availableTasks.find { it.id == parentId }
             }
         )
     }
-    var autoCompleteParent by remember(currentTask) {
+    var autoCompleteParent by remember(calendarLink.id, isBatchEdit) {
         mutableStateOf(currentTask?.autoCompleteParent ?: false)
     }
 
@@ -922,8 +943,13 @@ fun EditCalendarTaskDialog(
         }
     }
 
-    // Track whether task is claimable
-    val isClaimable = !calendarLink.rewarded && calendarLink.status != "CLAIMED" && calendarLink.status != "EXPIRED"
+    // Track whether task is claimable - also depends on deleteOnClaim setting
+    val isClaimable = deleteOnClaim && !calendarLink.rewarded && calendarLink.status != "CLAIMED" && calendarLink.status != "EXPIRED"
+
+    // Debug: Track claim button visibility
+    LaunchedEffect(isClaimable, deleteOnClaim, calendarLink.rewarded, calendarLink.status) {
+        android.util.Log.d("TaskDialog-ClaimBtn", "🔘 Claim button visibility: isClaimable=$isClaimable, deleteOnClaim=$deleteOnClaim, rewarded=${calendarLink.rewarded}, status=${calendarLink.status}")
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -959,7 +985,11 @@ fun EditCalendarTaskDialog(
                 autoCompleteParent, shouldReactivate, isDataLoaded
             ) {
                 // Don't auto-save until initial data is loaded (prevents race condition)
-                if (!isDataLoaded) return@LaunchedEffect
+                if (!isDataLoaded) {
+                    android.util.Log.d("TaskDialog-AutoSave", "⏸️ Auto-Save BLOCKED: isDataLoaded=false")
+                    return@LaunchedEffect
+                }
+                android.util.Log.d("TaskDialog-AutoSave", "▶️ Auto-Save READY: isDataLoaded=true, taskDescription='$taskDescription'")
 
                 kotlinx.coroutines.delay(500) // Debounce
 
@@ -1019,6 +1049,8 @@ fun EditCalendarTaskDialog(
                     }
                 } else if (taskTitle.isNotBlank()) {
                     // Single Edit Mode
+                    android.util.Log.d("TaskDialog-AutoSave", "🔍 Saving description: '$taskDescription' (length=${taskDescription.length})")
+                    android.util.Log.d("DescriptionFlow-UI", "📤 SENDING to ViewModel: taskId=${calendarLink.taskId}, linkId=${calendarLink.id}, description='$taskDescription'")
                     tasksViewModel.updateCalendarTask(
                         linkId = calendarLink.id,
                         taskId = calendarLink.taskId,
@@ -1062,7 +1094,10 @@ fun EditCalendarTaskDialog(
                     item {
                         OutlinedTextField(
                             value = taskDescription,
-                            onValueChange = { taskDescription = it },
+                            onValueChange = {
+                                android.util.Log.d("TaskDialog-Description", "✏️ User editing description: '$it' (length=${it.length})")
+                                taskDescription = it
+                            },
                             label = { Text("Beschreibung (optional)") },
                             maxLines = 3,
                             modifier = Modifier.fillMaxWidth()
@@ -2120,7 +2155,7 @@ fun EditCalendarTaskDialog(
     }
 
     // Create Sub-Task Dialog - with current task pre-selected as parent
-    if (showCreateSubTaskDialog && calendarLink.taskId != null) {
+    if (showCreateSubTaskDialog && calendarLink.taskId != null && currentTask != null) {
         // Sync category with Today ViewModel
         LaunchedEffect(viewModel.selectedCategory.collectAsState().value) {
             viewModel.syncSelectedCategory(viewModel.selectedCategory.value)
@@ -2134,7 +2169,9 @@ fun EditCalendarTaskDialog(
                 tasksViewModel.loadCalendarLinks()
             },
             isCalendarMode = true,
-            preSelectedParentId = calendarLink.taskId  // Pre-select current task as parent
+            preSelectedParentId = calendarLink.taskId,  // Pre-select current task as parent
+            inheritFromTask = currentTask,  // Inherit category from parent
+            inheritFromCalendarLink = calendarLink  // Inherit time from parent
         )
     }
 }

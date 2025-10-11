@@ -342,6 +342,7 @@ class TasksViewModel @Inject constructor(
         parentTaskId: Long? = null,
         autoCompleteParent: Boolean = false
     ) {
+        android.util.Log.d("DescriptionFlow-ViewModel", "📥 RECEIVED in ViewModel: taskId=$taskId, linkId=$linkId, description='$description'")
         viewModelScope.launch {
             val params = UpdateTaskWithCalendarUseCase.UpdateParams(
                 taskId = taskId, // Can be null for calendar-only events
@@ -361,6 +362,7 @@ class TasksViewModel @Inject constructor(
                 parentTaskId = parentTaskId,
                 autoCompleteParent = autoCompleteParent
             )
+            android.util.Log.d("DescriptionFlow-ViewModel", "📦 SENDING UpdateParams to UseCase: description='${params.description}'")
 
             when (val result = updateTaskWithCalendarUseCase(params)) {
                 is UpdateTaskWithCalendarUseCase.UpdateResult.Success -> {
