@@ -125,6 +125,13 @@ class TodayViewModel @Inject constructor(
     private fun loadTasks() {
         viewModelScope.launch {
             taskRepository.getActiveTasks().collect { allTasks ->
+                android.util.Log.d("TodayViewModel", "📋 loadTasks: Loaded ${allTasks.size} active tasks")
+                android.util.Log.d("TodayViewModel", "📋 Selected category: ${_selectedCategory.value?.name} (ID: ${_selectedCategory.value?.id})")
+
+                allTasks.forEachIndexed { index, task ->
+                    android.util.Log.d("TodayViewModel", "📋   Task $index: '${task.title}' (categoryId=${task.categoryId}, isCompleted=${task.isCompleted})")
+                }
+
                 // Filter tasks by selected category
                 val filteredTasks = if (_selectedCategory.value != null) {
                     allTasks.filter { task ->
@@ -136,6 +143,8 @@ class TodayViewModel @Inject constructor(
                         task.categoryId == null
                     }
                 }
+
+                android.util.Log.d("TodayViewModel", "📋 After filtering: ${filteredTasks.size} tasks")
 
                 _uiState.value = _uiState.value.copy(
                     tasks = filteredTasks,

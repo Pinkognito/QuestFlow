@@ -18,12 +18,13 @@ data class CalendarFilterSettings(
     val showOpen: Boolean = true,
     val showExpired: Boolean = false,  // Filter for expired events
     val filterByCategory: Boolean = false,
+    val showOnlyWithCalendar: Boolean = false,  // Filter for tasks with calendar events only
     val dateFilterType: DateFilterType = DateFilterType.ALL,
     val customRangeStart: Long = 0,
     val customRangeEnd: Long = 0
 ) {
     fun isActive(): Boolean {
-        return !showCompleted || !showOpen || showExpired || filterByCategory || dateFilterType != DateFilterType.ALL
+        return !showCompleted || !showOpen || showExpired || filterByCategory || showOnlyWithCalendar || dateFilterType != DateFilterType.ALL
     }
 }
 
@@ -41,6 +42,7 @@ class CalendarFilterPreferences @Inject constructor(
         private const val KEY_SHOW_OPEN = "show_open"
         private const val KEY_SHOW_EXPIRED = "show_expired"
         private const val KEY_FILTER_BY_CATEGORY = "filter_by_category"
+        private const val KEY_SHOW_ONLY_WITH_CALENDAR = "show_only_with_calendar"
         private const val KEY_DATE_FILTER_TYPE = "date_filter_type"
         private const val KEY_CUSTOM_START_DATE = "custom_start_date"
         private const val KEY_CUSTOM_END_DATE = "custom_end_date"
@@ -56,6 +58,7 @@ class CalendarFilterPreferences @Inject constructor(
             showOpen = prefs.getBoolean(KEY_SHOW_OPEN, true),
             showExpired = prefs.getBoolean(KEY_SHOW_EXPIRED, false),
             filterByCategory = prefs.getBoolean(KEY_FILTER_BY_CATEGORY, false),
+            showOnlyWithCalendar = prefs.getBoolean(KEY_SHOW_ONLY_WITH_CALENDAR, false),
             dateFilterType = DateFilterType.valueOf(
                 prefs.getString(KEY_DATE_FILTER_TYPE, DateFilterType.ALL.name) ?: DateFilterType.ALL.name
             ),
@@ -70,6 +73,7 @@ class CalendarFilterPreferences @Inject constructor(
             .putBoolean(KEY_SHOW_OPEN, settings.showOpen)
             .putBoolean(KEY_SHOW_EXPIRED, settings.showExpired)
             .putBoolean(KEY_FILTER_BY_CATEGORY, settings.filterByCategory)
+            .putBoolean(KEY_SHOW_ONLY_WITH_CALENDAR, settings.showOnlyWithCalendar)
             .putString(KEY_DATE_FILTER_TYPE, settings.dateFilterType.name)
             .putLong(KEY_CUSTOM_START_DATE, settings.customRangeStart)
             .putLong(KEY_CUSTOM_END_DATE, settings.customRangeEnd)
@@ -100,6 +104,12 @@ class CalendarFilterPreferences @Inject constructor(
         get() = _settings.value.filterByCategory
         set(value) {
             updateSettings(_settings.value.copy(filterByCategory = value))
+        }
+
+    var showOnlyWithCalendar: Boolean
+        get() = _settings.value.showOnlyWithCalendar
+        set(value) {
+            updateSettings(_settings.value.copy(showOnlyWithCalendar = value))
         }
 
     var dateFilterType: DateFilterType

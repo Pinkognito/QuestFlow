@@ -113,14 +113,25 @@ fun TasksScreen(
         }
     }
 
-    // Filter links based on search query - calculated before Scaffold for TopBar access
+    // Filter tasks based on search query - calculated before Scaffold for TopBar access
+    val filteredTasks = if (searchQuery.isEmpty()) {
+        uiState.tasks
+    } else {
+        uiState.tasks.filter { task ->
+            // Search in title or description
+            task.title.contains(searchQuery, ignoreCase = true) ||
+            task.description.contains(searchQuery, ignoreCase = true) ||
+            // Search in category name
+            (task.categoryId != null && categories.find { it.id == task.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+        }
+    }
+
+    // Also keep filtered links for backwards compatibility (XP claiming etc.)
     val filteredLinks = if (searchQuery.isEmpty()) {
         uiState.links
     } else {
         uiState.links.filter { link ->
-            // Search in title
             link.title.contains(searchQuery, ignoreCase = true) ||
-            // Search in category name
             (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
         }
     }
@@ -255,13 +266,13 @@ fun TasksScreen(
                     singleLine = true
                 )
 
-                if (filteredLinks.isEmpty()) {
+                if (filteredTasks.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            if (searchQuery.isEmpty()) "No calendar events yet" else "Keine Ergebnisse gefunden",
+                            if (searchQuery.isEmpty()) "Keine Aufgaben vorhanden" else "Keine Ergebnisse gefunden",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
@@ -271,20 +282,23 @@ fun TasksScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filteredLinks) { link ->
-                    val isExpired = link.endsAt < java.time.LocalDateTime.now()
-                    val isClaimed = link.rewarded || link.status == "CLAIMED"
+                        items(filteredTasks, key = { it.id }) { task ->
+                    // Find corresponding calendar link if exists
+                    val link = uiState.links.find { it.taskId == task.id }
+
+                    val now = java.time.LocalDateTime.now()
+                    val isExpired = task.dueDate?.let { it < now } ?: false
+                    val isClaimed = task.isCompleted
 
                     // Check if this task is a parent or subtask
-                    val taskData = availableTasks.find { it.id == link.taskId }
-                    val isParentTask = taskData != null && availableTasks.any { it.parentTaskId == taskData.id }
-                    val isSubtask = taskData?.parentTaskId != null
+                    val isParentTask = availableTasks.any { it.parentTaskId == task.id }
+                    val isSubtask = task.parentTaskId != null
                     val parentTask = if (isSubtask) {
-                        availableTasks.find { it.id == taskData?.parentTaskId }
+                        availableTasks.find { it.id == task.parentTaskId }
                     } else null
 
-                    // Track if this task is selected in multi-select mode
-                    val isSelected = selectedTaskLinks.contains(link)
+                    // Track if this task is selected in multi-select mode (using link if exists)
+                    val isSelected = link?.let { selectedTaskLinks.contains(it) } ?: false
 
                     Card(
                         modifier = Modifier
@@ -292,20 +306,34 @@ fun TasksScreen(
                             .combinedClickable(
                                 onClick = {
                                     if (multiSelectMode) {
-                                        // Toggle selection
-                                        selectedTaskLinks = if (isSelected) {
-                                            selectedTaskLinks - link
-                                        } else {
-                                            selectedTaskLinks + link
+                                        // Toggle selection (only if link exists)
+                                        link?.let {
+                                            selectedTaskLinks = if (isSelected) {
+                                                selectedTaskLinks - it
+                                            } else {
+                                                selectedTaskLinks + it
+                                            }
                                         }
                                     } else {
                                         // Normal: Open task for editing
-                                        selectedEditLink = link
+                                        // Create temp link if not exists
+                                        val editLink = link ?: CalendarEventLinkEntity(
+                                            id = 0,
+                                            calendarEventId = task.calendarEventId ?: 0,
+                                            title = task.title,
+                                            startsAt = task.dueDate ?: now,
+                                            endsAt = (task.dueDate ?: now).plusHours(1),
+                                            xp = task.xpReward,
+                                            xpPercentage = task.xpPercentage ?: 60,
+                                            categoryId = task.categoryId,
+                                            taskId = task.id
+                                        )
+                                        selectedEditLink = editLink
                                     }
                                 },
                                 onLongClick = {
-                                    if (!multiSelectMode) {
-                                        // Enter multi-select mode and select this task
+                                    if (!multiSelectMode && link != null) {
+                                        // Enter multi-select mode and select this task (only if link exists)
                                         multiSelectMode = true
                                         selectedTaskLinks = setOf(link)
                                     }
@@ -379,7 +407,7 @@ fun TasksScreen(
                                                 )
                                             }
                                             Text(
-                                                text = link.title,
+                                                text = task.title,
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
                                                 color = if (isExpired && !isClaimed)
@@ -411,7 +439,7 @@ fun TasksScreen(
                                             }
                                         }
                                         if (isParentTask) {
-                                            val subtaskCount = availableTasks.count { it.parentTaskId == taskData?.id }
+                                            val subtaskCount = availableTasks.count { it.parentTaskId == task.id }
                                             Badge(
                                                 containerColor = MaterialTheme.colorScheme.primary,
                                                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -432,23 +460,25 @@ fun TasksScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Start date
-                                    Text(
-                                        text = link.startsAt.format(dateFormatter),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
-                                    )
+                                    // Start date (from task.dueDate or link.startsAt)
+                                    task.dueDate?.let { dueDate ->
+                                        Text(
+                                            text = dueDate.format(dateFormatter),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
 
-                                    // Separator
-                                    Text(
-                                        "•",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                        // Separator
+                                        Text(
+                                            "•",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
                                     // Difficulty
-                                    val difficultyText = when (link.xpPercentage) {
+                                    val difficultyText = when (task.xpPercentage ?: 60) {
                                         20 -> "Trivial"
                                         40 -> "Einfach"
                                         60 -> "Mittel"
@@ -469,15 +499,15 @@ fun TasksScreen(
                                 }
                             }
 
-                            // Trailing: Claim button or status
-                            if (link.rewarded || link.status == "CLAIMED") {
+                            // Trailing: Claim button or status (only if calendar link exists)
+                            if (link != null && (link.rewarded || link.status == "CLAIMED")) {
                                 Text(
                                     "✓",
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
-                            } else {
+                            } else if (link != null) {
                                 Button(
                                     onClick = {
                                         viewModel.claimXp(link.id) {

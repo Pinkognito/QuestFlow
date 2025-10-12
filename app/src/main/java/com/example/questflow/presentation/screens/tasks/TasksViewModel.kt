@@ -52,8 +52,8 @@ class TasksViewModel @Inject constructor(
 
     private var selectedCategoryId: Long? = null
 
-    private val _uiState = MutableStateFlow(CalendarXpUiState())
-    val uiState: StateFlow<CalendarXpUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(TasksUiState())
+    val uiState: StateFlow<TasksUiState> = _uiState.asStateFlow()
 
     private val _showFilterDialog = MutableStateFlow(false)
     val showFilterDialog: StateFlow<Boolean> = _showFilterDialog.asStateFlow()
@@ -63,7 +63,8 @@ class TasksViewModel @Inject constructor(
 
     init {
         loadFilterSettings()
-        loadCalendarLinks()
+        loadTasks()
+        loadCalendarLinks()  // Still load for XP claiming
         loadCalendarEvents()
         loadStats()
     }
@@ -80,6 +81,7 @@ class TasksViewModel @Inject constructor(
 
     fun updateSelectedCategory(categoryId: Long?) {
         selectedCategoryId = categoryId
+        loadTasks()
         loadCalendarLinks()
     }
 
@@ -93,8 +95,10 @@ class TasksViewModel @Inject constructor(
             showCompleted = settings.showCompleted,
             showOpen = settings.showOpen,
             filterByCategory = settings.filterByCategory,
+            showOnlyWithCalendar = settings.showOnlyWithCalendar,
             dateFilterType = settings.dateFilterType
         )
+        loadTasks()
         loadCalendarLinks()
     }
 
@@ -111,6 +115,82 @@ class TasksViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun loadTasks() {
+        viewModelScope.launch {
+            taskRepository.getActiveTasks().collect { allTasks ->
+                val filteredTasks = filterTasks(allTasks)
+                _uiState.value = _uiState.value.copy(tasks = filteredTasks)
+            }
+        }
+    }
+
+    private fun filterTasks(tasks: List<com.example.questflow.domain.model.Task>): List<com.example.questflow.domain.model.Task> {
+        var filtered = tasks
+        val now = LocalDateTime.now()
+
+        // Filter by completion status
+        filtered = filtered.filter { task ->
+            val showOpen = filterSettings.value.showOpen
+            val showCompleted = filterSettings.value.showCompleted
+
+            when {
+                task.isCompleted -> showCompleted
+                else -> showOpen
+            }
+        }
+
+        // Filter by category
+        if (_uiState.value.filterByCategory && selectedCategoryId != null) {
+            filtered = filtered.filter { it.categoryId == selectedCategoryId }
+        }
+
+        // Filter by calendar event (if showOnlyWithCalendar is true)
+        if (_uiState.value.showOnlyWithCalendar) {
+            filtered = filtered.filter { it.calendarEventId != null }
+        }
+
+        // Filter by date (based on dueDate)
+        filtered = when (_uiState.value.dateFilterType) {
+            DateFilterType.TODAY -> {
+                filtered.filter { task ->
+                    task.dueDate?.toLocalDate() == LocalDate.now()
+                }
+            }
+            DateFilterType.THIS_WEEK -> {
+                val startOfWeek = now.minusDays(now.dayOfWeek.value.toLong() - 1)
+                val endOfWeek = startOfWeek.plusDays(6)
+                filtered.filter { task ->
+                    task.dueDate?.let { it >= startOfWeek && it <= endOfWeek } ?: false
+                }
+            }
+            DateFilterType.THIS_MONTH -> {
+                filtered.filter { task ->
+                    task.dueDate?.let { it.month == now.month && it.year == now.year } ?: false
+                }
+            }
+            DateFilterType.CUSTOM_RANGE -> {
+                val startTimestamp = filterSettings.value.customRangeStart
+                val endTimestamp = filterSettings.value.customRangeEnd
+
+                if (startTimestamp > 0 && endTimestamp > 0) {
+                    val startDateTime = LocalDateTime.ofEpochSecond(startTimestamp, 0, java.time.ZoneOffset.UTC)
+                    val endDateTime = LocalDateTime.ofEpochSecond(endTimestamp, 0, java.time.ZoneOffset.UTC)
+
+                    filtered.filter { task ->
+                        task.dueDate?.let { dueDate ->
+                            dueDate >= startDateTime && dueDate <= endDateTime
+                        } ?: false
+                    }
+                } else {
+                    filtered
+                }
+            }
+            else -> filtered
+        }
+
+        return filtered
     }
 
     fun loadCalendarLinks() {
@@ -486,7 +566,8 @@ class TasksViewModel @Inject constructor(
     }
 }
 
-data class CalendarXpUiState(
+data class TasksUiState(
+    val tasks: List<com.example.questflow.domain.model.Task> = emptyList(),
     val links: List<CalendarEventLinkEntity> = emptyList(),
     val calendarEvents: List<CalendarEvent> = emptyList(),
     val notification: String? = null,
@@ -496,8 +577,12 @@ data class CalendarXpUiState(
     val showCompleted: Boolean = true,
     val showOpen: Boolean = true,
     val filterByCategory: Boolean = false,
+    val showOnlyWithCalendar: Boolean = false,
     val dateFilterType: DateFilterType = DateFilterType.ALL
 )
+
+// Keep old name as alias for compatibility
+typealias CalendarXpUiState = TasksUiState
 
 data class XpAnimationData(
     val xpAmount: Int,

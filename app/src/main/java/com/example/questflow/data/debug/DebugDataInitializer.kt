@@ -7,6 +7,7 @@ import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.database.entity.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.util.UUID
@@ -31,9 +32,22 @@ class DebugDataInitializer @Inject constructor(
      * Prüft ob Debug-Daten bereits existieren (anhand Debug-Kategorie)
      */
     suspend fun shouldInitialize(): Boolean = withContext(Dispatchers.IO) {
+        Log.d(TAG, "📋 Checking if debug data should be initialized...")
+        Log.d(TAG, "📋 Looking for category: $DEBUG_CATEGORY_NAME")
+
         val categories = database.categoryDao().getAllCategoriesOnce()
+        Log.d(TAG, "📋 Found ${categories.size} categories in database")
+        categories.forEach { category ->
+            Log.d(TAG, "📋   - Category: ${category.name}")
+        }
+
         val hasDebugCategory = categories.any { it.name == DEBUG_CATEGORY_NAME }
-        !hasDebugCategory
+        Log.d(TAG, "📋 Has debug category: $hasDebugCategory")
+
+        val shouldInit = !hasDebugCategory
+        Log.d(TAG, "📋 Should initialize: $shouldInit")
+
+        shouldInit
     }
 
     /**
@@ -43,47 +57,60 @@ class DebugDataInitializer @Inject constructor(
         try {
             Log.d(TAG, "Starting debug data initialization...")
 
-            // 1. Debug-Kategorie erstellen
-            val categoryId = initializeDebugCategory()
-            Log.d(TAG, "✅ Debug category created: $categoryId")
+            // Run ALL initialization in a single database transaction
+            database.runInTransaction {
+                runBlocking {
+                    // 1. Debug-Kategorie erstellen
+                    val categoryId = initializeDebugCategory()
+                    Log.d(TAG, "✅ Debug category created: $categoryId")
 
-            // 2. Globale Tags erstellen
-            val tagIds = initializeTags()
-            Log.d(TAG, "✅ Tags created: ${tagIds.size}")
+                    // 2. Globale Tags erstellen
+                    val tagIds = initializeTags()
+                    Log.d(TAG, "✅ Tags created: ${tagIds.size}")
 
-            // 3. Kontakte erstellen (fabian1, fabian2)
-            val contactIds = initializeContacts(tagIds)
-            Log.d(TAG, "✅ Contacts created: ${contactIds.size}")
+                    // 3. Kontakte erstellen (fabian1, fabian2)
+                    val contactIds = initializeContacts(tagIds)
+                    Log.d(TAG, "✅ Contacts created: ${contactIds.size}")
 
-            // 4. Standorte erstellen
-            val locationIds = initializeLocations()
-            Log.d(TAG, "✅ Locations created: ${locationIds.size}")
+                    // 4. Standorte erstellen
+                    val locationIds = initializeLocations()
+                    Log.d(TAG, "✅ Locations created: ${locationIds.size}")
 
-            // 5. Textbausteine erstellen
-            val templateIds = initializeTextTemplates()
-            Log.d(TAG, "✅ Text templates created: ${templateIds.size}")
+                    // 5. Textbausteine erstellen
+                    val templateIds = initializeTextTemplates()
+                    Log.d(TAG, "✅ Text templates created: ${templateIds.size}")
 
-            // 6. Tasks erstellen (mit verschiedenen Recurring-Konfigurationen)
-            val taskIds = initializeTasks(categoryId, contactIds, locationIds)
-            Log.d(TAG, "✅ Tasks created: ${taskIds.size}")
+                    // 6. Tasks erstellen (mit verschiedenen Recurring-Konfigurationen)
+                    val taskIds = initializeTasks(categoryId, contactIds, locationIds)
+                    Log.d(TAG, "✅ Tasks created: ${taskIds.size}")
 
-            // 7. Skills erstellen
-            val skillIds = initializeSkills(categoryId)
-            Log.d(TAG, "✅ Skills created: ${skillIds.size}")
+                    // 6b. Calendar Links für Tasks erstellen (für XP-Claiming)
+                    val linkIds = initializeCalendarLinks(taskIds, categoryId)
+                    Log.d(TAG, "✅ Calendar links created: ${linkIds.size}")
 
-            // 8. User Stats initialisieren (Level 5, etwas XP)
-            initializeUserStats()
-            Log.d(TAG, "✅ User stats initialized")
+                    // 6c. XP-Transaktionen für abgeschlossene Tasks
+                    initializeXpTransactionsForCompletedTasks(taskIds)
+                    Log.d(TAG, "✅ XP transactions created for completed tasks")
 
-            // 9. Media Library Items (Placeholder-Bilder/GIFs)
-            val mediaIds = initializeMediaLibrary()
-            Log.d(TAG, "✅ Media library items created: ${mediaIds.size}")
+                    // 7. Skills erstellen
+                    val skillIds = initializeSkills(categoryId)
+                    Log.d(TAG, "✅ Skills created: ${skillIds.size}")
 
-            // 10. Statistiken und Charts erstellen
-            initializeStatistics()
-            Log.d(TAG, "✅ Statistics initialized")
+                    // 8. User Stats initialisieren (Level 5, etwas XP)
+                    initializeUserStats()
+                    Log.d(TAG, "✅ User stats initialized")
 
-            Log.d(TAG, "🎉 Debug data initialization completed successfully!")
+                    // 9. Media Library Items (Placeholder-Bilder/GIFs)
+                    val mediaIds = initializeMediaLibrary()
+                    Log.d(TAG, "✅ Media library items created: ${mediaIds.size}")
+
+                    // 10. Statistiken und Charts erstellen
+                    initializeStatistics()
+                    Log.d(TAG, "✅ Statistics initialized")
+
+                    Log.d(TAG, "🎉 Debug data initialization completed successfully!")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to initialize debug data", e)
             throw e
@@ -154,50 +181,128 @@ class DebugDataInitializer @Inject constructor(
 
     // ========== 3. KONTAKTE ==========
     private suspend fun initializeContacts(tagIds: Map<String, Long>): List<Long> {
-        val contacts = listOf(
-            MetadataContactEntity(
-                displayName = "Fabian Test 1",
-                givenName = "Fabian",
-                familyName = "Test",
-                primaryPhone = "+4915159031829",
-                primaryEmail = "fabian1@test.com",
-                iconEmoji = "👨‍💻",
-                organization = "Test Corp",
-                jobTitle = "Developer",
-                note = "Test-Kontakt 1 für Debug-Zwecke"
-            ),
-            MetadataContactEntity(
-                displayName = "Fabian Test 2",
-                givenName = "Fabian",
-                familyName = "Test2",
-                primaryPhone = "+4915159031830",
-                primaryEmail = "fabian2@test.com",
-                iconEmoji = "🚀",
-                organization = "Test GmbH",
-                jobTitle = "Project Manager",
-                note = "Test-Kontakt 2 für Debug-Zwecke"
-            )
+        // Kontakt 1: Fabian Test 1 mit echten Daten
+        val contact1 = MetadataContactEntity(
+            displayName = "Fabian Test 1",
+            givenName = "Fabian",
+            familyName = "Beckmann",
+            primaryPhone = "+4915159031829",
+            primaryEmail = "fabian_beckmann@outlook.de",
+            iconEmoji = "👨‍💻",
+            organization = "QuestFlow Dev",
+            jobTitle = "Developer",
+            note = "Haupt-Test-Kontakt mit vollständigen Metadaten"
         )
+        val contactId1 = database.metadataContactDao().insert(contact1)
 
-        val contactIds = contacts.map { contact ->
-            database.metadataContactDao().insert(contact)
+        // Telefon für Kontakt 1
+        try {
+            database.metadataPhoneDao().insert(
+                MetadataPhoneEntity(
+                    contactId = contactId1,
+                    phoneNumber = "+4915159031829",
+                    phoneType = PhoneType.MOBILE,
+                    label = "Mobil"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert phone for contact 1", e)
         }
 
-        // VIP-Tag für fabian1 hinzufügen (nach dem Einfügen aller Kontakte)
-        if (contactIds.isNotEmpty()) {
-            tagIds["VIP"]?.let { vipTagId ->
-                try {
-                    database.contactTagDao().insert(
-                        ContactTagEntity(
-                            contactId = contactIds[0], // fabian1
-                            tagId = vipTagId
-                        )
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not add VIP tag to contact: ${e.message}")
-                }
-            }
+        // Email für Kontakt 1
+        try {
+            database.metadataEmailDao().insert(
+                MetadataEmailEntity(
+                    contactId = contactId1,
+                    emailAddress = "fabian_beckmann@outlook.de",
+                    emailType = EmailType.PERSONAL,
+                    label = "Privat"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert email for contact 1", e)
         }
+
+        // Adresse für Kontakt 1
+        try {
+            database.metadataAddressDao().insert(
+                MetadataAddressEntity(
+                    contactId = contactId1,
+                    street = "Baumgarten 42",
+                    city = "Bremerhaven",
+                    postalCode = "27654",
+                    country = "Deutschland",
+                    addressType = AddressType.HOME,
+                    label = "Zuhause"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert address for contact 1", e)
+        }
+
+        // Kontakt 2: Fabian Test 2
+        val contact2 = MetadataContactEntity(
+            displayName = "Fabian Test 2",
+            givenName = "Fabian",
+            familyName = "Test",
+            primaryPhone = "+4915159031829",
+            primaryEmail = "fabian_beckmann@outlook.de",
+            iconEmoji = "🚀",
+            organization = "Test GmbH",
+            jobTitle = "Project Manager",
+            note = "Zweiter Test-Kontakt"
+        )
+        val contactId2 = database.metadataContactDao().insert(contact2)
+
+        // Telefon für Kontakt 2
+        try {
+            database.metadataPhoneDao().insert(
+                MetadataPhoneEntity(
+                    contactId = contactId2,
+                    phoneNumber = "+4915159031829",
+                    phoneType = PhoneType.WORK,
+                    label = "Geschäftlich"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert phone for contact 2", e)
+        }
+
+        // Email für Kontakt 2
+        try {
+            database.metadataEmailDao().insert(
+                MetadataEmailEntity(
+                    contactId = contactId2,
+                    emailAddress = "fabian_beckmann@outlook.de",
+                    emailType = EmailType.WORK,
+                    label = "Arbeit"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert email for contact 2", e)
+        }
+
+        // Adresse für Kontakt 2 (gleiche wie Kontakt 1)
+        try {
+            database.metadataAddressDao().insert(
+                MetadataAddressEntity(
+                    contactId = contactId2,
+                    street = "Baumgarten 42",
+                    city = "Bremerhaven",
+                    postalCode = "27654",
+                    country = "Deutschland",
+                    addressType = AddressType.WORK,
+                    label = "Büro"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert address for contact 2", e)
+        }
+
+        val contactIds = listOf(contactId1, contactId2)
+
+        // Note: VIP-Tag linking removed due to async transaction issues
+        // Tags can be added manually in the UI for testing
 
         return contactIds
     }
@@ -205,6 +310,17 @@ class DebugDataInitializer @Inject constructor(
     // ========== 4. STANDORTE ==========
     private suspend fun initializeLocations(): List<Long> {
         val locations = listOf(
+            MetadataLocationEntity(
+                placeName = "Zuhause Bremerhaven",
+                latitude = 53.5395,
+                longitude = 8.5809,
+                formattedAddress = "Baumgarten 42, 27654 Bremerhaven",
+                street = "Baumgarten 42",
+                city = "Bremerhaven",
+                postalCode = "27654",
+                country = "Deutschland",
+                customLabel = "Privat"
+            ),
             MetadataLocationEntity(
                 placeName = "Test Büro Berlin",
                 latitude = 52.5200,
@@ -282,6 +398,43 @@ Nächste Schritte folgen in Kürze.
 Grüße,
 {user.name}""",
                 description = "Status-Update nach Task-Fertigstellung"
+            ),
+            TextTemplateEntity(
+                title = "Telefon-Notiz",
+                subject = "Telefonat mit {contact.name}",
+                content = """📞 Telefonat mit {contact.name}
+
+Datum: {datetime.now}
+Dauer: ~15 Min
+
+Wichtige Punkte:
+-
+-
+-
+
+Nächste Schritte:
+{task.description}
+
+Status: {task.title}""",
+                description = "Schnelle Telefon-Notiz mit Kontakt"
+            ),
+            TextTemplateEntity(
+                title = "Projekt-Kickoff",
+                subject = "Projekt Start: {task.title}",
+                content = """🚀 Projekt-Kickoff
+
+Projekt: {task.title}
+Team: {contact.name}
+Standort: {location.name}
+
+Ziele:
+{task.description}
+
+Start: {task.dueDate}
+Kategorie: {task.category}
+
+Viel Erfolg! 💪""",
+                description = "Template für Projekt-Starts"
             )
         )
 
@@ -295,113 +448,744 @@ Grüße,
         locationIds: List<Long>
     ): List<Long> {
         val now = LocalDateTime.now()
+        val taskIds = mutableListOf<Long>()
 
-        val tasks = listOf(
-            // Task 1: Täglich, 14:00 Uhr, nach Fertigstellung
+        // ===== COMPLETED TASKS IN THE PAST (für Statistiken) =====
+
+        // -30 Tage: Projekt-Planung abgeschlossen
+        taskIds.add(database.taskDao().insertTask(
             TaskEntity(
-                title = "Tägliche Standup-Notizen",
-                description = "Notizen für das tägliche Standup-Meeting vorbereiten",
+                title = "✅ Projekt-Roadmap erstellen",
+                description = "Jahresplanung und Meilensteine definieren",
                 priority = "HIGH",
-                xpPercentage = 40, // Einfach
-                xpReward = 2000,
+                xpPercentage = 80,
+                xpReward = 6000,
                 categoryId = categoryId,
-                dueDate = now.withHour(14).withMinute(0),
-                isRecurring = true,
-                recurringType = "DAILY",
-                recurringInterval = 1 * 24 * 60, // 1 Tag in Minuten
-                specificTime = "14:00",
-                triggerMode = "AFTER_COMPLETION"
-            ),
-            // Task 2: Wöchentlich (Mo, Mi, Fr), 09:00 Uhr, fest
+                dueDate = now.minusDays(30).withHour(10).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(30).withHour(15).withMinute(30),
+                isRecurring = false
+            )
+        ))
+
+        // -25 Tage: Design Review
+        taskIds.add(database.taskDao().insertTask(
             TaskEntity(
-                title = "Wöchentliches Team-Meeting",
-                description = "Team-Meeting mit allen Entwicklern",
-                priority = "MEDIUM",
-                xpPercentage = 60, // Mittel
-                xpReward = 3500,
-                categoryId = categoryId,
-                dueDate = now.withHour(9).withMinute(0),
-                isRecurring = true,
-                recurringType = "WEEKLY",
-                recurringInterval = 7 * 24 * 60, // 1 Woche in Minuten
-                recurringDays = "MONDAY,WEDNESDAY,FRIDAY",
-                specificTime = "09:00",
-                triggerMode = "FIXED_INTERVAL"
-            ),
-            // Task 3: Monatlich (15. des Monats), 12:00 Uhr, nach Ablauf
-            TaskEntity(
-                title = "Monats-Report erstellen",
-                description = "Monatlicher Fortschrittsbericht für das Management",
-                priority = "HIGH",
-                xpPercentage = 80, // Schwer
-                xpReward = 5000,
-                categoryId = categoryId,
-                dueDate = now.withDayOfMonth(15).withHour(12).withMinute(0),
-                isRecurring = true,
-                recurringType = "MONTHLY",
-                recurringInterval = 15 * 24 * 60, // 15. Tag in Minuten
-                specificTime = "12:00",
-                triggerMode = "AFTER_EXPIRY"
-            ),
-            // Task 4: Benutzerdefiniert (alle 90 Minuten), nach Fertigstellung
-            TaskEntity(
-                title = "Kurze Lerneinheit",
-                description = "15 Minuten neue Technologie lernen",
-                priority = "LOW",
-                xpPercentage = 20, // Trivial
-                xpReward = 1000,
-                categoryId = categoryId,
-                dueDate = now.plusMinutes(90),
-                isRecurring = true,
-                recurringType = "CUSTOM",
-                recurringInterval = 90, // 90 Minuten
-                triggerMode = "AFTER_COMPLETION"
-            ),
-            // Task 5: Einmalige Task mit Kontakt und Standort
-            TaskEntity(
-                title = "Meeting mit Fabian Test 1",
-                description = "Projekt-Kickoff besprechen",
+                title = "✅ UI/UX Design Review",
+                description = "Designs mit Team besprechen und finalisieren",
                 priority = "HIGH",
                 xpPercentage = 60,
-                xpReward = 3500,
+                xpReward = 4500,
                 categoryId = categoryId,
-                dueDate = now.plusDays(1).withHour(10).withMinute(0),
+                dueDate = now.minusDays(25).withHour(14).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(25).withHour(16).withMinute(45),
                 isRecurring = false
-            ),
-            // Task 6: Erledigte Task (für Statistiken)
+            )
+        ))
+
+        // -20 Tage: Sprint 1 abgeschlossen
+        taskIds.add(database.taskDao().insertTask(
             TaskEntity(
-                title = "Code-Review durchführen",
-                description = "Pull Request #123 reviewen",
+                title = "✅ Sprint 1: Grundfunktionen",
+                description = "Core-Features implementieren und testen",
+                priority = "URGENT",
+                xpPercentage = 100,
+                xpReward = 8000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(20).withHour(17).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(20).withHour(18).withMinute(20),
+                isRecurring = false
+            )
+        ))
+
+        // -18 Tage: Team Meeting
+        val teamMeetingId = database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Weekly Team Standup",
+                description = "Wöchentliches Sync-Meeting mit allen",
                 priority = "MEDIUM",
                 xpPercentage = 40,
                 xpReward = 2000,
                 categoryId = categoryId,
-                dueDate = now.minusDays(1),
+                dueDate = now.minusDays(18).withHour(9).withMinute(30),
                 isCompleted = true,
-                completedAt = now.minusDays(1).plusHours(2)
+                completedAt = now.minusDays(18).withHour(10).withMinute(15),
+                isRecurring = false
             )
         )
-
-        val taskIds = mutableListOf<Long>()
-        tasks.forEachIndexed { index, task ->
-            val taskId = database.taskDao().insertTask(task)
-            taskIds.add(taskId)
-
-            // Kontakt zu Task 5 hinzufügen (Meeting mit Fabian Test 1)
-            if (index == 4 && contactIds.isNotEmpty()) {
-                database.taskContactLinkDao().insert(
-                    TaskContactLinkEntity(
-                        taskId = taskId,
-                        contactId = contactIds[0]
-                    )
-                )
-            }
-
-            // Note: Task-Metadaten werden bei Bedarf separat verknüpft
-            // Hier erstellen wir keine leeren TaskMetadata-Einträge, da sie einen MetadataType brauchen
+        taskIds.add(teamMeetingId)
+        if (contactIds.isNotEmpty()) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(taskId = teamMeetingId, contactId = contactIds[0])
+            )
         }
 
+        // -15 Tage: Code Review
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Code Review: Authentication",
+                description = "Login und Registrierung überprüfen",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 3500,
+                categoryId = categoryId,
+                dueDate = now.minusDays(15).withHour(11).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(15).withHour(13).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // -12 Tage: Testing
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Unit Tests schreiben",
+                description = "Test-Coverage auf 80% erhöhen",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 3000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(12).withHour(15).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(12).withHour(17).withMinute(30),
+                isRecurring = false
+            )
+        ))
+
+        // -10 Tage: Sprint 2 abgeschlossen
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Sprint 2: XP System",
+                description = "Gamification-System implementieren",
+                priority = "URGENT",
+                xpPercentage = 100,
+                xpReward = 10000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(10).withHour(17).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(10).withHour(19).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // -8 Tage: Dokumentation
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ API-Dokumentation aktualisieren",
+                description = "Swagger Docs für neue Endpoints",
+                priority = "LOW",
+                xpPercentage = 20,
+                xpReward = 1500,
+                categoryId = categoryId,
+                dueDate = now.minusDays(8).withHour(13).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(8).withHour(14).withMinute(45),
+                isRecurring = false
+            )
+        ))
+
+        // -6 Tage: Performance Optimization
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Performance-Optimierung",
+                description = "Ladezeiten um 30% reduzieren",
+                priority = "HIGH",
+                xpPercentage = 80,
+                xpReward = 5500,
+                categoryId = categoryId,
+                dueDate = now.minusDays(6).withHour(16).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(6).withHour(18).withMinute(30),
+                isRecurring = false
+            )
+        ))
+
+        // -5 Tage: Prototyp abgeschlossen
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Beta-Version deployen",
+                description = "Erste Beta für Tester bereitstellen",
+                priority = "URGENT",
+                xpPercentage = 80,
+                xpReward = 7000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(5).withHour(12).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(5).withHour(14).withMinute(20),
+                isRecurring = false
+            )
+        ))
+
+        // -3 Tage: Bug Fixing
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Kritische Bugs beheben",
+                description = "15 High-Priority Bugs aus Beta-Feedback",
+                priority = "URGENT",
+                xpPercentage = 100,
+                xpReward = 8500,
+                categoryId = categoryId,
+                dueDate = now.minusDays(3).withHour(10).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(3).withHour(16).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // -2 Tage: Dokumentation schreiben
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ User-Dokumentation erstellen",
+                description = "Benutzerhandbuch und FAQs schreiben",
+                priority = "MEDIUM",
+                xpPercentage = 60,
+                xpReward = 3500,
+                categoryId = categoryId,
+                dueDate = now.minusDays(2).withHour(11).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(2).withHour(15).withMinute(30),
+                isRecurring = false
+            )
+        ))
+
+        // -1 Tag: Final Testing
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Abschluss-Tests durchführen",
+                description = "Alle Features nochmal komplett testen",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 4000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(1).withHour(14).withMinute(0),
+                isCompleted = true,
+                completedAt = now.minusDays(1).withHour(17).withMinute(45),
+                isRecurring = false
+            )
+        ))
+
+        // ===== AKTUELLE TASKS (Heute und nahe Zukunft) =====
+
+        // Heute: Dringende Tasks
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Release Notes vorbereiten",
+                description = "Changelog für v1.0 erstellen",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 3000,
+                categoryId = categoryId,
+                dueDate = now.withHour(16).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        val todayMeetingId = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Launch-Meeting mit Fabian",
+                description = "Final Go/No-Go Entscheidung treffen",
+                priority = "URGENT",
+                xpPercentage = 80,
+                xpReward = 5000,
+                categoryId = categoryId,
+                dueDate = now.withHour(10).withMinute(0),
+                isRecurring = false
+            )
+        )
+        taskIds.add(todayMeetingId)
+        if (contactIds.isNotEmpty() && locationIds.isNotEmpty()) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(taskId = todayMeetingId, contactId = contactIds[0])
+            )
+        }
+
+        // ===== PARENT TASK 1: Projekt "App Entwicklung" mit Subtasks =====
+        val parentTask1Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "📱 Projekt: QuestFlow App Entwicklung",
+                description = "Haupt-Projekt für die Entwicklung der QuestFlow-App mit mehreren Subtasks",
+                priority = "URGENT",
+                xpPercentage = 100, // Episch
+                xpReward = 10000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(30),
+                isRecurring = false,
+                autoCompleteParent = false // Parent muss manuell abgeschlossen werden
+            )
+        )
+        taskIds.add(parentTask1Id)
+
+        // Subtask 1.1: Täglich recurring, AFTER_COMPLETION
+        val subtask11Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Daily Code Review",
+                description = "Code-Qualität täglich überprüfen",
+                priority = "HIGH",
+                xpPercentage = 40,
+                xpReward = 2000,
+                categoryId = categoryId,
+                dueDate = now.withHour(16).withMinute(0),
+                isRecurring = true,
+                recurringType = "DAILY",
+                recurringInterval = 1 * 24 * 60,
+                specificTime = "16:00",
+                triggerMode = "AFTER_COMPLETION",
+                parentTaskId = parentTask1Id,
+                autoCompleteParent = false
+            )
+        )
+        taskIds.add(subtask11Id)
+
+        // Subtask 1.2: Wöchentlich recurring, FIXED_INTERVAL
+        val subtask12Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Wöchentliches Sprint-Planning",
+                description = "Sprint planen mit dem Team (Mo, Mi, Fr)",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 3500,
+                categoryId = categoryId,
+                dueDate = now.withHour(9).withMinute(30),
+                isRecurring = true,
+                recurringType = "WEEKLY",
+                recurringInterval = 7 * 24 * 60,
+                recurringDays = "MONDAY,WEDNESDAY,FRIDAY",
+                specificTime = "09:30",
+                triggerMode = "FIXED_INTERVAL",
+                parentTaskId = parentTask1Id,
+                autoCompleteParent = false
+            )
+        )
+        taskIds.add(subtask12Id)
+
+        // Kontakt zu Subtask 1.2 hinzufügen
+        if (contactIds.isNotEmpty()) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(
+                    taskId = subtask12Id,
+                    contactId = contactIds[0]
+                )
+            )
+        }
+
+        // Subtask 1.3: Einmalig, bereits abgeschlossen
+        val subtask13Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "✅ Prototyp fertigstellen",
+                description = "Ersten funktionierenden Prototyp entwickeln",
+                priority = "HIGH",
+                xpPercentage = 80,
+                xpReward = 5000,
+                categoryId = categoryId,
+                dueDate = now.minusDays(5),
+                isRecurring = false,
+                isCompleted = true,
+                completedAt = now.minusDays(5).plusHours(3),
+                parentTaskId = parentTask1Id,
+                autoCompleteParent = false
+            )
+        )
+        taskIds.add(subtask13Id)
+
+        // ===== PARENT TASK 2: "Marketing Kampagne" mit Auto-Complete =====
+        val parentTask2Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "📣 Marketing: Launch Kampagne",
+                description = "Marketing-Kampagne für App-Launch vorbereiten und durchführen",
+                priority = "HIGH",
+                xpPercentage = 80,
+                xpReward = 8000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(14),
+                isRecurring = false,
+                autoCompleteParent = true // Wird automatisch abgeschlossen wenn alle Subtasks fertig
+            )
+        )
+        taskIds.add(parentTask2Id)
+
+        // Subtask 2.1: Monatlich recurring, AFTER_EXPIRY
+        val subtask21Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Monatlicher Newsletter",
+                description = "Newsletter an alle Subscriber senden",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 2500,
+                categoryId = categoryId,
+                dueDate = now.withDayOfMonth(1).withHour(10).withMinute(0),
+                isRecurring = true,
+                recurringType = "MONTHLY",
+                recurringInterval = 30 * 24 * 60,
+                specificTime = "10:00",
+                triggerMode = "AFTER_EXPIRY",
+                parentTaskId = parentTask2Id,
+                autoCompleteParent = true
+            )
+        )
+        taskIds.add(subtask21Id)
+
+        // Subtask 2.2: Custom recurring (alle 2 Stunden), AFTER_COMPLETION
+        val subtask22Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Social Media Check",
+                description = "Social Media Kanäle überprüfen und beantworten (alle 2h)",
+                priority = "LOW",
+                xpPercentage = 20,
+                xpReward = 1000,
+                categoryId = categoryId,
+                dueDate = now.plusHours(2),
+                isRecurring = true,
+                recurringType = "CUSTOM",
+                recurringInterval = 120, // 2 Stunden in Minuten
+                triggerMode = "AFTER_COMPLETION",
+                parentTaskId = parentTask2Id,
+                autoCompleteParent = true
+            )
+        )
+        taskIds.add(subtask22Id)
+
+        // ===== STANDALONE TASKS (ohne Parent) mit verschiedenen Konfigurationen =====
+
+        // Task mit Kontakt + Location
+        val task1Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Meeting mit Fabian in Bremerhaven",
+                description = "Projekt-Kickoff und Anforderungsanalyse besprechen",
+                priority = "URGENT",
+                xpPercentage = 60,
+                xpReward = 4000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(2).withHour(14).withMinute(0),
+                isRecurring = false
+            )
+        )
+        taskIds.add(task1Id)
+
+        // Kontakt und Location hinzufügen
+        if (contactIds.isNotEmpty()) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(
+                    taskId = task1Id,
+                    contactId = contactIds[0]
+                )
+            )
+        }
+
+        // Weekly recurring, FIXED_INTERVAL
+        val task2Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Wöchentliches Backup (Di, Do)",
+                description = "Datenbank-Backup durchführen",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 2000,
+                categoryId = categoryId,
+                dueDate = now.withHour(22).withMinute(0),
+                isRecurring = true,
+                recurringType = "WEEKLY",
+                recurringInterval = 7 * 24 * 60,
+                recurringDays = "TUESDAY,THURSDAY",
+                specificTime = "22:00",
+                triggerMode = "FIXED_INTERVAL"
+            )
+        )
+        taskIds.add(task2Id)
+
+        // Daily recurring, AFTER_COMPLETION
+        val task3Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Tägliche Lerneinheit",
+                description = "30 Minuten etwas Neues lernen",
+                priority = "LOW",
+                xpPercentage = 20,
+                xpReward = 1500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(1).withHour(18).withMinute(0),
+                isRecurring = true,
+                recurringType = "DAILY",
+                recurringInterval = 1 * 24 * 60,
+                specificTime = "18:00",
+                triggerMode = "AFTER_COMPLETION"
+            )
+        )
+        taskIds.add(task3Id)
+
+        // Custom recurring (alle 3 Tage), AFTER_EXPIRY
+        val task4Id = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Wohnung aufräumen",
+                description = "Grundlegendes Aufräumen und Putzen",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 2500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(3),
+                isRecurring = true,
+                recurringType = "CUSTOM",
+                recurringInterval = 3 * 24 * 60, // 3 Tage
+                triggerMode = "AFTER_EXPIRY"
+            )
+        )
+        taskIds.add(task4Id)
+
+        // ===== ZUKÜNFTIGE TASKS (+1 bis +30 Tage) =====
+
+        // +1 Tag: App Store Submission vorbereiten
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "App Store Screenshots erstellen",
+                description = "Marketing-Material für Store-Listings",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 3500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(1).withHour(11).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +3 Tage: Marketing Vorbereitung
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Social Media Kampagne planen",
+                description = "Content-Plan für Launch-Woche",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 2500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(3).withHour(10).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +5 Tage: Monitoring Setup
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Monitoring und Analytics einrichten",
+                description = "Firebase Analytics und Crashlytics konfigurieren",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 4000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(5).withHour(14).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +7 Tage: Pressemitteilung
+        val pressMeetingId = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Presse-Meeting in Berlin",
+                description = "Product Demo für Tech-Journalisten",
+                priority = "URGENT",
+                xpPercentage = 80,
+                xpReward = 6000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(7).withHour(15).withMinute(0),
+                isRecurring = false
+            )
+        )
+        taskIds.add(pressMeetingId)
+        if (contactIds.size >= 2 && locationIds.size >= 2) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(taskId = pressMeetingId, contactId = contactIds[1])
+            )
+        }
+
+        // +10 Tage: Community Management
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Discord Community aufbauen",
+                description = "Community-Server einrichten und moderieren",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 2000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(10).withHour(16).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +12 Tage: User Feedback auswerten
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "User Feedback analysieren",
+                description = "Erste User-Reviews auswerten und priorisieren",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 3500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(12).withHour(13).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +15 Tage: Feature-Planung
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Roadmap für v1.1 erstellen",
+                description = "Nächste Features basierend auf Feedback planen",
+                priority = "MEDIUM",
+                xpPercentage = 60,
+                xpReward = 4000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(15).withHour(10).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +17 Tage: Security Audit
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Security-Audit durchführen",
+                description = "Externe Security-Prüfung organisieren",
+                priority = "HIGH",
+                xpPercentage = 80,
+                xpReward = 5500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(17).withHour(9).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +20 Tage: Internationalisierung
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "App für weitere Sprachen vorbereiten",
+                description = "i18n-System erweitern (EN, FR, ES)",
+                priority = "MEDIUM",
+                xpPercentage = 60,
+                xpReward = 4500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(20).withHour(11).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +22 Tage: A/B Testing
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "A/B Tests für Onboarding",
+                description = "Verschiedene Onboarding-Flows testen",
+                priority = "LOW",
+                xpPercentage = 40,
+                xpReward = 2500,
+                categoryId = categoryId,
+                dueDate = now.plusDays(22).withHour(15).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +25 Tage: Partner-Meeting
+        val partnerMeetingId = database.taskDao().insertTask(
+            TaskEntity(
+                title = "Partnership-Gespräch in München",
+                description = "Kooperationsmöglichkeiten mit Tech-Partnern",
+                priority = "HIGH",
+                xpPercentage = 80,
+                xpReward = 5000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(25).withHour(14).withMinute(30),
+                isRecurring = false
+            )
+        )
+        taskIds.add(partnerMeetingId)
+        if (contactIds.size >= 2 && locationIds.size >= 3) {
+            database.taskContactLinkDao().insert(
+                TaskContactLinkEntity(taskId = partnerMeetingId, contactId = contactIds[1])
+            )
+        }
+
+        // +27 Tage: Performance Monitoring
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Performance-Metriken reviewen",
+                description = "30-Tage Performance-Report erstellen",
+                priority = "MEDIUM",
+                xpPercentage = 40,
+                xpReward = 3000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(27).withHour(10).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
+        // +30 Tage: Sprint Planning für v1.1
+        taskIds.add(database.taskDao().insertTask(
+            TaskEntity(
+                title = "Sprint Planning für v1.1",
+                description = "Team-Meeting für nächste Entwicklungsphase",
+                priority = "HIGH",
+                xpPercentage = 60,
+                xpReward = 4000,
+                categoryId = categoryId,
+                dueDate = now.plusDays(30).withHour(9).withMinute(0),
+                isRecurring = false
+            )
+        ))
+
         return taskIds
+    }
+
+    // ========== 6b. CALENDAR LINKS ==========
+    private suspend fun initializeCalendarLinks(
+        taskIds: List<Long>,
+        categoryId: Long
+    ): List<Long> {
+        val linkIds = mutableListOf<Long>()
+        val now = LocalDateTime.now()
+
+        taskIds.forEach { taskId ->
+            val task = database.taskDao().getTaskById(taskId) ?: return@forEach
+
+            // Nur Tasks mit dueDate bekommen Calendar Links
+            task.dueDate?.let { dueDate ->
+                // Status basierend auf Datum und Completion
+                val status = when {
+                    task.isCompleted -> "CLAIMED"
+                    dueDate < now -> "EXPIRED"
+                    else -> "PENDING"
+                }
+
+                val link = CalendarEventLinkEntity(
+                    calendarEventId = 0, // Kein echter Kalender-Event, nur XP-Tracking
+                    title = task.title,
+                    startsAt = dueDate,
+                    endsAt = dueDate.plusHours(1),
+                    xp = task.xpReward,
+                    xpPercentage = task.xpPercentage ?: 60,
+                    categoryId = task.categoryId,
+                    taskId = task.id,
+                    status = status,
+                    rewarded = task.isCompleted
+                )
+
+                val linkId = database.calendarEventLinkDao().insert(link)
+                linkIds.add(linkId)
+            }
+        }
+
+        return linkIds
+    }
+
+    // ========== 6c. XP-TRANSAKTIONEN FÜR ABGESCHLOSSENE TASKS ==========
+    private suspend fun initializeXpTransactionsForCompletedTasks(taskIds: List<Long>) {
+        taskIds.forEach { taskId ->
+            val task = database.taskDao().getTaskById(taskId) ?: return@forEach
+
+            // Nur für abgeschlossene Tasks XP-Transaktion erstellen
+            if (task.isCompleted) {
+                val transaction = XpTransactionEntity(
+                    amount = task.xpReward,
+                    source = XpSource.TASK,
+                    referenceId = task.id,
+                    timestamp = task.completedAt ?: LocalDateTime.now()
+                )
+                database.xpTransactionDao().insert(transaction)
+            }
+        }
     }
 
     // ========== 7. SKILLS ==========

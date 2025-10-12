@@ -39,10 +39,25 @@ class QuestFlowApplication : Application(), Configuration.Provider {
 
         // Initialize debug data if database is empty
         applicationScope.launch {
-            if (debugDataInitializer.shouldInitialize()) {
-                android.util.Log.d("QuestFlowApp", "🐛 Initializing debug test data...")
-                debugDataInitializer.initialize()
-                android.util.Log.d("QuestFlowApp", "✅ Debug test data initialized!")
+            android.util.Log.d("QuestFlowApp", "📋 DEBUG: Launch block started for debug data initialization")
+            try {
+                android.util.Log.d("QuestFlowApp", "📋 DEBUG: Calling shouldInitialize()...")
+                val should = debugDataInitializer.shouldInitialize()
+                android.util.Log.d("QuestFlowApp", "📋 DEBUG: shouldInitialize() returned: $should")
+
+                if (should) {
+                    android.util.Log.d("QuestFlowApp", "🐛 Initializing debug test data...")
+                    try {
+                        debugDataInitializer.initialize()
+                        android.util.Log.d("QuestFlowApp", "✅ Debug test data initialized!")
+                    } catch (e: Exception) {
+                        android.util.Log.e("QuestFlowApp", "❌ Failed to initialize debug data", e)
+                    }
+                } else {
+                    android.util.Log.d("QuestFlowApp", "ℹ️ Debug data already exists, skipping initialization")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("QuestFlowApp", "❌ Exception in debug data initialization block", e)
             }
         }
     }
