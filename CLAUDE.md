@@ -83,6 +83,71 @@ val xpReward = (nextLevelTotal * percentage / 100)
 - ✅ Removed unused `TaskDifficulty` enum
 - ✅ Centralized task update logic via `UpdateTaskWithCalendarUseCase`
 
+### Naming Refactoring (Oct 2025)
+- ✅ Renamed `CalendarFilterPreferences` → `TaskFilterPreferences`
+- ✅ Renamed `CalendarFilterSettings` → `TaskFilterSettings`
+- ✅ Removed obsolete `CalendarXpUiState` typealias
+- ✅ Updated SharedPreferences keys for consistency
+
+## 🧪 Debug Test Data System
+
+### Overview
+The app includes a comprehensive test data initialization system for development and testing.
+**File**: `DebugDataInitializer.kt`
+
+### Automatic Initialization
+- Triggers on first app install (checks for Debug category existence)
+- All initialization runs in a single database transaction for consistency
+- **Robust**: Will re-initialize if app data is cleared
+
+### Test Data Contents
+**Generated on every fresh install:**
+- **2 Contacts** (Fabian Test 1 & 2) with complete metadata:
+  - Phone: +4915159031829
+  - Email: fabian_beckmann@outlook.de
+  - Address: Baumgarten 42, 27654 Bremerhaven
+- **3 Locations**: Bremerhaven (home), Berlin (office), München (branch)
+- **5 Text Templates**: Meeting invites, reminders, status updates, phone notes, project kickoffs
+- **5 Global Tags**: VIP, Dringend, Privat, Arbeit, Büro
+- **39 Comprehensive Tasks**:
+  - 13 completed historical tasks (-30 to -1 days)
+  - 2 current tasks (today)
+  - 24 future tasks (+1 to +30 days)
+  - All dates relative to `LocalDateTime.now()` (stays relevant for 3+ months)
+  - Mix of priorities (URGENT, HIGH, MEDIUM, LOW)
+  - Various XP percentages (20%, 40%, 60%, 80%, 100%)
+  - Parent-child task relationships demonstrated
+  - Recurring tasks with all trigger modes (FIXED_INTERVAL, AFTER_COMPLETION, AFTER_EXPIRY)
+- **39 Calendar Links**: One for each task with a dueDate
+  - Status: CLAIMED (completed), EXPIRED (past incomplete), PENDING (future)
+  - Enables XP claiming system testing
+- **XP Transactions**: Generated for all completed tasks (enables statistics)
+- **4 Skills**: Global XP boost, Task master, Streak guardian, Debug specialist
+- **User Stats**: Level 5 with 15,000 XP and 12 skill points
+
+### Time-Relative Data
+All task dates use `LocalDateTime.now()` as the reference point:
+- **Past**: `now.minusDays(30)` to `now.minusDays(1)` — completed tasks for statistics
+- **Present**: `now.withHour(X)` — current day tasks
+- **Future**: `now.plusDays(1)` to `now.plusDays(30)` — upcoming tasks
+
+This ensures test data remains relevant even months after implementation.
+
+### Usage for Statistics
+The test data is specifically designed to enable testing of:
+- **XP trend charts**: 13 completed tasks with XP transactions over 30 days
+- **Task completion rates**: Mix of completed and active tasks
+- **Calendar integration**: All tasks have calendar links for XP claiming
+- **Category analytics**: All tasks assigned to Debug category
+- **Time distribution**: Tasks spread evenly across 60-day span
+
+### Persistence Guarantee
+Test data will ALWAYS be recreated on fresh installs because:
+1. `shouldInitialize()` checks for Debug category existence
+2. Category is only created after successful full initialization
+3. Database transaction ensures atomic creation (all-or-nothing)
+4. App data clear (`adb shell pm clear`) triggers re-initialization
+
 ## ⚠️ Known Technical Debt
 
 ### Performance
