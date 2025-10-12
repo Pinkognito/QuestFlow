@@ -1,29 +1,34 @@
 package com.example.questflow.presentation.screens.timeline.model
 
 import androidx.compose.ui.geometry.Offset
-import com.example.questflow.data.preferences.TimeRange
 import com.example.questflow.domain.model.TimelineTask
 import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
- * UI State for timeline screen
+ * UI State for timeline screen.
+ *
+ * UPDATED: After refactoring to vertical time axis and infinite scroll:
+ * - No more fixed time ranges
+ * - Days load dynamically (infinite scroll)
+ * - Always show full day (00:00-23:59)
  */
 data class TimelineUiState(
     // Data
     val days: List<DayTimeline> = emptyList(),
     val focusedTask: TimelineTask? = null,
 
-    // View settings
-    val timeRange: TimeRange = TimeRange.THREE_DAYS,
-    val viewStart: LocalDate = LocalDate.now().minusDays(1),
-    val viewEnd: LocalDate = LocalDate.now().plusDays(1),
+    // View settings (dynamic range)
+    val viewStart: LocalDate = LocalDate.now().minusDays(3),
+    val viewEnd: LocalDate = LocalDate.now().plusDays(3),
+
+    // 3-day window offset (which 3 days to show)
+    val dayWindowOffset: Int = 0, // 0 = today centered, -1 = shift left, +1 = shift right
 
     // Display settings
     val toleranceMinutes: Int = 30,
-    val hourRangeStart: Int = 6,
-    val hourRangeEnd: Int = 22,
-    val pixelsPerMinute: Float = 2f,
+    val visibleHours: Float = 12f, // How many hours visible on screen (zoom level)
+    val pixelsPerMinute: Float = 2f, // Calculated dynamically from visibleHours and screen height
     val snapToGridMinutes: Int = 15,
 
     // Interaction state
@@ -33,14 +38,15 @@ data class TimelineUiState(
 
     // Loading states
     val isLoading: Boolean = false,
+    val isLoadingPast: Boolean = false,
+    val isLoadingFuture: Boolean = false,
     val error: String? = null
 ) {
     /**
-     * Calculate total timeline width in pixels
+     * Calculate total timeline height in pixels (full 24 hours)
      */
-    fun calculateTimelineWidth(): Float {
-        val totalHours = hourRangeEnd - hourRangeStart
-        return totalHours * 60 * pixelsPerMinute
+    fun calculateTimelineHeight(): Float {
+        return 24 * 60 * pixelsPerMinute
     }
 
     /**
@@ -62,6 +68,24 @@ data class TimelineUiState(
      */
     fun getTasksForDate(date: LocalDate): List<TimelineTask> {
         return days.find { it.date == date }?.tasks ?: emptyList()
+    }
+
+    /**
+     * Get currently loaded date range
+     */
+    fun getLoadedRange(): ClosedRange<LocalDate> {
+        if (days.isEmpty()) return LocalDate.now()..LocalDate.now()
+        return days.first().date..days.last().date
+    }
+
+    /**
+     * Get the 3 visible days based on dayWindowOffset
+     */
+    fun getVisibleDays(): List<DayTimeline> {
+        val todayIndex = days.indexOfFirst { it.isToday }.coerceAtLeast(0)
+        val centerIndex = todayIndex + dayWindowOffset
+        val startIndex = (centerIndex - 1).coerceAtLeast(0)
+        return days.drop(startIndex).take(3)
     }
 }
 
@@ -134,13 +158,13 @@ data class ConflictCounts(
 }
 
 /**
- * State during drag operation
+ * State during drag operation (now VERTICAL drag)
  */
 data class DragState(
     val task: TimelineTask,
     val originalStartTime: LocalDateTime,
     val originalEndTime: LocalDateTime,
-    val currentOffset: Offset,
+    val currentOffsetY: Float, // Changed from Offset to just Y
     val previewStartTime: LocalDateTime,
     val previewEndTime: LocalDateTime
 ) {
@@ -156,30 +180,5 @@ data class DragState(
      */
     fun hasChanged(): Boolean {
         return originalStartTime != previewStartTime
-    }
-}
-
-/**
- * Settings dialog state
- */
-data class TimelineSettingsState(
-    val toleranceMinutes: Int = 30,
-    val timeRange: TimeRange = TimeRange.THREE_DAYS,
-    val hourRangeStart: Int = 6,
-    val hourRangeEnd: Int = 22,
-    val pixelsPerMinute: Float = 2f,
-    val snapToGridMinutes: Int = 15
-) {
-    /**
-     * Validate and clamp values to valid ranges
-     */
-    fun validated(): TimelineSettingsState {
-        return copy(
-            toleranceMinutes = toleranceMinutes.coerceIn(0, 120),
-            hourRangeStart = hourRangeStart.coerceIn(0, 23),
-            hourRangeEnd = hourRangeEnd.coerceIn(hourRangeStart + 1, 24),
-            pixelsPerMinute = pixelsPerMinute.coerceIn(0.5f, 10f),
-            snapToGridMinutes = snapToGridMinutes.coerceIn(1, 60)
-        )
     }
 }

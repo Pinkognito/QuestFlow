@@ -6,81 +6,79 @@ import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
 /**
- * Utility object for timeline calculations including:
- * - Time to pixel conversions
- * - Pixel to time conversions
- * - Task positioning and sizing
- * - Grid snapping
+ * Utility object for timeline calculations.
+ *
+ * ARCHITECTURE: Time axis is VERTICAL (Y-axis), days are HORIZONTAL (X-axis)
+ * - 00:00 is at Y=0 (top)
+ * - 23:59 is at Y=max (bottom)
+ * - Days scroll horizontally
+ * - Time scrolls vertically (synchronized across all day columns)
  */
 object TimelineCalculator {
 
     /**
-     * Convert time to horizontal pixel position.
+     * Convert time to vertical pixel position (Y-axis).
      *
      * @param time Time to convert
-     * @param dayStart Start hour of the visible day range (e.g., 6 for 6:00 AM)
      * @param pixelsPerMinute Zoom level (pixels per minute)
-     * @return Horizontal offset in pixels from the start of the day
+     * @return Vertical offset in pixels from midnight (00:00)
      */
-    fun timeToPixel(time: LocalTime, dayStart: Int, pixelsPerMinute: Float): Float {
-        val minutesSinceDayStart = (time.hour * 60 + time.minute) - (dayStart * 60)
-        return minutesSinceDayStart * pixelsPerMinute
+    fun timeToPixel(time: LocalTime, pixelsPerMinute: Float): Float {
+        val minutesSinceMidnight = time.hour * 60 + time.minute
+        return minutesSinceMidnight * pixelsPerMinute
     }
 
     /**
-     * Convert LocalDateTime to pixel position
+     * Convert LocalDateTime to vertical pixel position.
      */
-    fun dateTimeToPixel(dateTime: LocalDateTime, dayStart: Int, pixelsPerMinute: Float): Float {
-        return timeToPixel(dateTime.toLocalTime(), dayStart, pixelsPerMinute)
+    fun dateTimeToPixel(dateTime: LocalDateTime, pixelsPerMinute: Float): Float {
+        return timeToPixel(dateTime.toLocalTime(), pixelsPerMinute)
     }
 
     /**
-     * Convert horizontal pixel position to time.
+     * Convert vertical pixel position to time.
      *
-     * @param pixel Horizontal offset in pixels
-     * @param dayStart Start hour of the visible day range
+     * @param pixelY Vertical offset in pixels from midnight
      * @param pixelsPerMinute Zoom level (pixels per minute)
      * @return LocalTime corresponding to the pixel position
      */
-    fun pixelToTime(pixel: Float, dayStart: Int, pixelsPerMinute: Float): LocalTime {
-        val totalMinutes = (pixel / pixelsPerMinute).toInt() + (dayStart * 60)
+    fun pixelToTime(pixelY: Float, pixelsPerMinute: Float): LocalTime {
+        val totalMinutes = (pixelY / pixelsPerMinute).toInt().coerceIn(0, 24 * 60 - 1)
         val hours = (totalMinutes / 60).coerceIn(0, 23)
         val minutes = (totalMinutes % 60).coerceIn(0, 59)
         return LocalTime.of(hours, minutes)
     }
 
     /**
-     * Convert pixel offset to LocalDateTime for a specific date
+     * Convert pixel offset to LocalDateTime for a specific date.
      */
-    fun pixelToDateTime(pixel: Float, date: LocalDate, dayStart: Int, pixelsPerMinute: Float): LocalDateTime {
-        val time = pixelToTime(pixel, dayStart, pixelsPerMinute)
+    fun pixelToDateTime(pixelY: Float, date: LocalDate, pixelsPerMinute: Float): LocalDateTime {
+        val time = pixelToTime(pixelY, pixelsPerMinute)
         return date.atTime(time)
     }
 
     /**
-     * Calculate task width in pixels based on duration.
+     * Calculate task HEIGHT in pixels based on duration.
+     * (Previously was width, now height because time is vertical)
      *
      * @param startTime Task start time
      * @param endTime Task end time
      * @param pixelsPerMinute Zoom level
-     * @return Width in pixels
+     * @return Height in pixels
      */
-    fun calculateTaskWidth(startTime: LocalDateTime, endTime: LocalDateTime, pixelsPerMinute: Float): Float {
-        val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime)
+    fun calculateTaskHeight(startTime: LocalDateTime, endTime: LocalDateTime, pixelsPerMinute: Float): Float {
+        val durationMinutes = ChronoUnit.MINUTES.between(startTime, endTime).coerceAtLeast(1)
         return durationMinutes * pixelsPerMinute
     }
 
     /**
-     * Calculate the total width of the timeline in pixels.
+     * Calculate the total HEIGHT of the timeline in pixels (full 24 hours).
      *
-     * @param hourStart Start hour (e.g., 6 for 6 AM)
-     * @param hourEnd End hour (e.g., 22 for 10 PM)
      * @param pixelsPerMinute Zoom level
-     * @return Total width in pixels
+     * @return Total height in pixels for 24 hours
      */
-    fun calculateTimelineWidth(hourStart: Int, hourEnd: Int, pixelsPerMinute: Float): Float {
-        val totalHours = hourEnd - hourStart
-        return totalHours * 60 * pixelsPerMinute
+    fun calculateTimelineHeight(pixelsPerMinute: Float): Float {
+        return 24 * 60 * pixelsPerMinute // 24 hours * 60 minutes * pixels per minute
     }
 
     /**
@@ -99,7 +97,7 @@ object TimelineCalculator {
     }
 
     /**
-     * Snap LocalDateTime to grid
+     * Snap LocalDateTime to grid.
      */
     fun snapDateTimeToGrid(dateTime: LocalDateTime, gridMinutes: Int): LocalDateTime {
         val snappedTime = snapToGrid(dateTime.toLocalTime(), gridMinutes)
@@ -107,24 +105,24 @@ object TimelineCalculator {
     }
 
     /**
-     * Calculate time offset from drag delta.
+     * Calculate time offset from drag delta (VERTICAL drag now).
      *
-     * @param dragDeltaX Horizontal drag distance in pixels
+     * @param dragDeltaY Vertical drag distance in pixels
      * @param pixelsPerMinute Zoom level
      * @param gridMinutes Snap-to-grid interval
      * @return Time offset in minutes (snapped to grid)
      */
-    fun calculateTimeOffsetFromDrag(dragDeltaX: Float, pixelsPerMinute: Float, gridMinutes: Int): Int {
-        val rawMinutes = (dragDeltaX / pixelsPerMinute).toInt()
+    fun calculateTimeOffsetFromDrag(dragDeltaY: Float, pixelsPerMinute: Float, gridMinutes: Int): Int {
+        val rawMinutes = (dragDeltaY / pixelsPerMinute).toInt()
         return ((rawMinutes + gridMinutes / 2) / gridMinutes) * gridMinutes
     }
 
     /**
-     * Calculate new task times after drag.
+     * Calculate new task times after vertical drag.
      *
      * @param originalStart Original start time
      * @param originalEnd Original end time
-     * @param dragDeltaX Horizontal drag distance in pixels
+     * @param dragDeltaY Vertical drag distance in pixels
      * @param pixelsPerMinute Zoom level
      * @param gridMinutes Snap-to-grid interval
      * @return Pair of (new start time, new end time)
@@ -132,45 +130,16 @@ object TimelineCalculator {
     fun calculateDraggedTaskTimes(
         originalStart: LocalDateTime,
         originalEnd: LocalDateTime,
-        dragDeltaX: Float,
+        dragDeltaY: Float,
         pixelsPerMinute: Float,
         gridMinutes: Int
     ): Pair<LocalDateTime, LocalDateTime> {
-        val offsetMinutes = calculateTimeOffsetFromDrag(dragDeltaX, pixelsPerMinute, gridMinutes)
+        val offsetMinutes = calculateTimeOffsetFromDrag(dragDeltaY, pixelsPerMinute, gridMinutes)
 
         val newStart = originalStart.plusMinutes(offsetMinutes.toLong())
         val newEnd = originalEnd.plusMinutes(offsetMinutes.toLong())
 
         return newStart to newEnd
-    }
-
-    /**
-     * Check if time is within visible range.
-     *
-     * @param time Time to check
-     * @param hourStart Start of visible range
-     * @param hourEnd End of visible range
-     * @return True if time is visible
-     */
-    fun isTimeInVisibleRange(time: LocalTime, hourStart: Int, hourEnd: Int): Boolean {
-        val hour = time.hour
-        return hour in hourStart until hourEnd
-    }
-
-    /**
-     * Clamp time to visible range.
-     *
-     * @param time Time to clamp
-     * @param hourStart Start of visible range
-     * @param hourEnd End of visible range
-     * @return Clamped time
-     */
-    fun clampToVisibleRange(time: LocalTime, hourStart: Int, hourEnd: Int): LocalTime {
-        return when {
-            time.hour < hourStart -> LocalTime.of(hourStart, 0)
-            time.hour >= hourEnd -> LocalTime.of(hourEnd - 1, 59)
-            else -> time
-        }
     }
 
     /**

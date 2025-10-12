@@ -11,14 +11,15 @@ import androidx.navigation.NavHostController
 import com.example.questflow.presentation.screens.timeline.components.*
 
 /**
- * Timeline Screen - Interactive multi-day timeline view for task management.
+ * Timeline Screen - Interactive multi-day timeline view with vertical time axis.
  *
- * Features:
- * - Visual timeline with color-coded conflict detection
- * - Drag & drop task rescheduling
- * - Horizontal scrolling for time navigation
- * - Vertical scrolling for day navigation
- * - Configurable tolerance and time ranges
+ * UPDATED Features:
+ * - Vertical time axis (00:00-23:59)
+ * - Horizontal day scrolling with infinite loading
+ * - Synchronized vertical scrolling across all columns
+ * - Drag & drop task rescheduling (vertical drag)
+ * - Color-coded conflict detection
+ * - 0-24h tolerance range
  */
 @Composable
 fun TimelineScreen(
@@ -27,24 +28,26 @@ fun TimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Dialog states
-    var showTimeRangeDialog by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TimelineTopBar(
                 focusedTask = uiState.focusedTask,
                 onBackClick = { navController.navigateUp() },
-                onSettingsClick = { viewModel.toggleSettings() },
-                onTimeRangeClick = { showTimeRangeDialog = true }
+                onSettingsClick = { viewModel.toggleSettings() }
             )
         }
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Calculate pixelsPerMinute based on available screen height
+            val screenHeightDp = maxHeight.value
+            LaunchedEffect(screenHeightDp, uiState.visibleHours) {
+                viewModel.updateScreenHeight(screenHeightDp)
+            }
+
             when {
                 // Loading state
                 uiState.isLoading -> {
@@ -67,9 +70,21 @@ fun TimelineScreen(
 
                 // Content
                 else -> {
-                    TimelineContent(
+                    TimelineGrid(
                         uiState = uiState,
-                        viewModel = viewModel
+                        onTaskClick = { task ->
+                            viewModel.onTaskClick(task)
+                            viewModel.setFocusedTask(task)
+                        },
+                        onTaskLongPress = { task ->
+                            viewModel.onTaskDragStart(task)
+                        },
+                        onLoadMore = { direction ->
+                            viewModel.loadMore(direction)
+                        },
+                        onDayWindowShift = { direction ->
+                            viewModel.shiftDayWindow(direction)
+                        }
                     )
                 }
             }
@@ -88,41 +103,12 @@ fun TimelineScreen(
     if (uiState.showSettings) {
         TimelineSettingsDialog(
             currentTolerance = uiState.toleranceMinutes,
-            currentTimeRange = uiState.timeRange,
+            currentVisibleHours = uiState.visibleHours,
             onDismiss = { viewModel.toggleSettings() },
             onToleranceChange = { viewModel.updateTolerance(it) },
-            onTimeRangeChange = { viewModel.updateTimeRange(it) }
+            onVisibleHoursChange = { viewModel.updateVisibleHours(it) }
         )
     }
-
-    // Time range selector dialog
-    if (showTimeRangeDialog) {
-        TimeRangeSelectorDialog(
-            currentRange = uiState.timeRange,
-            onDismiss = { showTimeRangeDialog = false },
-            onRangeSelected = { viewModel.updateTimeRange(it) }
-        )
-    }
-}
-
-/**
- * Main timeline content
- */
-@Composable
-private fun TimelineContent(
-    uiState: com.example.questflow.presentation.screens.timeline.model.TimelineUiState,
-    viewModel: TimelineViewModel
-) {
-    TimelineGrid(
-        uiState = uiState,
-        onTaskClick = { task ->
-            viewModel.onTaskClick(task)
-            viewModel.setFocusedTask(task)
-        },
-        onTaskLongPress = { task ->
-            viewModel.onTaskDragStart(task)
-        }
-    )
 }
 
 /**

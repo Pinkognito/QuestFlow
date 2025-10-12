@@ -6,23 +6,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.questflow.data.preferences.TimeRange
 
 /**
  * Settings dialog for timeline view.
- * Allows user to configure tolerance, time range, and display options.
+ * UPDATED: Now supports 0-24 hours tolerance and zoom control (visible hours).
  */
 @Composable
 fun TimelineSettingsDialog(
-    currentTolerance: Int,
-    currentTimeRange: TimeRange,
+    currentTolerance: Int, // In minutes (0-1440)
+    currentVisibleHours: Float, // Zoom level (2-24 hours)
     onDismiss: () -> Unit,
     onToleranceChange: (Int) -> Unit,
-    onTimeRangeChange: (TimeRange) -> Unit,
+    onVisibleHoursChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var tolerance by remember { mutableStateOf(currentTolerance.toFloat()) }
-    var timeRange by remember { mutableStateOf(currentTimeRange) }
+    var toleranceHours by remember { mutableStateOf(currentTolerance / 60f) }
+    var visibleHours by remember { mutableStateOf(currentVisibleHours) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -32,23 +31,31 @@ fun TimelineSettingsDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Tolerance setting
+                // Zoom setting (visible hours)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val hours = visibleHours.toInt()
+                    val minutes = ((visibleHours - hours) * 60).toInt()
+
                     Text(
-                        text = "Toleranz: ${tolerance.toInt()} Minuten",
+                        text = if (minutes > 0) {
+                            "Zoom: ${hours}h ${minutes}min sichtbar"
+                        } else {
+                            "Zoom: ${hours}h sichtbar"
+                        },
                         style = MaterialTheme.typography.titleSmall
                     )
+
                     Text(
-                        text = "Minimaler Zeitabstand zwischen Tasks",
+                        text = "Wie viele Stunden auf dem Bildschirm angezeigt werden",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Slider(
-                        value = tolerance,
-                        onValueChange = { tolerance = it },
-                        valueRange = 0f..120f,
-                        steps = 23, // 5-minute intervals
+                        value = visibleHours,
+                        onValueChange = { visibleHours = it },
+                        valueRange = 2f..24f,
+                        steps = 43, // 0.5 hour intervals (22 steps)
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -56,33 +63,68 @@ fun TimelineSettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("0 Min", style = MaterialTheme.typography.labelSmall)
-                        Text("120 Min", style = MaterialTheme.typography.labelSmall)
+                        Text("2h (max zoom)", style = MaterialTheme.typography.labelSmall)
+                        Text("24h (volle Übersicht)", style = MaterialTheme.typography.labelSmall)
                     }
                 }
 
-                Divider()
-
-                // Time range setting
+                // Tolerance setting (0-24 hours)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val hours = toleranceHours.toInt()
+                    val minutes = ((toleranceHours - hours) * 60).toInt()
+
                     Text(
-                        text = "Zeitbereich",
+                        text = if (hours > 0 && minutes > 0) {
+                            "Toleranz: ${hours}h ${minutes}min"
+                        } else if (hours > 0) {
+                            "Toleranz: ${hours}h"
+                        } else {
+                            "Toleranz: ${minutes}min"
+                        },
                         style = MaterialTheme.typography.titleSmall
                     )
+
                     Text(
-                        text = "Anzahl der angezeigten Tage",
+                        text = "Minimaler Zeitabstand zwischen Tasks",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TimeRange.values().forEach { range ->
-                            TimeRangeOption(
-                                range = range,
-                                isSelected = timeRange == range,
-                                onSelect = { timeRange = range }
-                            )
-                        }
+                    Slider(
+                        value = toleranceHours,
+                        onValueChange = { toleranceHours = it },
+                        valueRange = 0f..24f,
+                        steps = 47, // 0.5 hour intervals
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("0h", style = MaterialTheme.typography.labelSmall)
+                        Text("24h", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+
+                // Info text
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "ℹ️ Hinweis",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Die Timeline lädt automatisch weitere Tage beim Scrollen.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -90,8 +132,9 @@ fun TimelineSettingsDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    onToleranceChange(tolerance.toInt())
-                    onTimeRangeChange(timeRange)
+                    val totalMinutes = (toleranceHours * 60).toInt()
+                    onToleranceChange(totalMinutes)
+                    onVisibleHoursChange(visibleHours)
                     onDismiss()
                 }
             ) {
@@ -104,23 +147,5 @@ fun TimelineSettingsDialog(
             }
         },
         modifier = modifier
-    )
-}
-
-/**
- * Single time range option chip
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TimeRangeOption(
-    range: TimeRange,
-    isSelected: Boolean,
-    onSelect: () -> Unit
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onSelect,
-        label = { Text(range.displayName) },
-        modifier = Modifier.fillMaxWidth()
     )
 }

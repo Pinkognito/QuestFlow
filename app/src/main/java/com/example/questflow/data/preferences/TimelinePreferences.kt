@@ -10,24 +10,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Time range options for timeline view
- */
-enum class TimeRange(val days: Int, val displayName: String) {
-    ONE_DAY(1, "1 Tag"),
-    THREE_DAYS(3, "3 Tage"),
-    SEVEN_DAYS(7, "1 Woche"),
-    FOURTEEN_DAYS(14, "2 Wochen")
-}
-
-/**
- * Settings for timeline view display and behavior
+ * Settings for timeline view display and behavior.
+ *
+ * UPDATED: After refactoring to vertical time axis and infinite scroll:
+ * - Tolerance now 0-24 hours (0-1440 minutes)
+ * - No more fixed time ranges (infinite scroll)
+ * - visibleHours controls zoom (2-24 hours visible on screen)
+ * - pixelsPerMinute calculated dynamically based on screen height and visibleHours
  */
 data class TimelineSettings(
     val toleranceMinutes: Int = 30,
-    val defaultTimeRange: TimeRange = TimeRange.THREE_DAYS,
-    val hourRangeStart: Int = 6,
-    val hourRangeEnd: Int = 22,
-    val pixelsPerMinute: Float = 2f,
+    val visibleHours: Float = 12f, // How many hours visible on screen (2-24)
     val snapToGridMinutes: Int = 15
 ) {
     /**
@@ -35,13 +28,26 @@ data class TimelineSettings(
      */
     fun validated(): TimelineSettings {
         return copy(
-            toleranceMinutes = toleranceMinutes.coerceIn(0, 120),
-            hourRangeStart = hourRangeStart.coerceIn(0, 23),
-            hourRangeEnd = hourRangeEnd.coerceIn(hourRangeStart + 1, 24),
-            pixelsPerMinute = pixelsPerMinute.coerceIn(0.5f, 10f),
+            toleranceMinutes = toleranceMinutes.coerceIn(0, 1440), // 0-24 hours
+            visibleHours = visibleHours.coerceIn(2f, 24f),
             snapToGridMinutes = snapToGridMinutes.coerceIn(1, 60)
         )
     }
+
+    /**
+     * Calculate pixels per minute based on screen height and visible hours.
+     * screenHeightDp: Available screen height in DP (e.g., 800dp)
+     */
+    fun calculatePixelsPerMinute(screenHeightDp: Float): Float {
+        val visibleMinutes = visibleHours * 60f
+        return (screenHeightDp / visibleMinutes).coerceIn(0.5f, 20f)
+    }
+
+    /**
+     * Get tolerance in hours (for display)
+     */
+    val toleranceHours: Float
+        get() = toleranceMinutes / 60f
 }
 
 /**
@@ -58,10 +64,7 @@ class TimelinePreferences @Inject constructor(
 
     companion object {
         private const val KEY_TOLERANCE_MINUTES = "tolerance_minutes"
-        private const val KEY_TIME_RANGE = "time_range"
-        private const val KEY_HOUR_START = "hour_start"
-        private const val KEY_HOUR_END = "hour_end"
-        private const val KEY_PX_PER_MINUTE = "px_per_minute"
+        private const val KEY_VISIBLE_HOURS = "visible_hours"
         private const val KEY_SNAP_TO_GRID = "snap_to_grid"
     }
 
@@ -78,13 +81,7 @@ class TimelinePreferences @Inject constructor(
     private fun loadSettings(): TimelineSettings {
         val settings = TimelineSettings(
             toleranceMinutes = prefs.getInt(KEY_TOLERANCE_MINUTES, 30),
-            defaultTimeRange = TimeRange.valueOf(
-                prefs.getString(KEY_TIME_RANGE, TimeRange.THREE_DAYS.name)
-                    ?: TimeRange.THREE_DAYS.name
-            ),
-            hourRangeStart = prefs.getInt(KEY_HOUR_START, 6),
-            hourRangeEnd = prefs.getInt(KEY_HOUR_END, 22),
-            pixelsPerMinute = prefs.getFloat(KEY_PX_PER_MINUTE, 2f),
+            visibleHours = prefs.getFloat(KEY_VISIBLE_HOURS, 12f),
             snapToGridMinutes = prefs.getInt(KEY_SNAP_TO_GRID, 15)
         )
         return settings.validated()
@@ -98,10 +95,7 @@ class TimelinePreferences @Inject constructor(
 
         prefs.edit()
             .putInt(KEY_TOLERANCE_MINUTES, validated.toleranceMinutes)
-            .putString(KEY_TIME_RANGE, validated.defaultTimeRange.name)
-            .putInt(KEY_HOUR_START, validated.hourRangeStart)
-            .putInt(KEY_HOUR_END, validated.hourRangeEnd)
-            .putFloat(KEY_PX_PER_MINUTE, validated.pixelsPerMinute)
+            .putFloat(KEY_VISIBLE_HOURS, validated.visibleHours)
             .putInt(KEY_SNAP_TO_GRID, validated.snapToGridMinutes)
             .apply()
 
@@ -109,7 +103,7 @@ class TimelinePreferences @Inject constructor(
     }
 
     /**
-     * Update tolerance in minutes
+     * Update tolerance in minutes (0-1440 = 0-24 hours)
      */
     var toleranceMinutes: Int
         get() = _settings.value.toleranceMinutes
@@ -118,39 +112,12 @@ class TimelinePreferences @Inject constructor(
         }
 
     /**
-     * Update default time range
+     * Update visible hours (zoom level, 2-24 hours)
      */
-    var defaultTimeRange: TimeRange
-        get() = _settings.value.defaultTimeRange
+    var visibleHours: Float
+        get() = _settings.value.visibleHours
         set(value) {
-            updateSettings(_settings.value.copy(defaultTimeRange = value))
-        }
-
-    /**
-     * Update hour range start (0-23)
-     */
-    var hourRangeStart: Int
-        get() = _settings.value.hourRangeStart
-        set(value) {
-            updateSettings(_settings.value.copy(hourRangeStart = value))
-        }
-
-    /**
-     * Update hour range end (1-24)
-     */
-    var hourRangeEnd: Int
-        get() = _settings.value.hourRangeEnd
-        set(value) {
-            updateSettings(_settings.value.copy(hourRangeEnd = value))
-        }
-
-    /**
-     * Update pixels per minute (zoom level)
-     */
-    var pixelsPerMinute: Float
-        get() = _settings.value.pixelsPerMinute
-        set(value) {
-            updateSettings(_settings.value.copy(pixelsPerMinute = value))
+            updateSettings(_settings.value.copy(visibleHours = value))
         }
 
     /**

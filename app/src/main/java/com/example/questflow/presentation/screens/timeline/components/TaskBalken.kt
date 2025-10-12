@@ -16,26 +16,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.questflow.domain.model.TimelineTask
-import com.example.questflow.presentation.screens.timeline.util.TimelineCalculator
 
 /**
- * Draggable task bar component for timeline view.
+ * Task bar component for vertical timeline view.
  * Displays task with color-coded conflict state.
+ *
+ * UPDATED: Position and size are now controlled by parent (DayTimelineColumn).
+ * This component only handles the visual appearance and gestures.
  */
 @Composable
 fun TaskBalken(
     task: TimelineTask,
-    modifier: Modifier = Modifier,
-    dayStart: Int,
     pixelsPerMinute: Float,
-    isDragging: Boolean = false,
     onLongPress: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isDragging: Boolean = false
 ) {
-    // Calculate position and size
-    val startPixel = TimelineCalculator.dateTimeToPixel(task.startTime, dayStart, pixelsPerMinute)
-    val width = TimelineCalculator.calculateTaskWidth(task.startTime, task.endTime, pixelsPerMinute)
-
     // Get color based on conflict state
     val backgroundColor = remember(task.conflictState, task.categoryColor) {
         try {
@@ -46,19 +43,17 @@ fun TaskBalken(
     }
 
     val contentColor = Color.White
+    val durationMinutes = task.durationMinutes()
 
     Box(
         modifier = modifier
-            .offset(x = startPixel.dp, y = 0.dp)
-            .width(maxOf(width.dp, 60.dp)) // Minimum width
-            .height(48.dp)
             .shadow(
                 elevation = if (isDragging) 8.dp else 2.dp,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .background(
                 color = backgroundColor.copy(alpha = if (isDragging) 0.9f else 1f),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(6.dp)
             )
             .pointerInput(task.id) {
                 detectTapGestures(
@@ -66,51 +61,68 @@ fun TaskBalken(
                     onLongPress = { onLongPress() }
                 )
             }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.CenterStart
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        contentAlignment = Alignment.TopStart
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Task content
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Category emoji
-            if (task.categoryEmoji != null) {
-                Text(
-                    text = task.categoryEmoji,
-                    fontSize = 16.sp,
-                    color = contentColor
-                )
-            }
-
-            // Task title
-            Column(
-                modifier = Modifier.weight(1f, fill = false)
+            // Title row with emoji
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Category emoji
+                if (task.categoryEmoji != null) {
+                    Text(
+                        text = task.categoryEmoji,
+                        fontSize = 14.sp,
+                        color = contentColor
+                    )
+                }
+
+                // Task title
                 Text(
                     text = task.title,
                     style = MaterialTheme.typography.bodySmall,
                     color = contentColor,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    fontSize = 12.sp
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+            }
 
-                // Duration (if space allows)
-                if (width > 100) {
-                    val duration = task.durationMinutes()
-                    val durationText = when {
-                        duration < 60 -> "${duration}m"
-                        duration % 60 == 0L -> "${duration / 60}h"
-                        else -> "${duration / 60}h ${duration % 60}m"
-                    }
+            // Time range (if height allows)
+            if (durationMinutes > 30) {
+                val startTime = task.startTime.toLocalTime()
+                val endTime = task.endTime.toLocalTime()
+                Text(
+                    text = String.format("%02d:%02d - %02d:%02d",
+                        startTime.hour, startTime.minute,
+                        endTime.hour, endTime.minute
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.8f),
+                    fontSize = 9.sp
+                )
+            }
 
-                    Text(
-                        text = durationText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.8f),
-                        fontSize = 10.sp
-                    )
+            // Duration (if height allows)
+            if (durationMinutes > 60) {
+                val durationText = when {
+                    durationMinutes < 60 -> "${durationMinutes}min"
+                    durationMinutes % 60 == 0L -> "${durationMinutes / 60}h"
+                    else -> "${durationMinutes / 60}h ${durationMinutes % 60}min"
                 }
+
+                Text(
+                    text = durationText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.7f),
+                    fontSize = 9.sp
+                )
             }
         }
 
@@ -121,15 +133,15 @@ fun TaskBalken(
                     .fillMaxSize()
                     .background(
                         color = Color.Black.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(6.dp)
                     )
             )
 
             Text(
                 text = "✓",
-                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(2.dp),
                 color = contentColor,
-                fontSize = 14.sp
+                fontSize = 12.sp
             )
         }
     }
@@ -142,14 +154,8 @@ fun TaskBalken(
 @Composable
 fun TaskBalkenPreview(
     task: TimelineTask,
-    modifier: Modifier = Modifier,
-    dayStart: Int,
-    pixelsPerMinute: Float,
-    previewStartTime: java.time.LocalDateTime
+    modifier: Modifier = Modifier
 ) {
-    val startPixel = TimelineCalculator.dateTimeToPixel(previewStartTime, dayStart, pixelsPerMinute)
-    val width = TimelineCalculator.calculateTaskWidth(task.startTime, task.endTime, pixelsPerMinute)
-
     val backgroundColor = try {
         Color(android.graphics.Color.parseColor(task.getDisplayColor()))
     } catch (e: Exception) {
@@ -158,23 +164,33 @@ fun TaskBalkenPreview(
 
     Box(
         modifier = modifier
-            .offset(x = startPixel.dp, y = 0.dp)
-            .width(maxOf(width.dp, 60.dp))
-            .height(48.dp)
             .background(
-                color = backgroundColor.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(8.dp)
+                color = backgroundColor.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(6.dp)
             )
-            .padding(8.dp),
-        contentAlignment = Alignment.CenterStart
+            .padding(6.dp),
+        contentAlignment = Alignment.TopStart
     ) {
-        Text(
-            text = task.title,
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.6f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontSize = 12.sp
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (task.categoryEmoji != null) {
+                Text(
+                    text = task.categoryEmoji,
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
+
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 11.sp
+            )
+        }
     }
 }
