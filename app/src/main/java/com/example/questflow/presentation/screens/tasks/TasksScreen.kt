@@ -943,14 +943,22 @@ fun EditCalendarTaskDialog(
 
     var showRecurringDialog by remember { mutableStateOf(false) }
     var selectedParentTask by remember(calendarLink.id, isBatchEdit) {
-        mutableStateOf(
-            currentTask?.parentTaskId?.let { parentId ->
-                availableTasks.find { it.id == parentId }
-            }
-        )
+        mutableStateOf<com.example.questflow.domain.model.Task?>(null)
     }
     var autoCompleteParent by remember(calendarLink.id, isBatchEdit) {
-        mutableStateOf(currentTask?.autoCompleteParent ?: false)
+        mutableStateOf(false)
+    }
+
+    // CRITICAL FIX: Load parent task and autoCompleteParent when task data is available
+    LaunchedEffect(currentTask, availableTasks) {
+        if (!isBatchEdit && currentTask != null) {
+            android.util.Log.d("TaskDialog-Parent", "🔍 Loading parent task: parentTaskId=${currentTask.parentTaskId}")
+            selectedParentTask = currentTask.parentTaskId?.let { parentId ->
+                availableTasks.find { it.id == parentId }
+            }
+            autoCompleteParent = currentTask.autoCompleteParent
+            android.util.Log.d("TaskDialog-Parent", "✅ Parent task loaded: ${selectedParentTask?.title}, autoComplete=$autoCompleteParent")
+        }
     }
 
     // Task family section collapse state - persistent
