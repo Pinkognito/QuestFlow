@@ -20,7 +20,9 @@ data class TimelineTask(
     val categoryEmoji: String? = null,        // Category emoji
     val conflictState: ConflictState = ConflictState.NO_CONFLICT,  // Overlap status
     val isCompleted: Boolean = false,         // Completion status
-    val calendarEventId: Long? = null        // Associated calendar event ID
+    val calendarEventId: Long? = null,       // Associated calendar event ID
+    val isExternal: Boolean = false,          // true if from external calendar (Google Calendar, etc.)
+    val calendarName: String? = null          // Name of source calendar (for external events)
 ) {
     /**
      * Calculate duration in minutes

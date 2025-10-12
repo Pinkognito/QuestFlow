@@ -3,10 +3,12 @@ package com.example.questflow.domain.usecase.timeline
 import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.CategoryRepository
+import com.example.questflow.data.calendar.CalendarManager
 import com.example.questflow.domain.model.TimelineTask
 import com.example.questflow.domain.model.ConflictState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -14,11 +16,13 @@ import javax.inject.Inject
 /**
  * Loads tasks for the timeline view within a specific date range.
  * Combines Task and CalendarEventLink data to create TimelineTask objects.
+ * Also loads external calendar events (Google Calendar, etc.) for read-only display.
  */
 class LoadTimelineTasksUseCase @Inject constructor(
     private val taskRepository: TaskRepository,
     private val calendarLinkRepository: CalendarLinkRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val calendarManager: CalendarManager
 ) {
     /**
      * Load timeline tasks for the specified date range.
@@ -34,8 +38,9 @@ class LoadTimelineTasksUseCase @Inject constructor(
         return combine(
             taskRepository.getActiveTasks(),
             calendarLinkRepository.getAllLinks(),
-            categoryRepository.getAllCategories()
-        ) { tasks, links, categories ->
+            categoryRepository.getAllCategories(),
+            flow { emit(calendarManager.getAllCalendarEvents(startDate, endDate)) }
+        ) { tasks, links, categories, externalEvents ->
             val timelineTasks = mutableListOf<TimelineTask>()
 
             // Create map for quick category lookup
@@ -97,6 +102,32 @@ class LoadTimelineTasksUseCase @Inject constructor(
                         conflictState = ConflictState.NO_CONFLICT,
                         isCompleted = task.isCompleted,
                         calendarEventId = task.calendarEventId
+                    )
+                )
+            }
+
+            // Add external calendar events (Google Calendar, Outlook, etc.)
+            externalEvents.filter { event ->
+                event.isExternal // Only add external events (not QuestFlow calendar)
+            }.forEach { event ->
+                timelineTasks.add(
+                    TimelineTask(
+                        id = event.id + 1000000000L, // Large offset to avoid ID conflicts
+                        taskId = null,
+                        linkId = null,
+                        title = event.title,
+                        description = event.description,
+                        startTime = event.startTime,
+                        endTime = event.endTime,
+                        xpPercentage = 0, // No XP for external events
+                        categoryId = null,
+                        categoryColor = "#9E9E9E", // Grey for external events
+                        categoryEmoji = "📅", // Calendar emoji
+                        conflictState = ConflictState.NO_CONFLICT,
+                        isCompleted = false,
+                        calendarEventId = event.id,
+                        isExternal = true,
+                        calendarName = event.calendarName
                     )
                 )
             }

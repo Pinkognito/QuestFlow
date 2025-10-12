@@ -48,18 +48,24 @@ fun TaskBalken(
     Box(
         modifier = modifier
             .shadow(
-                elevation = if (isDragging) 8.dp else 2.dp,
+                elevation = if (isDragging) 8.dp else if (task.isExternal) 1.dp else 2.dp,
                 shape = RoundedCornerShape(6.dp)
             )
             .background(
-                color = backgroundColor.copy(alpha = if (isDragging) 0.9f else 1f),
+                color = if (task.isExternal) {
+                    backgroundColor.copy(alpha = 0.6f) // More transparent for external events
+                } else {
+                    backgroundColor.copy(alpha = if (isDragging) 0.9f else 1f)
+                },
                 shape = RoundedCornerShape(6.dp)
             )
             .pointerInput(task.id) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongPress() }
-                )
+                if (!task.isExternal) { // External events are not clickable
+                    detectTapGestures(
+                        onTap = { onClick() },
+                        onLongPress = { onLongPress() }
+                    )
+                }
             }
             .padding(horizontal = 6.dp, vertical = 4.dp),
         contentAlignment = Alignment.TopStart

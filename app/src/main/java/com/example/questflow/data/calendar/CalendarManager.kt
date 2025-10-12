@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
@@ -161,7 +162,8 @@ class CalendarManager @Inject constructor(
             CalendarContract.Events.TITLE,
             CalendarContract.Events.DESCRIPTION,
             CalendarContract.Events.DTSTART,
-            CalendarContract.Events.DTEND
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.CALENDAR_ID
         )
 
         val selection = "${CalendarContract.Events.CALENDAR_ID} = ?"
@@ -182,11 +184,12 @@ class CalendarManager @Inject constructor(
                 val description = it.getString(it.getColumnIndexOrThrow(CalendarContract.Events.DESCRIPTION)) ?: ""
                 val startMillis = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.DTSTART))
                 val endMillis = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.DTEND))
+                val calId = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.CALENDAR_ID))
 
                 events.add(
                     CalendarEvent(
                         id = id,
-                        title = title, // Keep emoji prefix from category
+                        title = title,
                         description = description,
                         startTime = LocalDateTime.ofInstant(
                             java.time.Instant.ofEpochMilli(startMillis),
@@ -195,7 +198,81 @@ class CalendarManager @Inject constructor(
                         endTime = LocalDateTime.ofInstant(
                             java.time.Instant.ofEpochMilli(endMillis),
                             ZoneId.systemDefault()
-                        )
+                        ),
+                        calendarId = calId,
+                        isExternal = false
+                    )
+                )
+            }
+        }
+
+        events
+    }
+
+    /**
+     * Get ALL calendar events from ALL calendars on the device (Google Calendar, Outlook, etc.)
+     * for Timeline display. These are read-only.
+     */
+    suspend fun getAllCalendarEvents(startDate: LocalDate, endDate: LocalDate): List<CalendarEvent> = withContext(Dispatchers.IO) {
+        if (!hasCalendarPermission()) return@withContext emptyList()
+
+        val events = mutableListOf<CalendarEvent>()
+        val questFlowCalendarId = getCalendarId()
+
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.CALENDAR_DISPLAY_NAME
+        )
+
+        // Filter by date range
+        val startMillis = startDate.atStartOfDay().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endMillis = endDate.atTime(23, 59, 59).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val selection = "(${CalendarContract.Events.DTSTART} <= ? AND ${CalendarContract.Events.DTEND} >= ?)"
+        val selectionArgs = arrayOf(endMillis.toString(), startMillis.toString())
+
+        val cursor = context.contentResolver.query(
+            CalendarContract.Events.CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            "${CalendarContract.Events.DTSTART} ASC"
+        )
+
+        cursor?.use {
+            while (it.moveToNext()) {
+                val id = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events._ID))
+                val title = it.getString(it.getColumnIndexOrThrow(CalendarContract.Events.TITLE)) ?: ""
+                val description = it.getString(it.getColumnIndexOrThrow(CalendarContract.Events.DESCRIPTION)) ?: ""
+                val startMillis = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.DTSTART))
+                val endMillis = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.DTEND))
+                val calId = it.getLong(it.getColumnIndexOrThrow(CalendarContract.Events.CALENDAR_ID))
+                val calendarName = it.getString(it.getColumnIndexOrThrow(CalendarContract.Events.CALENDAR_DISPLAY_NAME)) ?: ""
+
+                // Mark as external if not from QuestFlow calendar
+                val isExternal = questFlowCalendarId != calId
+
+                events.add(
+                    CalendarEvent(
+                        id = id,
+                        title = title,
+                        description = description,
+                        startTime = LocalDateTime.ofInstant(
+                            java.time.Instant.ofEpochMilli(startMillis),
+                            ZoneId.systemDefault()
+                        ),
+                        endTime = LocalDateTime.ofInstant(
+                            java.time.Instant.ofEpochMilli(endMillis),
+                            ZoneId.systemDefault()
+                        ),
+                        calendarId = calId,
+                        calendarName = calendarName,
+                        isExternal = isExternal
                     )
                 )
             }
@@ -298,5 +375,8 @@ data class CalendarEvent(
     val title: String,
     val description: String,
     val startTime: LocalDateTime,
-    val endTime: LocalDateTime
+    val endTime: LocalDateTime,
+    val calendarId: Long = 0,
+    val calendarName: String = "",
+    val isExternal: Boolean = false // true if from Google Calendar, Outlook, etc.
 )
