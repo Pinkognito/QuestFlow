@@ -30,7 +30,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.questflow.data.preferences.CalendarFilterSettings
+import com.example.questflow.data.preferences.TaskFilterSettings
 import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.presentation.components.XpBurstAnimation
 import com.example.questflow.presentation.components.XpLevelBadge
@@ -2209,9 +2209,9 @@ fun EditCalendarTaskDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CalendarFilterDialog(
-    filterSettings: CalendarFilterSettings,
+    filterSettings: TaskFilterSettings,
     onDismiss: () -> Unit,
-    onApply: (CalendarFilterSettings) -> Unit
+    onApply: (TaskFilterSettings) -> Unit
 ) {
     val context = LocalContext.current
     var showCompleted by remember { mutableStateOf(filterSettings.showCompleted) }

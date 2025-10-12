@@ -13,10 +13,10 @@ enum class DateFilterType {
     ALL, TODAY, THIS_WEEK, THIS_MONTH, CUSTOM_RANGE
 }
 
-data class CalendarFilterSettings(
+data class TaskFilterSettings(
     val showCompleted: Boolean = true,
     val showOpen: Boolean = true,
-    val showExpired: Boolean = false,  // Filter for expired events
+    val showExpired: Boolean = false,  // Filter for expired tasks
     val filterByCategory: Boolean = false,
     val showOnlyWithCalendar: Boolean = false,  // Filter for tasks with calendar events only
     val dateFilterType: DateFilterType = DateFilterType.ALL,
@@ -29,11 +29,11 @@ data class CalendarFilterSettings(
 }
 
 @Singleton
-class CalendarFilterPreferences @Inject constructor(
+class TaskFilterPreferences @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
-        "calendar_filter_prefs",
+        "task_filter_prefs",
         Context.MODE_PRIVATE
     )
 
@@ -50,10 +50,10 @@ class CalendarFilterPreferences @Inject constructor(
 
     private val _settings = MutableStateFlow(loadSettings())
 
-    fun getSettings(): StateFlow<CalendarFilterSettings> = _settings.asStateFlow()
+    fun getSettings(): StateFlow<TaskFilterSettings> = _settings.asStateFlow()
 
-    private fun loadSettings(): CalendarFilterSettings {
-        return CalendarFilterSettings(
+    private fun loadSettings(): TaskFilterSettings {
+        return TaskFilterSettings(
             showCompleted = prefs.getBoolean(KEY_SHOW_COMPLETED, true),
             showOpen = prefs.getBoolean(KEY_SHOW_OPEN, true),
             showExpired = prefs.getBoolean(KEY_SHOW_EXPIRED, false),
@@ -67,7 +67,7 @@ class CalendarFilterPreferences @Inject constructor(
         )
     }
 
-    fun updateSettings(settings: CalendarFilterSettings) {
+    fun updateSettings(settings: TaskFilterSettings) {
         prefs.edit()
             .putBoolean(KEY_SHOW_COMPLETED, settings.showCompleted)
             .putBoolean(KEY_SHOW_OPEN, settings.showOpen)

@@ -10,8 +10,8 @@ import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CategoryRepository
-import com.example.questflow.data.preferences.CalendarFilterPreferences
-import com.example.questflow.data.preferences.CalendarFilterSettings
+import com.example.questflow.data.preferences.TaskFilterPreferences
+import com.example.questflow.data.preferences.TaskFilterSettings
 import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.data.preferences.UIPreferences
 import com.example.questflow.domain.usecase.RecordCalendarXpUseCase
@@ -36,7 +36,7 @@ class TasksViewModel @Inject constructor(
     private val calendarManager: CalendarManager,
     private val statsRepository: StatsRepository,
     private val categoryRepository: CategoryRepository,
-    private val filterPreferences: CalendarFilterPreferences,
+    private val filterPreferences: TaskFilterPreferences,
     private val uiPreferences: UIPreferences,
     private val taskRepository: TaskRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
@@ -58,7 +58,7 @@ class TasksViewModel @Inject constructor(
     private val _showFilterDialog = MutableStateFlow(false)
     val showFilterDialog: StateFlow<Boolean> = _showFilterDialog.asStateFlow()
 
-    val filterSettings: StateFlow<CalendarFilterSettings> = filterPreferences.getSettings()
+    val filterSettings: StateFlow<TaskFilterSettings> = filterPreferences.getSettings()
     val uiSettings: StateFlow<com.example.questflow.data.preferences.UISettings> = uiPreferences.getSettings()
 
     init {
@@ -89,7 +89,7 @@ class TasksViewModel @Inject constructor(
         _showFilterDialog.value = !_showFilterDialog.value
     }
 
-    fun updateFilterSettings(settings: CalendarFilterSettings) {
+    fun updateFilterSettings(settings: TaskFilterSettings) {
         filterPreferences.updateSettings(settings)
         _uiState.value = _uiState.value.copy(
             showCompleted = settings.showCompleted,
@@ -581,8 +581,6 @@ data class TasksUiState(
     val dateFilterType: DateFilterType = DateFilterType.ALL
 )
 
-// Keep old name as alias for compatibility
-typealias CalendarXpUiState = TasksUiState
 
 data class XpAnimationData(
     val xpAmount: Int,
