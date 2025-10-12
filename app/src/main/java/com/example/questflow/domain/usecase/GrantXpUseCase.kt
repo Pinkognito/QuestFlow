@@ -11,7 +11,6 @@ class GrantXpUseCase @Inject constructor(
     private val statsRepository: StatsRepository,
     private val xpTransactionRepository: XpTransactionRepository,
     private val skillRepository: SkillRepository,
-    private val memeRepository: MemeRepository,
     private val collectionRepository: CollectionRepository,
     @ApplicationContext private val context: Context
 ) {
@@ -79,7 +78,6 @@ class GrantXpUseCase @Inject constructor(
         )
 
         // Handle level-up rewards
-        val unlockedMemes = mutableListOf<String>()
         val unlockedCollectionItems = mutableListOf<String>()
 
         if (gainedLevels > 0) {
@@ -96,11 +94,7 @@ class GrantXpUseCase @Inject constructor(
             android.util.Log.d("GrantXpUseCase", "Selected category for unlock: $selectedCategoryId")
 
             repeat(gainedLevels) {
-                // Legacy meme unlock (kept for backward compatibility)
-                val meme = memeRepository.unlockNextMeme(newLevel)
-                meme?.let { unlockedMemes.add(it.name) }
-
-                // New collection item unlock (uses selected category)
+                // Collection item unlock (uses selected category)
                 val collectionItem = collectionRepository.unlockNextItem(newLevel, categoryId = selectedCategoryId)
                 collectionItem?.let {
                     unlockedCollectionItems.add(it.name)
@@ -108,11 +102,8 @@ class GrantXpUseCase @Inject constructor(
                 }
             }
 
-            // Extra meme/collection if EXTRA_COLLECTION_UNLOCK skill is active
+            // Extra collection if EXTRA_COLLECTION_UNLOCK skill is active
             if (skillRepository.hasEffectActive(com.example.questflow.data.database.entity.SkillEffectType.EXTRA_COLLECTION_UNLOCK)) {
-                val extraMeme = memeRepository.unlockNextMeme(newLevel)
-                extraMeme?.let { unlockedMemes.add("${it.name} (Bonus!)") }
-
                 // Extra collection item
                 val extraCollectionItem = collectionRepository.unlockNextItem(newLevel, categoryId = selectedCategoryId)
                 extraCollectionItem?.let {
@@ -129,7 +120,6 @@ class GrantXpUseCase @Inject constructor(
             newLevel = newLevel,
             levelsGained = gainedLevels,
             skillPointsGained = totalSkillPointsGained,
-            unlockedMemes = unlockedMemes,
             unlockedCollectionItems = unlockedCollectionItems
         )
     }
@@ -142,6 +132,5 @@ data class GrantXpResult(
     val newLevel: Int,
     val levelsGained: Int,
     val skillPointsGained: Int,
-    val unlockedMemes: List<String>,
     val unlockedCollectionItems: List<String> = emptyList()
 )

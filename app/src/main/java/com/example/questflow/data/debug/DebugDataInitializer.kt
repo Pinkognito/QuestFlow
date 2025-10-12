@@ -180,21 +180,23 @@ class DebugDataInitializer @Inject constructor(
         )
 
         val contactIds = contacts.map { contact ->
-            val contactId = database.metadataContactDao().insert(contact)
+            database.metadataContactDao().insert(contact)
+        }
 
-            // VIP-Tag für fabian1 hinzufügen
-            if (contact.displayName.contains("1")) {
-                tagIds["VIP"]?.let { vipTagId ->
+        // VIP-Tag für fabian1 hinzufügen (nach dem Einfügen aller Kontakte)
+        if (contactIds.isNotEmpty()) {
+            tagIds["VIP"]?.let { vipTagId ->
+                try {
                     database.contactTagDao().insert(
                         ContactTagEntity(
-                            contactId = contactId,
+                            contactId = contactIds[0], // fabian1
                             tagId = vipTagId
                         )
                     )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not add VIP tag to contact: ${e.message}")
                 }
             }
-
-            contactId
         }
 
         return contactIds
@@ -565,26 +567,5 @@ Grüße,
             aggregationLevel = "DAILY"
         )
         database.statisticsDao().saveConfig(statsConfig)
-
-        // Dynamic Chart erstellen
-        val chart = DynamicChartEntity(
-            title = "Produktivität diese Woche",
-            chartType = "LINE_CHART",  // Fixed: Was "LINE", but enum is "LINE_CHART"
-            dataSource = "TASKS",
-            xAxisField = "completedAt",
-            yAxisField = "count",
-            yAxisAggregation = "COUNT",
-            groupingType = "BY_DATE",  // Fixed: Use proper enum name instead of "DAY"
-            dateInterval = "DAY",
-            filters = null,
-            timeRangeType = "LAST_7_DAYS",  // Fixed: Use proper TimeRangeType enum name
-            sortBy = "completedAt",
-            sortDirection = "ASC",
-            showLegend = true,
-            showValues = true,
-            position = 0,
-            height = 300
-        )
-        database.dynamicChartDao().insertChart(chart)
     }
 }

@@ -12,8 +12,6 @@ import com.example.questflow.data.database.entity.*
         UserStatsEntity::class,
         XpTransactionEntity::class,
         CalendarEventLinkEntity::class,
-        MemeEntity::class,
-        MemeUnlockEntity::class,
         CollectionItemEntity::class,
         CollectionUnlockEntity::class,
         SkillNodeEntity::class,
@@ -24,7 +22,6 @@ import com.example.questflow.data.database.entity.*
         MediaLibraryEntity::class,
         MediaUsageEntity::class,
         StatisticsConfigEntity::class,
-        DynamicChartEntity::class,
         // Task Metadata System
         TaskMetadataEntity::class,
         MetadataLocationEntity::class,
@@ -46,7 +43,7 @@ import com.example.questflow.data.database.entity.*
         MetadataTagEntity::class,
         ContactTagEntity::class
     ],
-    version = 34,
+    version = 35,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -55,14 +52,12 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     abstract fun userStatsDao(): UserStatsDao
     abstract fun xpTransactionDao(): XpTransactionDao
     abstract fun calendarEventLinkDao(): CalendarEventLinkDao
-    abstract fun memeDao(): MemeDao
     abstract fun collectionDao(): CollectionDao
     abstract fun skillDao(): SkillDao
     abstract fun categoryDao(): CategoryDao
     abstract fun mediaLibraryDao(): MediaLibraryDao
     abstract fun mediaUsageDao(): MediaUsageDao
     abstract fun statisticsDao(): StatisticsDao
-    abstract fun dynamicChartDao(): DynamicChartDao
 
     // Task Metadata DAOs
     abstract fun taskMetadataDao(): TaskMetadataDao

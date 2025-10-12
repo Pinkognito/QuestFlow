@@ -13,10 +13,6 @@ data class TaskEntity(
     val isCompleted: Boolean = false,
     val priority: String = "MEDIUM",
     val dueDate: LocalDateTime? = null,
-    @Deprecated("Unused field, replaced by xpPercentage. Will be removed in future version.")
-    val difficulty: String = "MEDIUM",
-    @Deprecated("Unused field, replaced by xpPercentage. Will be removed in future version.")
-    val xpOverride: Int? = null,
     val xpReward: Int = 10,
     val xpPercentage: Int = 40, // Store XP as percentage of level requirement (20, 40, 60, 80, 100)
     val categoryId: Long? = null, // Associated category

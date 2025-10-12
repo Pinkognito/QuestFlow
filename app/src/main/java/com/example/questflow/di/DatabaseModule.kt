@@ -5,31 +5,31 @@ import androidx.room.Room
 import com.example.questflow.data.database.QuestFlowDatabase
 import com.example.questflow.data.database.TaskDao
 import com.example.questflow.data.database.dao.*
-import com.example.questflow.data.database.migration.MIGRATION_1_2
-import com.example.questflow.data.database.migration.MIGRATION_2_3
-import com.example.questflow.data.database.migration.MIGRATION_3_4
-import com.example.questflow.data.database.migration.MIGRATION_4_5
-import com.example.questflow.data.database.migration.MIGRATION_5_6
-import com.example.questflow.data.database.migration.MIGRATION_6_7
-import com.example.questflow.data.database.migration.MIGRATION_7_8
-import com.example.questflow.data.database.migration.MIGRATION_8_9
-import com.example.questflow.data.database.migration.MIGRATION_9_10
-import com.example.questflow.data.database.migration.MIGRATION_10_11
-import com.example.questflow.data.database.migration.MIGRATION_11_12
-import com.example.questflow.data.database.migration.MIGRATION_12_13
-import com.example.questflow.data.database.migration.MIGRATION_13_14
-import com.example.questflow.data.database.migration.MIGRATION_14_15
-import com.example.questflow.data.database.migration.MIGRATION_15_16
-import com.example.questflow.data.database.migration.MIGRATION_16_17
-import com.example.questflow.data.database.migration.MIGRATION_17_18
-import com.example.questflow.data.database.migration.MIGRATION_18_19
-import com.example.questflow.data.database.migration.MIGRATION_19_20
-import com.example.questflow.data.database.migration.MIGRATION_20_21
-import com.example.questflow.data.database.migration.MIGRATION_21_22
-import com.example.questflow.data.database.migration.MIGRATION_22_23
-import com.example.questflow.data.database.migration.MIGRATION_23_24
-import com.example.questflow.data.database.migration.MIGRATION_24_25
-import com.example.questflow.data.database.migration.MIGRATION_25_26
+import com.example.questflow.data.database.migrations.MIGRATION_1_2
+import com.example.questflow.data.database.migrations.MIGRATION_2_3
+import com.example.questflow.data.database.migrations.MIGRATION_3_4
+import com.example.questflow.data.database.migrations.MIGRATION_4_5
+import com.example.questflow.data.database.migrations.MIGRATION_5_6
+import com.example.questflow.data.database.migrations.MIGRATION_6_7
+import com.example.questflow.data.database.migrations.MIGRATION_7_8
+import com.example.questflow.data.database.migrations.MIGRATION_8_9
+import com.example.questflow.data.database.migrations.MIGRATION_9_10
+import com.example.questflow.data.database.migrations.MIGRATION_10_11
+import com.example.questflow.data.database.migrations.MIGRATION_11_12
+import com.example.questflow.data.database.migrations.MIGRATION_12_13
+import com.example.questflow.data.database.migrations.MIGRATION_13_14
+import com.example.questflow.data.database.migrations.MIGRATION_14_15
+import com.example.questflow.data.database.migrations.MIGRATION_15_16
+import com.example.questflow.data.database.migrations.MIGRATION_16_17
+import com.example.questflow.data.database.migrations.MIGRATION_17_18
+import com.example.questflow.data.database.migrations.MIGRATION_18_19
+import com.example.questflow.data.database.migrations.MIGRATION_19_20
+import com.example.questflow.data.database.migrations.MIGRATION_20_21
+import com.example.questflow.data.database.migrations.MIGRATION_21_22
+import com.example.questflow.data.database.migrations.MIGRATION_22_23
+import com.example.questflow.data.database.migrations.MIGRATION_23_24
+import com.example.questflow.data.database.migrations.MIGRATION_24_25
+import com.example.questflow.data.database.migrations.MIGRATION_25_26
 import com.example.questflow.data.database.migrations.MIGRATION_26_27
 import com.example.questflow.data.database.migrations.MIGRATION_27_28
 import com.example.questflow.data.database.migrations.MIGRATION_28_29
@@ -38,6 +38,7 @@ import com.example.questflow.data.database.migrations.MIGRATION_30_31
 import com.example.questflow.data.database.migrations.MIGRATION_31_32
 import com.example.questflow.data.database.migrations.MIGRATION_32_33
 import com.example.questflow.data.database.migrations.MIGRATION_33_34
+import com.example.questflow.data.database.migrations.MIGRATION_34_35
 import com.example.questflow.data.database.migrations.DatabaseSchemaFixer
 import dagger.Module
 import dagger.Provides
@@ -60,7 +61,7 @@ object DatabaseModule {
             QuestFlowDatabase::class.java,
             QuestFlowDatabase.DATABASE_NAME
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
         .addCallback(object : androidx.room.RoomDatabase.Callback() {
             override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 super.onOpen(db)
@@ -92,11 +93,6 @@ object DatabaseModule {
     }
 
     @Provides
-    fun provideMemeDao(database: QuestFlowDatabase): MemeDao {
-        return database.memeDao()
-    }
-
-    @Provides
     fun provideCollectionDao(database: QuestFlowDatabase): CollectionDao {
         return database.collectionDao()
     }
@@ -124,11 +120,6 @@ object DatabaseModule {
     @Provides
     fun provideStatisticsDao(database: QuestFlowDatabase): StatisticsDao {
         return database.statisticsDao()
-    }
-
-    @Provides
-    fun provideDynamicChartDao(database: QuestFlowDatabase): DynamicChartDao {
-        return database.dynamicChartDao()
     }
 
     // Task Metadata DAO Providers

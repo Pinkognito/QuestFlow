@@ -390,7 +390,7 @@ class TodayViewModel @Inject constructor(
                         xpAmount = result.xpGranted ?: 0,
                         leveledUp = result.leveledUp,
                         newLevel = result.newLevel ?: 0,
-                        unlockedMemes = result.unlockedMemes,
+
                         categoryName = result.categoryName
                     )
                 )

@@ -13,7 +13,7 @@ import com.example.questflow.presentation.screens.collection.CollectionManageScr
 import com.example.questflow.presentation.screens.skilltree.SkillTreeManagementScreen
 import com.example.questflow.presentation.screens.categories.CategoriesScreen
 import com.example.questflow.presentation.screens.medialibrary.MediaLibraryScreen
-import com.example.questflow.presentation.screens.statistics.DynamicStatisticsScreen
+import com.example.questflow.presentation.screens.statistics.StatisticsScreen
 import com.example.questflow.presentation.screens.metadata.MetadataLibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryDetailScreen
@@ -68,7 +68,7 @@ fun QuestFlowNavHost(
             )
         }
         composable("statistics") {
-            DynamicStatisticsScreen(
+            StatisticsScreen(
                 appViewModel = appViewModel,
                 navController = navController
             )

@@ -91,7 +91,6 @@ class CompleteTaskUseCase @Inject constructor(
             xpGranted = xpResult?.xpGranted ?: categoryXpResult?.xpGranted,
             leveledUp = (xpResult?.levelsGained ?: categoryXpResult?.levelsGained ?: 0) > 0,
             newLevel = xpResult?.newLevel ?: categoryXpResult?.newLevel,
-            unlockedMemes = xpResult?.unlockedMemes ?: emptyList(),
             categoryName = categoryName
         )
     }
@@ -231,6 +230,5 @@ data class CompleteTaskResult(
     val xpGranted: Int? = null,
     val leveledUp: Boolean = false,
     val newLevel: Int? = null,
-    val unlockedMemes: List<String> = emptyList(),
     val categoryName: String? = null
 )
