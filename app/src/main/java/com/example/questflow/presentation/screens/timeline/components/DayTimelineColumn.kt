@@ -32,6 +32,7 @@ import java.util.Locale
 fun DayTimelineColumn(
     dayTimeline: DayTimeline,
     pixelsPerMinute: Float,
+    selectedTaskIds: Set<Long> = emptySet(),
     onTaskClick: (com.example.questflow.domain.model.TimelineTask) -> Unit,
     onTaskLongPress: (com.example.questflow.domain.model.TimelineTask) -> Unit,
     modifier: Modifier = Modifier
@@ -81,6 +82,7 @@ fun DayTimelineColumn(
 
                 TaskBar(
                     task = task,
+                    isSelected = task.id in selectedTaskIds,
                     modifier = Modifier
                         .offset(y = yOffset.dp)
                         .width(columnWidth - 8.dp) // 4dp padding on each side
@@ -145,6 +147,7 @@ fun TaskBar(
     task: com.example.questflow.domain.model.TimelineTask,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
+    isSelected: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     // Use existing TaskBalken component (will be updated separately)
@@ -153,6 +156,7 @@ fun TaskBar(
         pixelsPerMinute = 2f, // Will be passed from parent
         onLongPress = onLongPress,
         onClick = onClick,
+        isSelected = isSelected,
         modifier = modifier
     )
 }

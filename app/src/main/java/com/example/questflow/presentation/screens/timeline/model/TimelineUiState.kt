@@ -36,6 +36,12 @@ data class TimelineUiState(
     val selectedTask: TimelineTask? = null,
     val showSettings: Boolean = false,
 
+    // Multi-selection state
+    val selectedTaskIds: Set<Long> = emptySet(),
+    val customTaskOrder: List<Long> = emptyList(), // Manual ordering in selection list
+    val selectionBox: SelectionBox? = null,
+    val showSelectionList: Boolean = false,
+
     // Loading states
     val isLoading: Boolean = false,
     val isLoadingPast: Boolean = false,
@@ -86,6 +92,32 @@ data class TimelineUiState(
         val centerIndex = todayIndex + dayWindowOffset
         val startIndex = (centerIndex - 1).coerceAtLeast(0)
         return days.drop(startIndex).take(3)
+    }
+
+    /**
+     * Get selected tasks in custom order (if defined) or insertion order
+     */
+    fun getSelectedTasksOrdered(): List<TimelineTask> {
+        val allTasks = getAllTasks()
+        return if (customTaskOrder.isNotEmpty()) {
+            // Use custom order
+            customTaskOrder.mapNotNull { taskId ->
+                allTasks.find { it.id == taskId }
+            }
+        } else {
+            // Use selection order
+            allTasks.filter { it.id in selectedTaskIds }
+        }
+    }
+
+    /**
+     * Get tasks within selection box time range
+     */
+    fun getTasksInSelectionBox(): List<TimelineTask> {
+        val box = selectionBox ?: return emptyList()
+        return getAllTasks().filter { task ->
+            task.startTime >= box.startTime && task.endTime <= box.endTime
+        }
     }
 }
 
@@ -180,5 +212,27 @@ data class DragState(
      */
     fun hasChanged(): Boolean {
         return originalStartTime != previewStartTime
+    }
+}
+
+/**
+ * Selection box defining time range for batch operations
+ */
+data class SelectionBox(
+    val startTime: LocalDateTime,
+    val endTime: LocalDateTime
+) {
+    /**
+     * Get duration in minutes
+     */
+    fun durationMinutes(): Long {
+        return java.time.temporal.ChronoUnit.MINUTES.between(startTime, endTime)
+    }
+
+    /**
+     * Check if time range is valid
+     */
+    fun isValid(): Boolean {
+        return startTime.isBefore(endTime)
     }
 }

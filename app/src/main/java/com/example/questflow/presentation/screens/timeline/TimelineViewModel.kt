@@ -15,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 /**
@@ -25,6 +26,7 @@ class TimelineViewModel @Inject constructor(
     private val loadTimelineTasksUseCase: LoadTimelineTasksUseCase,
     private val detectConflictsUseCase: DetectConflictsUseCase,
     private val updateTaskTimeUseCase: UpdateTaskTimeUseCase,
+    private val batchTaskPositioningUseCase: com.example.questflow.domain.usecase.timeline.BatchTaskPositioningUseCase,
     private val timelinePreferences: TimelinePreferences
 ) : ViewModel() {
 
@@ -261,4 +263,166 @@ class TimelineViewModel @Inject constructor(
             }
         }
     }
+
+    // ====== Multi-Selection Methods ======
+
+    /**
+     * Toggle task selection (add or remove from selection)
+     * External calendar events cannot be selected (they cannot be modified)
+     */
+    fun toggleTaskSelection(taskId: Long) {
+        _uiState.update { state ->
+            // Find the task to check if it's external
+            val task = state.getAllTasks().find { it.id == taskId }
+
+            if (task?.isExternal == true) {
+                android.util.Log.w("TimelineViewModel", "Cannot select external calendar event: ${task.title}")
+                // Show a brief error or ignore
+                return@update state.copy(
+                    error = "Externe Kalender-Events können nicht ausgewählt werden"
+                )
+            }
+
+            val newSelection = if (taskId in state.selectedTaskIds) {
+                // Remove from selection
+                state.selectedTaskIds - taskId
+            } else {
+                // Add to selection
+                state.selectedTaskIds + taskId
+            }
+
+            // Update custom order if needed
+            val newOrder = if (taskId in state.selectedTaskIds) {
+                // Remove from order
+                state.customTaskOrder.filter { it != taskId }
+            } else {
+                // Add to end of order
+                state.customTaskOrder + taskId
+            }
+
+            state.copy(
+                selectedTaskIds = newSelection,
+                customTaskOrder = newOrder
+            )
+        }
+    }
+
+    /**
+     * Clear all selections
+     */
+    fun clearSelection() {
+        _uiState.update { it.copy(
+            selectedTaskIds = emptySet(),
+            customTaskOrder = emptyList()
+        )}
+    }
+
+    /**
+     * Remove specific task from selection
+     */
+    fun removeFromSelection(taskId: Long) {
+        _uiState.update { state ->
+            state.copy(
+                selectedTaskIds = state.selectedTaskIds - taskId,
+                customTaskOrder = state.customTaskOrder.filter { it != taskId }
+            )
+        }
+    }
+
+    /**
+     * Set custom task order (manual ordering in selection list)
+     */
+    fun setCustomTaskOrder(orderedIds: List<Long>) {
+        _uiState.update { it.copy(customTaskOrder = orderedIds) }
+    }
+
+    /**
+     * Toggle selection list visibility
+     */
+    fun toggleSelectionList() {
+        _uiState.update { it.copy(showSelectionList = !it.showSelectionList) }
+    }
+
+    /**
+     * Set selection box time range
+     */
+    fun setSelectionBox(startTime: LocalDateTime, endTime: LocalDateTime) {
+        _uiState.update { it.copy(
+            selectionBox = com.example.questflow.presentation.screens.timeline.model.SelectionBox(
+                startTime = startTime,
+                endTime = endTime
+            )
+        )}
+    }
+
+    /**
+     * Clear selection box
+     */
+    fun clearSelectionBox() {
+        _uiState.update { it.copy(selectionBox = null) }
+    }
+
+    /**
+     * Select all tasks within the selection box time range
+     */
+    fun selectAllInRange() {
+        val tasksInBox = _uiState.value.getTasksInSelectionBox()
+        val taskIds = tasksInBox.map { it.id }.toSet()
+
+        _uiState.update { state ->
+            val newSelection = state.selectedTaskIds + taskIds
+            val newOrder = state.customTaskOrder + taskIds.filter { it !in state.customTaskOrder }
+
+            state.copy(
+                selectedTaskIds = newSelection,
+                customTaskOrder = newOrder
+            )
+        }
+    }
+
+    /**
+     * Insert selected tasks into selection box with auto-positioning
+     * Uses BatchTaskPositioningUseCase for smart arrangement
+     */
+    fun insertSelectedIntoRange(sortOption: TaskSortOption = TaskSortOption.CUSTOM_ORDER) {
+        val box = _uiState.value.selectionBox ?: return
+        val selectedTasks = _uiState.value.getSelectedTasksOrdered()
+
+        if (selectedTasks.isEmpty()) return
+
+        viewModelScope.launch {
+            when (val result = batchTaskPositioningUseCase(
+                tasks = selectedTasks,
+                startTime = box.startTime,
+                endTime = box.endTime,
+                sortOption = sortOption
+            )) {
+                is com.example.questflow.domain.usecase.timeline.BatchTaskPositioningUseCase.Result.Success -> {
+                    android.util.Log.d("TimelineViewModel", "Batch positioning successful: ${result.updatedTasks.size} tasks updated")
+                    // Clear selection and box after successful insert
+                    clearSelection()
+                    clearSelectionBox()
+                    // Refresh timeline to show updates
+                    refresh()
+                }
+                is com.example.questflow.domain.usecase.timeline.BatchTaskPositioningUseCase.Result.Error -> {
+                    android.util.Log.e("TimelineViewModel", "Batch positioning failed: ${result.message}")
+                    _uiState.update { it.copy(error = result.message) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Sort options for batch task positioning
+ */
+enum class TaskSortOption {
+    CUSTOM_ORDER,      // Use manual order from selection list (DEFAULT)
+    PRIORITY,          // Sort by priority (HIGH → LOW)
+    XP_PERCENTAGE,     // Sort by XP/difficulty
+    DURATION,          // Sort by duration (short → long)
+    DURATION_DESC,     // Sort by duration (long → short)
+    ALPHABETICAL,      // Sort alphabetically
+    CATEGORY           // Sort by category
 }

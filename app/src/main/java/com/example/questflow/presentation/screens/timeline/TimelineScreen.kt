@@ -1,6 +1,8 @@
 package com.example.questflow.presentation.screens.timeline
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,14 +29,29 @@ fun TimelineScreen(
     viewModel: TimelineViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showSelectionBoxDialog by remember { mutableStateOf(false) }
+    var showBatchOperationDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TimelineTopBar(
                 focusedTask = uiState.focusedTask,
+                selectionCount = uiState.selectedTaskIds.size,
                 onBackClick = { navController.navigateUp() },
-                onSettingsClick = { viewModel.toggleSettings() }
+                onSettingsClick = { viewModel.toggleSettings() },
+                onSelectionClick = { viewModel.toggleSelectionList() }
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showSelectionBoxDialog = true },
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "Zeitbereich festlegen"
+                )
+            }
         }
     ) { padding ->
         BoxWithConstraints(
@@ -70,22 +87,37 @@ fun TimelineScreen(
 
                 // Content
                 else -> {
-                    TimelineGrid(
-                        uiState = uiState,
-                        onTaskClick = { task ->
-                            viewModel.onTaskClick(task)
-                            viewModel.setFocusedTask(task)
-                        },
-                        onTaskLongPress = { task ->
-                            viewModel.onTaskDragStart(task)
-                        },
-                        onLoadMore = { direction ->
-                            viewModel.loadMore(direction)
-                        },
-                        onDayWindowShift = { direction ->
-                            viewModel.shiftDayWindow(direction)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        TimelineGrid(
+                            uiState = uiState,
+                            onTaskClick = { task ->
+                                viewModel.onTaskClick(task)
+                                viewModel.setFocusedTask(task)
+                            },
+                            onTaskLongPress = { task ->
+                                // Long-press now toggles selection instead of dragging
+                                viewModel.toggleTaskSelection(task.id)
+                            },
+                            onLoadMore = { direction ->
+                                viewModel.loadMore(direction)
+                            },
+                            onDayWindowShift = { direction ->
+                                viewModel.shiftDayWindow(direction)
+                            }
+                        )
+
+                        // SelectionBox overlay (shown over timeline)
+                        if (uiState.selectionBox != null) {
+                            SelectionBoxOverlay(
+                                selectionBox = uiState.selectionBox!!,
+                                pixelsPerMinute = uiState.pixelsPerMinute,
+                                onDismiss = { viewModel.clearSelectionBox() },
+                                onSelectAllInRange = { viewModel.selectAllInRange() },
+                                onInsertIntoRange = { showBatchOperationDialog = true },
+                                onEdit = { showSelectionBoxDialog = true }
+                            )
                         }
-                    )
+                    }
                 }
             }
         }
@@ -107,6 +139,45 @@ fun TimelineScreen(
             onDismiss = { viewModel.toggleSettings() },
             onToleranceChange = { viewModel.updateTolerance(it) },
             onVisibleHoursChange = { viewModel.updateVisibleHours(it) }
+        )
+    }
+
+    // Selection list sheet
+    if (uiState.showSelectionList && uiState.selectedTaskIds.isNotEmpty()) {
+        SelectionListSheet(
+            selectedTasks = uiState.getSelectedTasksOrdered(),
+            onDismiss = { viewModel.toggleSelectionList() },
+            onRemoveTask = { taskId -> viewModel.removeFromSelection(taskId) },
+            onReorder = { newOrder -> viewModel.setCustomTaskOrder(newOrder) },
+            onClearAll = {
+                viewModel.clearSelection()
+                viewModel.toggleSelectionList()
+            }
+        )
+    }
+
+    // SelectionBox creation dialog
+    if (showSelectionBoxDialog) {
+        SelectionBoxDialog(
+            initialStart = uiState.selectionBox?.startTime,
+            initialEnd = uiState.selectionBox?.endTime,
+            onDismiss = { showSelectionBoxDialog = false },
+            onConfirm = { start, end ->
+                viewModel.setSelectionBox(start, end)
+                showSelectionBoxDialog = false
+            }
+        )
+    }
+
+    // Batch operation dialog
+    if (showBatchOperationDialog) {
+        BatchOperationDialog(
+            taskCount = uiState.selectedTaskIds.size,
+            onDismiss = { showBatchOperationDialog = false },
+            onConfirm = { sortOption ->
+                viewModel.insertSelectedIntoRange(sortOption)
+                showBatchOperationDialog = false
+            }
         )
     }
 }

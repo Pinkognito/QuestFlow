@@ -1,6 +1,7 @@
 package com.example.questflow.presentation.screens.timeline.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,7 @@ import com.example.questflow.domain.model.TimelineTask
  *
  * UPDATED: Position and size are now controlled by parent (DayTimelineColumn).
  * This component only handles the visual appearance and gestures.
+ * Long-press now toggles selection instead of dragging.
  */
 @Composable
 fun TaskBalken(
@@ -31,7 +33,8 @@ fun TaskBalken(
     onLongPress: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isDragging: Boolean = false
+    isDragging: Boolean = false,
+    isSelected: Boolean = false
 ) {
     // Get color based on conflict state
     val backgroundColor = remember(task.conflictState, task.categoryColor) {
@@ -58,6 +61,18 @@ fun TaskBalken(
                     backgroundColor.copy(alpha = if (isDragging) 0.9f else 1f)
                 },
                 shape = RoundedCornerShape(6.dp)
+            )
+            .then(
+                // Selection border
+                if (isSelected) {
+                    Modifier.border(
+                        width = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                } else {
+                    Modifier
+                }
             )
             .pointerInput(task.id) {
                 if (!task.isExternal) { // External events are not clickable
@@ -149,6 +164,27 @@ fun TaskBalken(
                 color = contentColor,
                 fontSize = 12.sp
             )
+        }
+
+        // Selection indicator
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(2.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "✓",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 10.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
         }
     }
 }

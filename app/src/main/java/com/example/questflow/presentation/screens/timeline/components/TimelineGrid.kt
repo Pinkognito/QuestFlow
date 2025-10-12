@@ -114,6 +114,8 @@ fun TimelineGrid(
                                 hourHeightDp = hourHeightDp,
                                 dayTimeline = day,
                                 pixelsPerMinute = pixelsPerMinute,
+                                selectedTaskIds = uiState.selectedTaskIds,
+                                selectionBox = uiState.selectionBox,
                                 onTaskClick = onTaskClick,
                                 onTaskLongPress = onTaskLongPress,
                                 modifier = Modifier.weight(1f)
@@ -127,7 +129,7 @@ fun TimelineGrid(
 }
 
 /**
- * Single hour slot for one day, containing background grid and tasks.
+ * Single hour slot for one day, containing background grid, selection box overlay, and tasks.
  */
 @Composable
 private fun HourSlotWithTasks(
@@ -135,6 +137,8 @@ private fun HourSlotWithTasks(
     hourHeightDp: androidx.compose.ui.unit.Dp,
     dayTimeline: DayTimeline,
     pixelsPerMinute: Float,
+    selectedTaskIds: Set<Long> = emptySet(),
+    selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox? = null,
     onTaskClick: (TimelineTask) -> Unit,
     onTaskLongPress: (TimelineTask) -> Unit,
     modifier: Modifier = Modifier
@@ -151,6 +155,17 @@ private fun HourSlotWithTasks(
             hourHeightDp = hourHeightDp,
             isToday = dayTimeline.isToday
         )
+
+        // Selection box overlay (only in this hour if it overlaps)
+        if (selectionBox != null) {
+            RenderSelectionBoxInHourSlot(
+                selectionBox = selectionBox,
+                dayDate = dayTimeline.date,
+                hour = hour,
+                pixelsPerMinute = pixelsPerMinute,
+                hourHeightDp = hourHeightDp
+            )
+        }
 
         // Tasks that overlap with this hour
         val hourStart = hour * 60 // Minutes since midnight
@@ -191,6 +206,7 @@ private fun HourSlotWithTasks(
                     task = task,
                     onClick = { onTaskClick(task) },
                     onLongPress = { onTaskLongPress(task) },
+                    isSelected = task.id in selectedTaskIds,
                     modifier = Modifier
                         .offset(y = yOffsetInHour.dp)
                         .fillMaxWidth(0.95f)

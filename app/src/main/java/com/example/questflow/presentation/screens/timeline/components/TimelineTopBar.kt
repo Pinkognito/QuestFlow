@@ -20,8 +20,10 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun TimelineTopBar(
     focusedTask: TimelineTask?,
+    selectionCount: Int = 0,
     onBackClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onSelectionClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     TopAppBar(
@@ -55,6 +57,12 @@ fun TimelineTopBar(
             }
         },
         actions = {
+            // Selection button
+            SelectionButton(
+                selectionCount = selectionCount,
+                onClick = onSelectionClick
+            )
+
             // Settings
             IconButton(onClick = onSettingsClick) {
                 Icon(
