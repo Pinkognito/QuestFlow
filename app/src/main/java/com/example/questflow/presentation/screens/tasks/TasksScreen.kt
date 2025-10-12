@@ -219,6 +219,16 @@ fun TasksScreen(
                         totalXp = globalStats?.xp ?: 0,
                         previousXp = previousXp,
                         actions = {
+                            // Timeline button
+                            IconButton(onClick = { navController.navigate("timeline") }) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = "Timeline öffnen",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            // Filter button
                             IconButton(onClick = { viewModel.toggleFilterDialog() }) {
                                 Badge(
                                     containerColor = if (filterSettings.isActive())

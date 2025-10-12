@@ -19,6 +19,7 @@ import com.example.questflow.presentation.screens.library.LibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryDetailScreen
 import com.example.questflow.presentation.screens.library.ContactDetailScreen
 import com.example.questflow.presentation.screens.library.TextTemplateLibraryScreen
+import com.example.questflow.presentation.screens.timeline.TimelineScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -70,6 +71,11 @@ fun QuestFlowNavHost(
         composable("statistics") {
             StatisticsScreen(
                 appViewModel = appViewModel,
+                navController = navController
+            )
+        }
+        composable("timeline") {
+            TimelineScreen(
                 navController = navController
             )
         }
