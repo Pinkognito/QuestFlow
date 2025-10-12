@@ -564,6 +564,78 @@ class TasksViewModel @Inject constructor(
             taskContactTagRepository.saveTaskContactTags(taskId, contactTagMap)
         }
     }
+
+    /**
+     * Delete a single task by ID
+     */
+    fun deleteTask(taskId: Long, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val task = taskRepository.getTaskById(taskId)
+                if (task != null) {
+                    // Delete calendar event if it exists
+                    task.calendarEventId?.let { eventId ->
+                        calendarManager.deleteEvent(eventId)
+                    }
+
+                    // Delete task from database (cascade deletes calendar links via FK)
+                    taskRepository.deleteTask(task)
+
+                    android.util.Log.d("TasksViewModel", "Task deleted: $taskId")
+
+                    // Refresh data
+                    loadTasks()
+                    loadCalendarLinks()
+                    loadCalendarEvents()
+
+                    onSuccess?.invoke()
+                } else {
+                    android.util.Log.w("TasksViewModel", "Task not found for deletion: $taskId")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TasksViewModel", "Failed to delete task: $taskId", e)
+            }
+        }
+    }
+
+    /**
+     * Delete multiple tasks in batch
+     */
+    fun deleteTasks(taskIds: List<Long>, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                var deletedCount = 0
+                taskIds.forEach { taskId ->
+                    val task = taskRepository.getTaskById(taskId)
+                    if (task != null) {
+                        // Delete calendar event if it exists
+                        task.calendarEventId?.let { eventId ->
+                            try {
+                                calendarManager.deleteEvent(eventId)
+                            } catch (e: Exception) {
+                                android.util.Log.w("TasksViewModel", "Failed to delete calendar event: $eventId", e)
+                            }
+                        }
+
+                        // Delete task from database
+                        taskRepository.deleteTask(task)
+                        deletedCount++
+                    }
+                }
+
+                android.util.Log.d("TasksViewModel", "Batch delete complete: $deletedCount/${ taskIds.size} tasks deleted")
+
+                // Refresh data
+                loadTasks()
+                loadCalendarLinks()
+                loadCalendarEvents()
+
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                android.util.Log.e("TasksViewModel", "Failed to batch delete tasks", e)
+            }
+        }
+    }
 }
 
 data class TasksUiState(

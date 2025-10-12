@@ -636,19 +636,18 @@ fun TasksScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // Delete all selected tasks
-                        selectedTaskLinks.forEach { link ->
-                            link.taskId?.let { taskId ->
-                                // TODO: Implement actual delete in ViewModel
-                                android.util.Log.d("BatchDelete", "Deleting task: $taskId")
-                            }
+                        // Delete all selected tasks via ViewModel
+                        val taskIds = selectedTaskLinks.mapNotNull { it.taskId }
+                        android.util.Log.d("BatchDelete", "Deleting ${taskIds.size} tasks: $taskIds")
+
+                        viewModel.deleteTasks(taskIds) {
+                            android.util.Log.d("BatchDelete", "Batch delete completed successfully")
                         }
 
-                        // Exit multi-select mode and refresh
+                        // Exit multi-select mode
                         multiSelectMode = false
                         selectedTaskLinks = emptySet()
                         showBatchDeleteDialog = false
-                        viewModel.loadCalendarLinks()
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
@@ -2008,8 +2007,13 @@ fun EditCalendarTaskDialog(
                                     confirmButton = {
                                         TextButton(
                                             onClick = {
-                                                // TODO: Implement task deletion in ViewModel
-                                                android.util.Log.d("TaskDelete", "Deleting task: ${calendarLink.taskId}")
+                                                // Delete task via ViewModel
+                                                calendarLink.taskId?.let { taskId ->
+                                                    android.util.Log.d("TaskDelete", "Deleting task: $taskId")
+                                                    tasksViewModel.deleteTask(taskId) {
+                                                        android.util.Log.d("TaskDelete", "Task deleted successfully")
+                                                    }
+                                                }
                                                 showDeleteDialog = false
                                                 onDismiss()
                                             },
