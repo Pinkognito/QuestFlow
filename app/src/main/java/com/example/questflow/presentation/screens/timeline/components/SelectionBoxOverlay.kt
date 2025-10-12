@@ -29,7 +29,6 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SelectionBoxOverlay(
     selectionBox: SelectionBox,
-    pixelsPerMinute: Float,
     onDismiss: () -> Unit,
     onSelectAllInRange: () -> Unit,
     onInsertIntoRange: () -> Unit,

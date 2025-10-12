@@ -22,7 +22,7 @@ import com.example.questflow.domain.model.TimelineTask
  * Task bar component for vertical timeline view.
  * Displays task with color-coded conflict state.
  *
- * UPDATED: Position and size are now controlled by parent (DayTimelineColumn).
+ * Position and size are controlled by parent (TimelineGrid hour slots).
  * This component only handles the visual appearance and gestures.
  * Long-press now toggles selection instead of dragging.
  */

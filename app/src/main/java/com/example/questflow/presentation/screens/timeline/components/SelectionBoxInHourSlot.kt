@@ -25,7 +25,6 @@ fun RenderSelectionBoxInHourSlot(
     dayDate: LocalDate,
     hour: Int,
     pixelsPerMinute: Float,
-    hourHeightDp: Dp,
     modifier: Modifier = Modifier
 ) {
     val boxStartDate = selectionBox.startTime.toLocalDate()

@@ -8,9 +8,7 @@ import com.example.questflow.domain.usecase.timeline.DetectConflictsUseCase
 import com.example.questflow.domain.usecase.timeline.LoadTimelineTasksUseCase
 import com.example.questflow.domain.usecase.timeline.UpdateTaskTimeUseCase
 import com.example.questflow.presentation.screens.timeline.model.DayTimeline
-import com.example.questflow.presentation.screens.timeline.model.DragState
 import com.example.questflow.presentation.screens.timeline.model.TimelineUiState
-import com.example.questflow.presentation.screens.timeline.util.TimelineCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -173,51 +171,6 @@ class TimelineViewModel @Inject constructor(
         _uiState.update { it.copy(focusedTask = task) }
     }
 
-    fun onTaskDragStart(task: TimelineTask) {
-        _uiState.update { it.copy(
-            dragState = DragState(
-                task = task,
-                originalStartTime = task.startTime,
-                originalEndTime = task.endTime,
-                currentOffsetY = 0f,
-                previewStartTime = task.startTime,
-                previewEndTime = task.endTime
-            )
-        )}
-    }
-
-    fun onTaskDrag(offsetY: Float) {
-        val currentDrag = _uiState.value.dragState ?: return
-        val (newStart, newEnd) = TimelineCalculator.calculateDraggedTaskTimes(
-            currentDrag.originalStartTime,
-            currentDrag.originalEndTime,
-            offsetY,
-            _uiState.value.pixelsPerMinute,
-            _uiState.value.snapToGridMinutes
-        )
-        _uiState.update { it.copy(
-            dragState = currentDrag.copy(
-                currentOffsetY = offsetY,
-                previewStartTime = newStart,
-                previewEndTime = newEnd
-            )
-        )}
-    }
-
-    fun onTaskDragEnd() {
-        val dragState = _uiState.value.dragState ?: return
-        if (dragState.hasChanged()) {
-            viewModelScope.launch {
-                updateTaskTimeUseCase(
-                    taskId = dragState.task.taskId,
-                    linkId = dragState.task.linkId,
-                    newStartTime = dragState.previewStartTime,
-                    newEndTime = dragState.previewEndTime
-                )
-            }
-        }
-        _uiState.update { it.copy(dragState = null) }
-    }
 
     fun toggleSettings() {
         _uiState.update { it.copy(showSettings = !it.showSettings) }

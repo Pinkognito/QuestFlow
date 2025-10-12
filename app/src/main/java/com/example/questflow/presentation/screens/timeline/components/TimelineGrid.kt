@@ -1,20 +1,30 @@
 package com.example.questflow.presentation.screens.timeline.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.questflow.presentation.screens.timeline.TimelineViewModel
 import com.example.questflow.presentation.screens.timeline.model.TimelineUiState
 import com.example.questflow.presentation.screens.timeline.model.DayTimeline
 import com.example.questflow.domain.model.TimelineTask
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlin.math.abs
 
 /**
@@ -162,8 +172,7 @@ private fun HourSlotWithTasks(
                 selectionBox = selectionBox,
                 dayDate = dayTimeline.date,
                 hour = hour,
-                pixelsPerMinute = pixelsPerMinute,
-                hourHeightDp = hourHeightDp
+                pixelsPerMinute = pixelsPerMinute
             )
         }
 
@@ -215,5 +224,138 @@ private fun HourSlotWithTasks(
                 )
             }
         }
+    }
+}
+
+/**
+ * Task bar wrapper component - delegates to TaskBalken
+ */
+@Composable
+private fun TaskBar(
+    task: TimelineTask,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    isSelected: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    TaskBalken(
+        task = task,
+        pixelsPerMinute = 2f,
+        onLongPress = onLongPress,
+        onClick = onClick,
+        isSelected = isSelected,
+        modifier = modifier
+    )
+}
+
+/**
+ * Single hour row for background grid (used in LazyColumn).
+ */
+@Composable
+private fun HourBackgroundGrid(
+    hour: Int,
+    pixelsPerMinute: Float,
+    hourHeightDp: androidx.compose.ui.unit.Dp,
+    isToday: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
+    val primaryColor = MaterialTheme.colorScheme.primaryContainer
+    val hourHeightPx = 60 * pixelsPerMinute
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(hourHeightDp)
+            .background(
+                if (isToday) {
+                    primaryColor.copy(alpha = 0.05f)
+                } else {
+                    Color.Transparent
+                }
+            )
+    ) {
+        // Top hour line
+        val strokeWidth = if (hour % 6 == 0) 2f else 1f
+        val alpha = if (hour % 6 == 0) 0.2f else 0.1f
+
+        drawLine(
+            color = outlineColor.copy(alpha = alpha),
+            start = Offset(0f, 0f),
+            end = Offset(size.width, 0f),
+            strokeWidth = strokeWidth
+        )
+
+        // 15-minute markers
+        if (hourHeightPx > 40f) {
+            val quarterHeight = hourHeightPx / 4f
+            for (quarter in 1..3) {
+                val quarterY = quarterHeight * quarter
+                drawLine(
+                    color = outlineColor.copy(alpha = 0.05f),
+                    start = Offset(0f, quarterY),
+                    end = Offset(size.width, quarterY),
+                    strokeWidth = 1f
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Day header showing day name and date.
+ */
+@Composable
+private fun DayHeader(
+    date: LocalDate,
+    isToday: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val dayOfWeek = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN)
+    val dayOfMonth = date.dayOfMonth
+    val month = date.monthValue
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                if (isToday) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Day of week
+        Text(
+            text = dayOfWeek,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 12.sp
+            ),
+            color = if (isToday) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            textAlign = TextAlign.Center
+        )
+
+        // Day and month
+        Text(
+            text = "$dayOfMonth.$month",
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 11.sp
+            ),
+            color = if (isToday) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            textAlign = TextAlign.Center
+        )
     }
 }

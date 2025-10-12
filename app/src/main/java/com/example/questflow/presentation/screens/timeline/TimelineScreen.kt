@@ -110,7 +110,6 @@ fun TimelineScreen(
                         if (uiState.selectionBox != null) {
                             SelectionBoxOverlay(
                                 selectionBox = uiState.selectionBox!!,
-                                pixelsPerMinute = uiState.pixelsPerMinute,
                                 onDismiss = { viewModel.clearSelectionBox() },
                                 onSelectAllInRange = { viewModel.selectAllInRange() },
                                 onInsertIntoRange = { showBatchOperationDialog = true },

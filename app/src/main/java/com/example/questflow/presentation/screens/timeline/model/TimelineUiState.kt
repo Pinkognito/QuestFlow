@@ -1,6 +1,5 @@
 package com.example.questflow.presentation.screens.timeline.model
 
-import androidx.compose.ui.geometry.Offset
 import com.example.questflow.domain.model.TimelineTask
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,7 +31,6 @@ data class TimelineUiState(
     val snapToGridMinutes: Int = 15,
 
     // Interaction state
-    val dragState: DragState? = null,
     val selectedTask: TimelineTask? = null,
     val showSettings: Boolean = false,
 
@@ -189,31 +187,6 @@ data class ConflictCounts(
     val hasConflicts: Boolean get() = overlaps > 0 || warnings > 0
 }
 
-/**
- * State during drag operation (now VERTICAL drag)
- */
-data class DragState(
-    val task: TimelineTask,
-    val originalStartTime: LocalDateTime,
-    val originalEndTime: LocalDateTime,
-    val currentOffsetY: Float, // Changed from Offset to just Y
-    val previewStartTime: LocalDateTime,
-    val previewEndTime: LocalDateTime
-) {
-    /**
-     * Calculate time offset in minutes
-     */
-    fun getTimeOffsetMinutes(): Long {
-        return java.time.temporal.ChronoUnit.MINUTES.between(originalStartTime, previewStartTime)
-    }
-
-    /**
-     * Check if position has changed
-     */
-    fun hasChanged(): Boolean {
-        return originalStartTime != previewStartTime
-    }
-}
 
 /**
  * Selection box defining time range for batch operations
