@@ -18,6 +18,8 @@ import java.time.LocalDate
 /**
  * Renders the selection box overlay within a single hour slot.
  * Similar to how tasks are rendered - only the portion that overlaps with this hour.
+ *
+ * @param isPreview If true, renders with more transparent style (for live drag preview)
  */
 @Composable
 fun RenderSelectionBoxInHourSlot(
@@ -25,7 +27,8 @@ fun RenderSelectionBoxInHourSlot(
     dayDate: LocalDate,
     hour: Int,
     pixelsPerMinute: Float,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isPreview: Boolean = false
 ) {
     val boxStartDate = selectionBox.startTime.toLocalDate()
     val boxEndDate = selectionBox.endTime.toLocalDate()
@@ -104,8 +107,16 @@ fun RenderSelectionBoxInHourSlot(
     val heightDp = (visibleEndInHour - visibleStartInHour) * pixelsPerMinute
 
     val primaryColor = MaterialTheme.colorScheme.primary
-    val overlayColor = primaryColor.copy(alpha = 0.15f)
-    val borderColor = primaryColor.copy(alpha = 0.6f)
+    val overlayColor = if (isPreview) {
+        primaryColor.copy(alpha = 0.08f) // More transparent for preview
+    } else {
+        primaryColor.copy(alpha = 0.15f)
+    }
+    val borderColor = if (isPreview) {
+        primaryColor.copy(alpha = 0.4f) // Lighter border for preview
+    } else {
+        primaryColor.copy(alpha = 0.6f)
+    }
 
     // Render overlay
     androidx.compose.foundation.layout.Box(
@@ -124,9 +135,13 @@ fun RenderSelectionBoxInHourSlot(
                 size = size
             )
 
-            // Draw dashed border
+            // Draw dashed border (shorter dashes for preview)
             val dashPathEffect = PathEffect.dashPathEffect(
-                intervals = floatArrayOf(10f, 10f),
+                intervals = if (isPreview) {
+                    floatArrayOf(5f, 10f) // Shorter dashes for preview
+                } else {
+                    floatArrayOf(10f, 10f)
+                },
                 phase = 0f
             )
 

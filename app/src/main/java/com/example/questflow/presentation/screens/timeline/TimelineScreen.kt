@@ -95,15 +95,16 @@ fun TimelineScreen(
                                 viewModel.setFocusedTask(task)
                             },
                             onTaskLongPress = { task ->
-                                // Long-press now toggles selection instead of dragging
-                                viewModel.toggleTaskSelection(task.id)
+                                // Long-press on task sets SelectionBox to task time range
+                                viewModel.setSelectionBoxFromTask(task)
                             },
                             onLoadMore = { direction ->
                                 viewModel.loadMore(direction)
                             },
                             onDayWindowShift = { direction ->
                                 viewModel.shiftDayWindow(direction)
-                            }
+                            },
+                            viewModel = viewModel
                         )
 
                         // SelectionBox overlay (shown over timeline)
@@ -115,6 +116,11 @@ fun TimelineScreen(
                                 onInsertIntoRange = { showBatchOperationDialog = true },
                                 onEdit = { showSelectionBoxDialog = true }
                             )
+                        }
+
+                        // DEBUG OVERLAY - Shows gesture info
+                        if (uiState.gestureDebugInfo != null) {
+                            GestureDebugOverlay(debugInfo = uiState.gestureDebugInfo!!)
                         }
                     }
                 }
@@ -289,6 +295,119 @@ private fun EmptyState() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(0.8f)
             )
+        }
+    }
+}
+
+/**
+ * Debug overlay showing gesture information
+ */
+@Composable
+private fun GestureDebugOverlay(
+    debugInfo: com.example.questflow.presentation.screens.timeline.model.GestureDebugInfo
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = when (debugInfo.gestureType) {
+                    "WAITING" -> MaterialTheme.colorScheme.surfaceVariant
+                    "VERTICAL" -> MaterialTheme.colorScheme.tertiaryContainer
+                    "HORIZONTAL", "HORIZONTAL_DRAG" -> MaterialTheme.colorScheme.secondaryContainer
+                    "LONG_PRESS" -> MaterialTheme.colorScheme.primaryContainer
+                    "DRAGGING" -> MaterialTheme.colorScheme.primary
+                    "DAY_SHIFT" -> MaterialTheme.colorScheme.secondary
+                    "TASK_HIT" -> MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = debugInfo.gestureType,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    ),
+                    color = when (debugInfo.gestureType) {
+                        "DRAGGING" -> MaterialTheme.colorScheme.onPrimary
+                        "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = debugInfo.message,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = when (debugInfo.gestureType) {
+                        "DRAGGING" -> MaterialTheme.colorScheme.onPrimary
+                        "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+
+                if (debugInfo.elapsedMs > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${debugInfo.elapsedMs}ms",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = when (debugInfo.gestureType) {
+                            "DRAGGING" -> MaterialTheme.colorScheme.onPrimary
+                            "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+
+                if (debugInfo.dragX != 0f || debugInfo.dragY != 0f) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "X: ${debugInfo.dragX.toInt()}px  Y: ${debugInfo.dragY.toInt()}px",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (debugInfo.gestureType) {
+                            "DRAGGING" -> MaterialTheme.colorScheme.onPrimary
+                            "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+
+                // Show gesture history
+                if (debugInfo.history.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "History:",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        ),
+                        color = when (debugInfo.gestureType) {
+                            "DRAGGING" -> MaterialTheme.colorScheme.onPrimary
+                            "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    debugInfo.history.forEach { historyEntry ->
+                        Text(
+                            text = historyEntry,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when (debugInfo.gestureType) {
+                                "DRAGGING" -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                                "TASK_HIT" -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

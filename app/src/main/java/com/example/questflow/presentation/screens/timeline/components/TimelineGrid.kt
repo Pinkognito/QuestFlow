@@ -2,7 +2,9 @@ package com.example.questflow.presentation.screens.timeline.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,9 +26,14 @@ import com.example.questflow.presentation.screens.timeline.model.TimelineUiState
 import com.example.questflow.presentation.screens.timeline.model.DayTimeline
 import com.example.questflow.domain.model.TimelineTask
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * UNIFIED Timeline Grid - TRUE TABLE where EVERYTHING scrolls together.
@@ -34,7 +42,9 @@ import kotlin.math.abs
  * - Single LazyColumn with rows containing [Time | Day1 | Day2 | Day3]
  * - Time scrolls WITH the days - unified table
  * - Sticky header (stays visible during scroll)
- * - Simple swipe gesture for day shifting
+ * - Drag-to-select gesture overlay (spans entire day, not just per-hour)
+ * - Transparent overlay for gesture capture (doesn't block task taps)
+ * - Smart scroll: only when near edges during drag selection
  * - Only visible rows rendered (~5-10 out of 24)
  */
 @Composable
@@ -44,10 +54,12 @@ fun TimelineGrid(
     onTaskLongPress: (TimelineTask) -> Unit,
     onLoadMore: (direction: TimelineViewModel.LoadDirection) -> Unit,
     onDayWindowShift: (direction: Int) -> Unit,
+    viewModel: TimelineViewModel,
     modifier: Modifier = Modifier
 ) {
     val pixelsPerMinute = uiState.pixelsPerMinute
     val hourHeightDp = (60 * pixelsPerMinute).dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     // Get visible days using the offset from state
     val visibleDays = uiState.getVisibleDays()
@@ -55,15 +67,19 @@ fun TimelineGrid(
     // Single scroll state for the entire table
     val scrollState = rememberLazyListState()
 
-    // Swipe detection state
-    var accumulatedDrag by remember { mutableStateOf(0f) }
-    val swipeThreshold = 100f
+    // Coroutine scope for programmatic scrolling
+    val coroutineScope = rememberCoroutineScope()
+
+    // Header height for coordinate calculations
+    val headerHeightDp = 48.dp
+    val headerHeightPx = with(density) { headerHeightDp.toPx() }
 
     Column(modifier = modifier.fillMaxSize()) {
         // STICKY Header (fixed at top)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(headerHeightDp)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(vertical = 8.dp)
         ) {
@@ -80,31 +96,11 @@ fun TimelineGrid(
             }
         }
 
-        // Scrollable content with swipe detection
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (abs(accumulatedDrag) > swipeThreshold) {
-                                val direction = if (accumulatedDrag > 0) -1 else 1
-                                onDayWindowShift(direction)
-                            }
-                            accumulatedDrag = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            // Only accumulate if not scrolling vertically
-                            if (abs(dragAmount) > 2f) {
-                                accumulatedDrag += dragAmount
-                            }
-                        }
-                    )
-                }
-        ) {
-            // Single LazyColumn for entire table (24 hour rows)
+        // Scrollable content with gesture overlay
+        Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 state = scrollState,
+                userScrollEnabled = uiState.dragSelectionState == null, // Disable scroll during drag
                 modifier = Modifier.fillMaxSize()
             ) {
                 // 24 hour rows
@@ -117,7 +113,7 @@ fun TimelineGrid(
                             modifier = Modifier.width(60.dp)
                         )
 
-                        // 3 day columns
+                        // 3 day columns WITHOUT per-cell gesture detection
                         visibleDays.forEach { day ->
                             HourSlotWithTasks(
                                 hour = hour,
@@ -126,6 +122,7 @@ fun TimelineGrid(
                                 pixelsPerMinute = pixelsPerMinute,
                                 selectedTaskIds = uiState.selectedTaskIds,
                                 selectionBox = uiState.selectionBox,
+                                dragSelectionState = uiState.dragSelectionState,
                                 onTaskClick = onTaskClick,
                                 onTaskLongPress = onTaskLongPress,
                                 modifier = Modifier.weight(1f)
@@ -134,12 +131,35 @@ fun TimelineGrid(
                     }
                 }
             }
+
+            // TRANSPARENT GESTURE OVERLAY - Handles ALL touch events for drag-to-select
+            TimelineGestureOverlay(
+                visibleDays = visibleDays,
+                scrollState = scrollState,
+                pixelsPerMinute = pixelsPerMinute,
+                headerHeightPx = headerHeightPx,
+                timeColumnWidthDp = 60.dp,
+                onTaskClick = onTaskClick,
+                onTaskLongPress = onTaskLongPress,
+                onDragSelectionStart = { dateTime ->
+                    viewModel.onDragSelectionStart(dateTime)
+                },
+                onDragSelectionUpdate = { dateTime ->
+                    viewModel.onDragSelectionUpdate(dateTime)
+                },
+                onDragSelectionEnd = {
+                    viewModel.onDragSelectionEnd()
+                },
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
 
 /**
  * Single hour slot for one day, containing background grid, selection box overlay, and tasks.
+ * NO gesture detection - handled by overlay!
  */
 @Composable
 private fun HourSlotWithTasks(
@@ -149,6 +169,7 @@ private fun HourSlotWithTasks(
     pixelsPerMinute: Float,
     selectedTaskIds: Set<Long> = emptySet(),
     selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox? = null,
+    dragSelectionState: com.example.questflow.presentation.screens.timeline.model.DragSelectionState? = null,
     onTaskClick: (TimelineTask) -> Unit,
     onTaskLongPress: (TimelineTask) -> Unit,
     modifier: Modifier = Modifier
@@ -157,6 +178,305 @@ private fun HourSlotWithTasks(
         modifier = modifier
             .fillMaxWidth()
             .height(hourHeightDp)
+                // Convert Y offset to DateTime
+                // NOTE: offsetY is relative to THIS HOUR CELL, but during drag it can go NEGATIVE (drag up)
+                // or very large (drag down) as the finger leaves the cell boundaries
+                fun offsetToDateTime(offsetY: Float): LocalDateTime {
+                    // This hour's offset in the full timeline (in pixels from 00:00)
+                    val thisHourOffsetPx = hour * 60 * pixelsPerMinute
+
+                    // Absolute position in full timeline = this hour's position + touch offset within this hour
+                    // This works even for negative offsetY (drag above cell) or large offsetY (drag below cell)
+                    val absoluteY = thisHourOffsetPx + offsetY
+
+                    // Convert to time (coerce to valid range 0-1439 minutes = 00:00-23:59)
+                    val totalMinutes = (absoluteY / pixelsPerMinute).toInt().coerceIn(0, 1439)
+                    val h = totalMinutes / 60
+                    val m = totalMinutes % 60
+
+                    android.util.Log.d("TimelineGesture", "Coords: hour=$hour, touchY=$offsetY, hourOffset=$thisHourOffsetPx, absY=$absoluteY, minutes=$totalMinutes → ${h}:${String.format("%02d", m)}")
+
+                    return LocalDateTime.of(dayTimeline.date, LocalTime.of(h, m))
+                }
+
+                // Find task at position
+                fun getTaskAt(offsetY: Float): TimelineTask? {
+                    // Same calculation as offsetToDateTime
+                    val thisHourOffsetPx = hour * 60 * pixelsPerMinute
+                    val absoluteY = thisHourOffsetPx + offsetY
+                    val clickMinutes = (absoluteY / pixelsPerMinute).toInt()
+
+                    return dayTimeline.tasks.find { task ->
+                        val taskStartMinutes = task.startTime.toLocalTime().hour * 60 + task.startTime.toLocalTime().minute
+                        val taskEndMinutes = task.endTime.toLocalTime().hour * 60 + task.endTime.toLocalTime().minute
+                        clickMinutes in taskStartMinutes until taskEndMinutes
+                    }
+                }
+
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downTime = System.currentTimeMillis()
+                    val downPos = down.position
+
+                    android.util.Log.d("TimelineGesture", "=== GESTURE START === Touch Down at ${downPos.x}, ${downPos.y}")
+                    viewModel.updateGestureDebug("DOWN", 0, downPos.x, downPos.y, "Touch Down")
+
+                    // Check if movement happens within 150ms (early movement detection for swipe)
+                    android.util.Log.d("TimelineGesture", "Checking for early movement (150ms window)...")
+
+                    data class EarlyResult(val movement: Pair<Float, Float>?, val released: Boolean)
+
+                    val earlyCheck = withTimeoutOrNull(150L) {
+                        var totalX = 0f
+                        var totalY = 0f
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.first()
+
+                            totalX += change.positionChange().x
+                            totalY += change.positionChange().y
+
+                            if (abs(totalX) > 10f || abs(totalY) > 10f) {
+                                android.util.Log.d("TimelineGesture", "Early movement detected! X=$totalX Y=$totalY → SWIPE")
+                                return@withTimeoutOrNull EarlyResult(Pair(totalX, totalY), false)
+                            }
+
+                            if (!change.pressed) {
+                                android.util.Log.d("TimelineGesture", "Released during early detection → QUICK TAP!")
+                                return@withTimeoutOrNull EarlyResult(null, true)
+                            }
+                        }
+                        @Suppress("UNREACHABLE_CODE")
+                        EarlyResult(null, false)
+                    } ?: EarlyResult(null, false)
+
+                    android.util.Log.d("TimelineGesture", "Early check result: movement=${earlyCheck.movement}, released=${earlyCheck.released}")
+
+                    when {
+                        // Quick tap during early detection (released < 150ms)
+                        earlyCheck.released -> {
+                            val task = getTaskAt(downPos.y)
+                            val releaseTime = System.currentTimeMillis() - downTime
+
+                            android.util.Log.d("TimelineGesture", "QUICK TAP! Released after ${releaseTime}ms")
+
+                            if (task != null) {
+                                viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
+                                    "Quick-Tap nach ${releaseTime}ms: ${task.title}")
+                                onTaskClick(task)
+                            } else {
+                                val dateTime = offsetToDateTime(downPos.y)
+                                viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
+                                    "Quick-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
+                            }
+                        }
+
+                        // CASE 1 & 2: Early movement detected = SWIPE
+                        earlyCheck.movement != null -> {
+                            val (initX, initY) = earlyCheck.movement
+                            var totalX = initX
+                            var totalY = initY
+                            var lastMoveTime = System.currentTimeMillis()
+
+                            viewModel.updateGestureDebug("SWIPING",
+                                System.currentTimeMillis() - downTime,
+                                totalX, totalY,
+                                "Swipe erkannt")
+
+                            // Track swipe
+                            val swipeStartTime = System.currentTimeMillis()
+                            var lastX = totalX
+                            var lastY = totalY
+
+                            drag(down.id) { change ->
+                                totalX += change.positionChange().x
+                                totalY += change.positionChange().y
+
+                                // Check if still moving (ignore micro-movements < 5px for hold detection)
+                                val movementX = abs(change.positionChange().x)
+                                val movementY = abs(change.positionChange().y)
+
+                                if (movementX > 5f || movementY > 5f) {
+                                    // Significant movement - update last move time
+                                    lastMoveTime = System.currentTimeMillis()
+                                    lastX = totalX
+                                    lastY = totalY
+                                }
+                                // Micro-movements (< 5px) don't reset lastMoveTime - allows thumb tremor
+
+                                viewModel.updateGestureDebug("SWIPING",
+                                    System.currentTimeMillis() - downTime,
+                                    totalX, totalY,
+                                    "Swipe: X=${totalX.toInt()} Y=${totalY.toInt()}")
+
+                                // Don't consume - let LazyColumn handle scroll
+                            }
+
+                            // After drag ends, check if held still
+                            val timeSinceLastMove = System.currentTimeMillis() - lastMoveTime
+
+                            android.util.Log.d("TimelineGesture", "Swipe ended. Time since last significant move: ${timeSinceLastMove}ms")
+
+                            if (timeSinceLastMove > 150L) {
+                                // CASE 2: Swipe + Hold = Continuous scroll
+                                viewModel.updateGestureDebug("SWIPE_HOLD", 0, lastX, lastY,
+                                    "Swipe+Hold (${timeSinceLastMove}ms still) → TODO: Continuous Scroll")
+                                // No auto-clear - stays visible until next gesture
+                            } else {
+                                // CASE 1: Direct swipe = Impulse scroll
+                                viewModel.updateGestureDebug("SWIPE_IMPULSE", 0, totalX, totalY,
+                                    "Swipe-Impuls: X=${totalX.toInt()} Y=${totalY.toInt()}")
+                                // No auto-clear - stays visible until next gesture
+                            }
+                        }
+
+                        // No early movement - wait for timeout or release
+                        else -> {
+                            android.util.Log.d("TimelineGesture", "No early movement → WAITING for 850ms (or release)")
+                            viewModel.updateGestureDebug("WAITING", 150, 0f, 0f, "Warte auf 1000ms (1 Sek)...")
+
+                            val longPressResult = withTimeoutOrNull(850L) { // 1000ms total - 150ms already waited
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.first()
+
+                                    if (!change.pressed) {
+                                        android.util.Log.d("TimelineGesture", "RELEASED before 1 second! → TAP")
+                                        return@withTimeoutOrNull "released"
+                                    }
+                                }
+                                @Suppress("UNREACHABLE_CODE")
+                                "timeout"
+                            }
+
+                            android.util.Log.d("TimelineGesture", "longPressResult = $longPressResult")
+
+                            when (longPressResult) {
+                                // CASE 7 & 8: Quick tap (released before 1000ms)
+                                "released" -> {
+                                    val task = getTaskAt(downPos.y)
+                                    val releaseTime = System.currentTimeMillis() - downTime
+
+                                    android.util.Log.d("TimelineGesture", "TAP confirmed! Released after ${releaseTime}ms, task=$task")
+
+                                    if (task != null) {
+                                        // CASE 7: Tap on task
+                                        viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
+                                            "Task-Tap nach ${releaseTime}ms: ${task.title}")
+                                        onTaskClick(task)
+                                        // No auto-clear - stays visible until next gesture
+                                    } else {
+                                        // CASE 8: Tap on empty space
+                                        val dateTime = offsetToDateTime(downPos.y)
+                                        viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
+                                            "Leer-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
+                                        // No auto-clear - stays visible until next gesture
+                                    }
+                                }
+
+                                // CASE 3, 4, 5, 6: Long-press (1000ms timeout)
+                                else -> {
+                                    android.util.Log.d("TimelineGesture", "LONG_PRESS! Timeout reached (1000ms)")
+                                    val task = getTaskAt(downPos.y)
+                                    val startDateTime = offsetToDateTime(downPos.y)
+
+                                    viewModel.updateGestureDebug("LONG_PRESS", 1000, 0f, 0f,
+                                        "Long-Press erkannt (1 Sekunde)")
+
+                                    // Check if movement after long-press
+                                    val postLongPressMovement = withTimeoutOrNull(100L) {
+                                        var moved = false
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.first()
+
+                                            val dx = abs(change.positionChange().x)
+                                            val dy = abs(change.positionChange().y)
+
+                                            if (dx > 5f || dy > 5f) {
+                                                moved = true
+                                                return@withTimeoutOrNull true
+                                            }
+
+                                            if (!change.pressed) {
+                                                return@withTimeoutOrNull false
+                                            }
+                                        }
+                                        @Suppress("UNREACHABLE_CODE")
+                                        false
+                                    }
+
+                                    when {
+                                        // CASE 3: Long-press + release without movement
+                                        postLongPressMovement == false -> {
+                                            if (task != null) {
+                                                // Mark entire task
+                                                viewModel.updateGestureDebug("MARK_TASK", 0, 0f, 0f,
+                                                    "Task markieren: ${task.title}")
+                                                onTaskLongPress(task)
+                                            } else {
+                                                // Mark 15min spot
+                                                val endDateTime = startDateTime.plusMinutes(15)
+                                                viewModel.updateGestureDebug("MARK_15MIN", 0, 0f, 0f,
+                                                    "15min markieren")
+                                                onDragSelectionStart(startDateTime)
+                                                onDragSelectionUpdate(endDateTime)
+                                                onDragSelectionEnd()
+                                            }
+                                            // No auto-clear - stays visible until next gesture
+                                        }
+
+                                        // CASE 4, 5, 6: Long-press + drag
+                                        postLongPressMovement == true -> {
+                                            viewModel.updateGestureDebug("DRAG_START", 0, 0f, 0f,
+                                                "Drag Markierung starten")
+
+                                            onDragSelectionStart(startDateTime)
+
+                                            // Track drag with edge detection
+                                            drag(down.id) { change ->
+                                                val currentDateTime = offsetToDateTime(change.position.y)
+                                                onDragSelectionUpdate(currentDateTime)
+
+                                                viewModel.updateGestureDebug("DRAGGING",
+                                                    System.currentTimeMillis() - downTime,
+                                                    change.position.x,
+                                                    change.position.y,
+                                                    "Ziehen: ${currentDateTime.toLocalTime()}")
+
+                                                // CASE 5: Edge detection for auto-scroll
+                                                // TODO: Implement edge scroll
+
+                                                change.consume()
+                                            }
+
+                                            // CASE 6: Release after drag
+                                            onDragSelectionEnd()
+                                            viewModel.updateGestureDebug("DRAG_END", 0, 0f, 0f,
+                                                "Markierung gesetzt")
+                                            // No auto-clear - stays visible until next gesture
+                                        }
+
+                                        // Timeout - treated as release without movement
+                                        else -> {
+                                            if (task != null) {
+                                                onTaskLongPress(task)
+                                            } else {
+                                                val endDateTime = startDateTime.plusMinutes(15)
+                                                onDragSelectionStart(startDateTime)
+                                                onDragSelectionUpdate(endDateTime)
+                                                onDragSelectionEnd()
+                                            }
+                                            // No auto-clear - stays visible until next gesture
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
     ) {
         // Background grid for this hour slot
         HourBackgroundGrid(
@@ -166,13 +486,26 @@ private fun HourSlotWithTasks(
             isToday = dayTimeline.isToday
         )
 
-        // Selection box overlay (only in this hour if it overlaps)
+        // Drag preview (live during drag) - rendered first with more transparency
+        if (dragSelectionState != null) {
+            val previewBox = dragSelectionState.toSelectionBox()
+            RenderSelectionBoxInHourSlot(
+                selectionBox = previewBox,
+                dayDate = dayTimeline.date,
+                hour = hour,
+                pixelsPerMinute = pixelsPerMinute,
+                isPreview = true
+            )
+        }
+
+        // Final selection box overlay (only in this hour if it overlaps)
         if (selectionBox != null) {
             RenderSelectionBoxInHourSlot(
                 selectionBox = selectionBox,
                 dayDate = dayTimeline.date,
                 hour = hour,
-                pixelsPerMinute = pixelsPerMinute
+                pixelsPerMinute = pixelsPerMinute,
+                isPreview = false
             )
         }
 

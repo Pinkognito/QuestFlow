@@ -365,6 +365,156 @@ class TimelineViewModel @Inject constructor(
             }
         }
     }
+
+    // ====== Drag-to-Select Methods ======
+
+    /**
+     * Start drag selection at given time
+     * Clears any existing SelectionBox first
+     */
+    fun onDragSelectionStart(startTime: LocalDateTime) {
+        _uiState.update { it.copy(
+            selectionBox = null, // Clear old selection box
+            dragSelectionState = com.example.questflow.presentation.screens.timeline.model.DragSelectionState(
+                startTime = startTime,
+                currentTime = startTime,
+                isActive = true
+            )
+        )}
+    }
+
+    /**
+     * Update drag selection with current drag position
+     */
+    fun onDragSelectionUpdate(currentTime: LocalDateTime) {
+        _uiState.update { state ->
+            state.dragSelectionState?.let { drag ->
+                state.copy(
+                    dragSelectionState = drag.copy(currentTime = currentTime)
+                )
+            } ?: state
+        }
+    }
+
+    /**
+     * Finalize drag selection and create SelectionBox
+     * Automatically orders start/end and enforces minimum duration
+     */
+    fun onDragSelectionEnd() {
+        _uiState.value.dragSelectionState?.let { drag ->
+            // Sort start/end
+            val (start, end) = if (drag.startTime.isBefore(drag.currentTime)) {
+                drag.startTime to drag.currentTime
+            } else {
+                drag.currentTime to drag.startTime
+            }
+
+            // Enforce minimum duration of 15 minutes
+            val duration = java.time.temporal.ChronoUnit.MINUTES.between(start, end)
+            val finalEnd = if (duration < 15) {
+                start.plusMinutes(15)
+            } else {
+                end
+            }
+
+            // Create final SelectionBox
+            setSelectionBox(start, finalEnd)
+        }
+
+        // Clear drag state
+        _uiState.update { it.copy(dragSelectionState = null) }
+    }
+
+    /**
+     * Cancel drag selection without creating SelectionBox
+     */
+    fun onDragSelectionCancel() {
+        _uiState.update { it.copy(dragSelectionState = null) }
+    }
+
+    /**
+     * Update gesture debug info for visual feedback with history
+     * Smart history: Only adds entry if gesture type changes OR direction changes (for swipes)
+     */
+    fun updateGestureDebug(gestureType: String, elapsedMs: Long, dragX: Float, dragY: Float, message: String) {
+        _uiState.update { state ->
+            val oldHistory = state.gestureDebugInfo?.history ?: emptyList()
+            val lastGestureType = state.gestureDebugInfo?.gestureType
+
+            // Determine if we should add to history
+            val shouldAddToHistory = when {
+                // Always add if gesture type changed
+                gestureType != lastGestureType -> true
+
+                // For SWIPING: Only add if direction changed significantly
+                gestureType == "SWIPING" -> {
+                    val oldDragX = state.gestureDebugInfo?.dragX ?: 0f
+                    val oldDragY = state.gestureDebugInfo?.dragY ?: 0f
+
+                    // Check if direction changed (sign flip on X or Y axis)
+                    val xDirectionChanged = (oldDragX * dragX < 0) && kotlin.math.abs(dragX) > 20f
+                    val yDirectionChanged = (oldDragY * dragY < 0) && kotlin.math.abs(dragY) > 20f
+
+                    xDirectionChanged || yDirectionChanged
+                }
+
+                // Don't add repeated same gestures
+                else -> false
+            }
+
+            val newHistory = if (shouldAddToHistory && lastGestureType != null) {
+                // Add direction indicator for SWIPING gestures
+                val oldDragX = state.gestureDebugInfo?.dragX ?: 0f
+                val oldDragY = state.gestureDebugInfo?.dragY ?: 0f
+
+                val directionIndicator = if (lastGestureType == "SWIPING") {
+                    // Determine dominant axis and direction
+                    if (kotlin.math.abs(oldDragY) > kotlin.math.abs(oldDragX)) {
+                        if (oldDragY < 0) "↑" else "↓" // Vertical dominant
+                    } else {
+                        if (oldDragX < 0) "←" else "→" // Horizontal dominant
+                    }
+                } else ""
+
+                val entry = "$lastGestureType$directionIndicator (${state.gestureDebugInfo?.elapsedMs ?: 0}ms)"
+                (oldHistory + entry).takeLast(5)
+            } else {
+                oldHistory
+            }
+
+            state.copy(
+                gestureDebugInfo = com.example.questflow.presentation.screens.timeline.model.GestureDebugInfo(
+                    gestureType = gestureType,
+                    elapsedMs = elapsedMs,
+                    dragX = dragX,
+                    dragY = dragY,
+                    message = message,
+                    history = newHistory
+                )
+            )
+        }
+    }
+
+    /**
+     * Clear gesture debug info
+     */
+    fun clearGestureDebug() {
+        _uiState.update { it.copy(gestureDebugInfo = null) }
+    }
+
+    /**
+     * Set SelectionBox based on task time range (for long-press on task)
+     */
+    fun setSelectionBoxFromTask(task: TimelineTask) {
+        if (task.isExternal) {
+            _uiState.update { it.copy(
+                error = "Externe Kalender-Events können nicht als Zeitbereich genutzt werden"
+            )}
+            return
+        }
+
+        setSelectionBox(task.startTime, task.endTime)
+    }
 }
 
 /**

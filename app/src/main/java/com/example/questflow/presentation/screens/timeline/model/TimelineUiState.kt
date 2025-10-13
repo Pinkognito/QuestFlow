@@ -40,11 +40,17 @@ data class TimelineUiState(
     val selectionBox: SelectionBox? = null,
     val showSelectionList: Boolean = false,
 
+    // Drag-to-select state (live preview during drag)
+    val dragSelectionState: DragSelectionState? = null,
+
     // Loading states
     val isLoading: Boolean = false,
     val isLoadingPast: Boolean = false,
     val isLoadingFuture: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+
+    // Debug state for gesture visualization
+    val gestureDebugInfo: GestureDebugInfo? = null
 ) {
     /**
      * Calculate total timeline height in pixels (full 24 hours)
@@ -209,3 +215,35 @@ data class SelectionBox(
         return startTime.isBefore(endTime)
     }
 }
+
+/**
+ * Drag selection state for live preview during drag-to-select gesture
+ */
+data class DragSelectionState(
+    val startTime: LocalDateTime,
+    val currentTime: LocalDateTime,
+    val isActive: Boolean = true
+) {
+    /**
+     * Convert to SelectionBox with proper start/end ordering
+     */
+    fun toSelectionBox(): SelectionBox {
+        return if (startTime.isBefore(currentTime)) {
+            SelectionBox(startTime, currentTime)
+        } else {
+            SelectionBox(currentTime, startTime)
+        }
+    }
+}
+
+/**
+ * Debug info for gesture visualization with history
+ */
+data class GestureDebugInfo(
+    val gestureType: String, // "WAITING", "VERTICAL_SCROLL", "HORIZONTAL_SWIPE", "LONG_PRESS", "DRAGGING"
+    val elapsedMs: Long,
+    val dragX: Float,
+    val dragY: Float,
+    val message: String,
+    val history: List<String> = emptyList() // Last 5 gesture states
+)
