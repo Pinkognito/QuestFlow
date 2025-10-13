@@ -101,7 +101,7 @@ fun TimelineGestureOverlay(
             .fillMaxSize()
             .pointerInput(visibleDays, scrollState, pixelsPerMinute) {
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = true)
+                    val down = awaitFirstDown(requireUnconsumed = false) // See all events, decide later
                     val downTime = System.currentTimeMillis()
                     val downPos = down.position
 
@@ -142,36 +142,30 @@ fun TimelineGestureOverlay(
 
                     when {
                         // Quick tap during early detection (released < 150ms)
+                        // DON'T consume - exit gesture loop to pass through
                         earlyCheck.released -> {
-                            val task = getTaskAt(downPos.x, downPos.y)
                             val releaseTime = System.currentTimeMillis() - downTime
+                            android.util.Log.d("TimelineGesture", "QUICK TAP! Released after ${releaseTime}ms → passing through")
 
-                            android.util.Log.d("TimelineGesture", "QUICK TAP! Released after ${releaseTime}ms")
+                            viewModel.updateGestureDebug("QUICK_TAP", releaseTime, 0f, 0f,
+                                "Quick-Tap (${releaseTime}ms) → Pass-through")
 
-                            if (task != null) {
-                                viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
-                                    "Quick-Tap nach ${releaseTime}ms: ${task.title}")
-                                onTaskClick(task)
-                            } else {
-                                val dateTime = screenPosToDateTime(downPos.x, downPos.y)
-                                if (dateTime != null) {
-                                    viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
-                                        "Quick-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
-                                }
-                            }
+                            // Exit gesture without consuming - event will pass to TaskBalken
+                            return@awaitEachGesture
                         }
 
-                        // Early movement detected = SWIPE → pass through
+                        // Early movement detected = SWIPE → pass through completely
                         earlyCheck.movement != null -> {
                             val (initX, initY) = earlyCheck.movement
-                            android.util.Log.d("TimelineGesture", "SWIPE detected → passing through to LazyColumn")
+                            android.util.Log.d("TimelineGesture", "SWIPE detected → passing through for scroll")
 
-                            viewModel.updateGestureDebug("SWIPING",
+                            viewModel.updateGestureDebug("SWIPE",
                                 System.currentTimeMillis() - downTime,
                                 initX, initY,
-                                "Swipe erkannt → Pass-through")
+                                "Swipe → Pass-through")
 
-                            // Don't consume - let LazyColumn handle scroll
+                            // Exit gesture without consuming - let LazyColumn handle scroll
+                            return@awaitEachGesture
                         }
 
                         // No early movement - wait for timeout or release
@@ -197,23 +191,16 @@ fun TimelineGestureOverlay(
 
                             when (longPressResult) {
                                 // Quick tap (released before 1000ms)
+                                // DON'T consume - exit to pass through to underlying tasks
                                 "released" -> {
-                                    val task = getTaskAt(downPos.x, downPos.y)
                                     val releaseTime = System.currentTimeMillis() - downTime
+                                    android.util.Log.d("TimelineGesture", "TAP! Released after ${releaseTime}ms → passing through")
 
-                                    android.util.Log.d("TimelineGesture", "TAP confirmed! Released after ${releaseTime}ms, task=$task")
+                                    viewModel.updateGestureDebug("TAP", releaseTime, 0f, 0f,
+                                        "Tap (${releaseTime}ms) → Pass-through")
 
-                                    if (task != null) {
-                                        viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
-                                            "Task-Tap nach ${releaseTime}ms: ${task.title}")
-                                        onTaskClick(task)
-                                    } else {
-                                        val dateTime = screenPosToDateTime(downPos.x, downPos.y)
-                                        if (dateTime != null) {
-                                            viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
-                                                "Leer-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
-                                        }
-                                    }
+                                    // Exit gesture without consuming - let TaskBalken handle it
+                                    return@awaitEachGesture
                                 }
 
                                 // Long-press (1000ms timeout)
