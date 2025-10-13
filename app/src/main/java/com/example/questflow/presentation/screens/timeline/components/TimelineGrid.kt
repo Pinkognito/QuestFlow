@@ -113,7 +113,7 @@ fun TimelineGrid(
                             modifier = Modifier.width(60.dp)
                         )
 
-                        // 3 day columns WITHOUT per-cell gesture detection
+                        // 3 day columns with per-cell gesture detection
                         visibleDays.forEach { day ->
                             HourSlotWithTasks(
                                 hour = hour,
@@ -125,6 +125,7 @@ fun TimelineGrid(
                                 dragSelectionState = uiState.dragSelectionState,
                                 onTaskClick = onTaskClick,
                                 onTaskLongPress = onTaskLongPress,
+                                viewModel = viewModel,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -132,34 +133,14 @@ fun TimelineGrid(
                 }
             }
 
-            // TRANSPARENT GESTURE OVERLAY - Handles ALL touch events for drag-to-select
-            TimelineGestureOverlay(
-                visibleDays = visibleDays,
-                scrollState = scrollState,
-                pixelsPerMinute = pixelsPerMinute,
-                headerHeightPx = headerHeightPx,
-                timeColumnWidthDp = 60.dp,
-                onTaskClick = onTaskClick,
-                onTaskLongPress = onTaskLongPress,
-                onDragSelectionStart = { dateTime ->
-                    viewModel.onDragSelectionStart(dateTime)
-                },
-                onDragSelectionUpdate = { dateTime ->
-                    viewModel.onDragSelectionUpdate(dateTime)
-                },
-                onDragSelectionEnd = {
-                    viewModel.onDragSelectionEnd()
-                },
-                viewModel = viewModel,
-                modifier = Modifier.fillMaxSize()
-            )
+            // Gesture handling is done per-cell in HourSlotWithTasks
         }
     }
 }
 
 /**
  * Single hour slot for one day, containing background grid, selection box overlay, and tasks.
- * NO gesture detection - handled by overlay!
+ * Includes gesture detection for tap, long-press, and drag-to-select.
  */
 @Composable
 private fun HourSlotWithTasks(
@@ -172,47 +153,48 @@ private fun HourSlotWithTasks(
     dragSelectionState: com.example.questflow.presentation.screens.timeline.model.DragSelectionState? = null,
     onTaskClick: (TimelineTask) -> Unit,
     onTaskLongPress: (TimelineTask) -> Unit,
+    viewModel: TimelineViewModel,
     modifier: Modifier = Modifier
 ) {
+    // Convert Y offset to DateTime
+    // NOTE: offsetY is relative to THIS HOUR CELL, but during drag it can go NEGATIVE (drag up)
+    // or very large (drag down) as the finger leaves the cell boundaries
+    fun offsetToDateTime(offsetY: Float): LocalDateTime {
+        // This hour's offset in the full timeline (in pixels from 00:00)
+        val thisHourOffsetPx = hour * 60 * pixelsPerMinute
+
+        // Absolute position in full timeline = this hour's position + touch offset within this hour
+        // This works even for negative offsetY (drag above cell) or large offsetY (drag below cell)
+        val absoluteY = thisHourOffsetPx + offsetY
+
+        // Convert to time (coerce to valid range 0-1439 minutes = 00:00-23:59)
+        val totalMinutes = (absoluteY / pixelsPerMinute).toInt().coerceIn(0, 1439)
+        val h = totalMinutes / 60
+        val m = totalMinutes % 60
+
+        android.util.Log.d("TimelineGesture", "Coords: touchY=$offsetY, scrollOffset=0.0, absoluteY=$absoluteY, time=${h}:${String.format("%02d", m)}")
+
+        return LocalDateTime.of(dayTimeline.date, LocalTime.of(h, m))
+    }
+
+    // Find task at position
+    fun getTaskAt(offsetY: Float): TimelineTask? {
+        // Same calculation as offsetToDateTime
+        val thisHourOffsetPx = hour * 60 * pixelsPerMinute
+        val absoluteY = thisHourOffsetPx + offsetY
+        val clickMinutes = (absoluteY / pixelsPerMinute).toInt()
+
+        return dayTimeline.tasks.find { task ->
+            val taskStartMinutes = task.startTime.toLocalTime().hour * 60 + task.startTime.toLocalTime().minute
+            val taskEndMinutes = task.endTime.toLocalTime().hour * 60 + task.endTime.toLocalTime().minute
+            clickMinutes in taskStartMinutes until taskEndMinutes
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(hourHeightDp)
-                // Convert Y offset to DateTime
-                // NOTE: offsetY is relative to THIS HOUR CELL, but during drag it can go NEGATIVE (drag up)
-                // or very large (drag down) as the finger leaves the cell boundaries
-                fun offsetToDateTime(offsetY: Float): LocalDateTime {
-                    // This hour's offset in the full timeline (in pixels from 00:00)
-                    val thisHourOffsetPx = hour * 60 * pixelsPerMinute
-
-                    // Absolute position in full timeline = this hour's position + touch offset within this hour
-                    // This works even for negative offsetY (drag above cell) or large offsetY (drag below cell)
-                    val absoluteY = thisHourOffsetPx + offsetY
-
-                    // Convert to time (coerce to valid range 0-1439 minutes = 00:00-23:59)
-                    val totalMinutes = (absoluteY / pixelsPerMinute).toInt().coerceIn(0, 1439)
-                    val h = totalMinutes / 60
-                    val m = totalMinutes % 60
-
-                    android.util.Log.d("TimelineGesture", "Coords: hour=$hour, touchY=$offsetY, hourOffset=$thisHourOffsetPx, absY=$absoluteY, minutes=$totalMinutes → ${h}:${String.format("%02d", m)}")
-
-                    return LocalDateTime.of(dayTimeline.date, LocalTime.of(h, m))
-                }
-
-                // Find task at position
-                fun getTaskAt(offsetY: Float): TimelineTask? {
-                    // Same calculation as offsetToDateTime
-                    val thisHourOffsetPx = hour * 60 * pixelsPerMinute
-                    val absoluteY = thisHourOffsetPx + offsetY
-                    val clickMinutes = (absoluteY / pixelsPerMinute).toInt()
-
-                    return dayTimeline.tasks.find { task ->
-                        val taskStartMinutes = task.startTime.toLocalTime().hour * 60 + task.startTime.toLocalTime().minute
-                        val taskEndMinutes = task.endTime.toLocalTime().hour * 60 + task.endTime.toLocalTime().minute
-                        clickMinutes in taskStartMinutes until taskEndMinutes
-                    }
-                }
-
+            .pointerInput(dayTimeline.date, hour) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val downTime = System.currentTimeMillis()
@@ -420,9 +402,9 @@ private fun HourSlotWithTasks(
                                                 val endDateTime = startDateTime.plusMinutes(15)
                                                 viewModel.updateGestureDebug("MARK_15MIN", 0, 0f, 0f,
                                                     "15min markieren")
-                                                onDragSelectionStart(startDateTime)
-                                                onDragSelectionUpdate(endDateTime)
-                                                onDragSelectionEnd()
+                                                viewModel.onDragSelectionStart(startDateTime)
+                                                viewModel.onDragSelectionUpdate(endDateTime)
+                                                viewModel.onDragSelectionEnd()
                                             }
                                             // No auto-clear - stays visible until next gesture
                                         }
@@ -432,12 +414,12 @@ private fun HourSlotWithTasks(
                                             viewModel.updateGestureDebug("DRAG_START", 0, 0f, 0f,
                                                 "Drag Markierung starten")
 
-                                            onDragSelectionStart(startDateTime)
+                                            viewModel.onDragSelectionStart(startDateTime)
 
                                             // Track drag with edge detection
                                             drag(down.id) { change ->
                                                 val currentDateTime = offsetToDateTime(change.position.y)
-                                                onDragSelectionUpdate(currentDateTime)
+                                                viewModel.onDragSelectionUpdate(currentDateTime)
 
                                                 viewModel.updateGestureDebug("DRAGGING",
                                                     System.currentTimeMillis() - downTime,
@@ -452,7 +434,7 @@ private fun HourSlotWithTasks(
                                             }
 
                                             // CASE 6: Release after drag
-                                            onDragSelectionEnd()
+                                            viewModel.onDragSelectionEnd()
                                             viewModel.updateGestureDebug("DRAG_END", 0, 0f, 0f,
                                                 "Markierung gesetzt")
                                             // No auto-clear - stays visible until next gesture
@@ -464,9 +446,9 @@ private fun HourSlotWithTasks(
                                                 onTaskLongPress(task)
                                             } else {
                                                 val endDateTime = startDateTime.plusMinutes(15)
-                                                onDragSelectionStart(startDateTime)
-                                                onDragSelectionUpdate(endDateTime)
-                                                onDragSelectionEnd()
+                                                viewModel.onDragSelectionStart(startDateTime)
+                                                viewModel.onDragSelectionUpdate(endDateTime)
+                                                viewModel.onDragSelectionEnd()
                                             }
                                             // No auto-clear - stays visible until next gesture
                                         }
