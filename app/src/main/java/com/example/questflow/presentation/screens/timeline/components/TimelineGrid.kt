@@ -82,11 +82,11 @@ fun TimelineGrid(
             }
         }
 
-        // Scrollable content with smart gesture overlay
+        // Scrollable content with gesture overlay
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 state = scrollState,
-                userScrollEnabled = uiState.dragSelectionState == null,
+                userScrollEnabled = uiState.dragSelectionState == null, // Disable scroll during drag
                 modifier = Modifier.fillMaxSize()
             ) {
                 // 24 hour rows
@@ -99,7 +99,7 @@ fun TimelineGrid(
                             modifier = Modifier.width(60.dp)
                         )
 
-                        // 3 day columns with tasks
+                        // 3 day columns (no gesture detection - handled by overlay)
                         visibleDays.forEach { day ->
                             HourSlotWithTasks(
                                 hour = hour,
@@ -118,7 +118,7 @@ fun TimelineGrid(
                 }
             }
 
-            // Smart gesture overlay - tracks positions and handles long-press dragging
+            // TRANSPARENT GESTURE OVERLAY - Handles ALL touch events globally
             TimelineGestureOverlay(
                 visibleDays = visibleDays,
                 scrollState = scrollState,
