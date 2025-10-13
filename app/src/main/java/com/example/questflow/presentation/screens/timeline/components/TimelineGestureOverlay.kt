@@ -21,14 +21,11 @@ import java.time.LocalTime
 import kotlin.math.abs
 
 /**
- * Smart transparent gesture overlay for Timeline.
- *
- * Strategy:
- * - Overlay receives ALL events first (on top)
- * - Quick taps/swipes: Don't consume → pass to tasks/scroll
- * - Long-press: Consume and handle → multi-day drag
- *
- * Position tracking: Always tracks coordinates during drag
+ * Transparent gesture overlay for the Timeline.
+ * Handles all touch events globally to enable:
+ * - Multi-day drag-to-select
+ * - Coordinate conversion (screen → DateTime)
+ * - Smart event consumption (pass through swipes, consume long-press + drag)
  */
 @Composable
 fun TimelineGestureOverlay(
@@ -47,22 +44,23 @@ fun TimelineGestureOverlay(
     val hourHeightPx = 60 * pixelsPerMinute
 
     /**
-     * Convert screen position to DateTime with full position tracking.
+     * Convert screen position to DateTime.
+     * Returns null if position is outside valid areas.
      */
     fun screenPosToDateTime(x: Float, y: Float): LocalDateTime? {
-        // X-axis → Which day?
+        // 1. Which day? (X-axis)
         val xRelativeToContent = x - timeColumnWidthPx
-        if (xRelativeToContent < 0) return null
+        if (xRelativeToContent < 0) return null // Touch in time column
 
-        val dayColumnWidth = xRelativeToContent / visibleDays.size
+        val dayColumnWidth = (xRelativeToContent) / visibleDays.size
         val dayIndex = (xRelativeToContent / dayColumnWidth).toInt()
         if (dayIndex !in visibleDays.indices) return null
 
         val targetDay = visibleDays[dayIndex]
 
-        // Y-axis + scroll → Which time?
+        // 2. Which time? (Y-axis + scroll offset)
         val yRelativeToContent = y - headerHeightPx
-        if (yRelativeToContent < 0) return null
+        if (yRelativeToContent < 0) return null // Touch in header
 
         val scrollOffsetPx = scrollState.firstVisibleItemIndex * hourHeightPx +
                 scrollState.firstVisibleItemScrollOffset.toFloat()
@@ -72,20 +70,19 @@ fun TimelineGestureOverlay(
         val hour = totalMinutes / 60
         val minute = totalMinutes % 60
 
-        android.util.Log.d("TimelineGesture", "Pos tracking: x=$x, y=$y → Day=${targetDay.date}, Time=$hour:${String.format("%02d", minute)}")
+        android.util.Log.d("TimelineGesture", "Coords: touchX=$x, touchY=$y, scrollOffset=$scrollOffsetPx, absoluteY=$absoluteY, time=${hour}:${String.format("%02d", minute)}, day=${targetDay.date}")
 
         return LocalDateTime.of(targetDay.date, LocalTime.of(hour, minute))
     }
 
     /**
-     * Find task at position.
+     * Find task at screen position.
      */
     fun getTaskAt(x: Float, y: Float): TimelineTask? {
         val dateTime = screenPosToDateTime(x, y) ?: return null
 
-        val xRelativeToContent = x - timeColumnWidthPx
-        val dayColumnWidth = xRelativeToContent / visibleDays.size
-        val dayIndex = (xRelativeToContent / dayColumnWidth).toInt()
+        // Find day
+        val dayIndex = ((x - timeColumnWidthPx) * visibleDays.size / (x - timeColumnWidthPx + 1)).toInt()
         if (dayIndex !in visibleDays.indices) return null
         val day = visibleDays[dayIndex]
 
@@ -108,12 +105,14 @@ fun TimelineGestureOverlay(
                     val downTime = System.currentTimeMillis()
                     val downPos = down.position
 
-                    android.util.Log.d("TimelineGesture", "=== GESTURE START === at ${downPos.x}, ${downPos.y}")
+                    android.util.Log.d("TimelineGesture", "=== GESTURE START === Touch Down at ${downPos.x}, ${downPos.y}")
                     viewModel.updateGestureDebug("DOWN", 0, downPos.x, downPos.y, "Touch Down")
+
+                    // Early movement detection (150ms) for swipe
+                    android.util.Log.d("TimelineGesture", "Checking for early movement (150ms window)...")
 
                     data class EarlyResult(val movement: Pair<Float, Float>?, val released: Boolean)
 
-                    // Early detection (150ms) for quick tap/swipe
                     val earlyCheck = withTimeoutOrNull(150L) {
                         var totalX = 0f
                         var totalY = 0f
@@ -126,12 +125,12 @@ fun TimelineGestureOverlay(
                             totalY += change.positionChange().y
 
                             if (abs(totalX) > 10f || abs(totalY) > 10f) {
-                                android.util.Log.d("TimelineGesture", "SWIPE detected (X=$totalX, Y=$totalY)")
+                                android.util.Log.d("TimelineGesture", "Early movement detected! X=$totalX Y=$totalY → SWIPE")
                                 return@withTimeoutOrNull EarlyResult(Pair(totalX, totalY), false)
                             }
 
                             if (!change.pressed) {
-                                android.util.Log.d("TimelineGesture", "QUICK TAP (released < 150ms)")
+                                android.util.Log.d("TimelineGesture", "Released during early detection → QUICK TAP!")
                                 return@withTimeoutOrNull EarlyResult(null, true)
                             }
                         }
@@ -139,28 +138,54 @@ fun TimelineGestureOverlay(
                         EarlyResult(null, false)
                     } ?: EarlyResult(null, false)
 
+                    android.util.Log.d("TimelineGesture", "Early check result: movement=${earlyCheck.movement}, released=${earlyCheck.released}")
+
                     when {
-                        // Quick tap or swipe → Don't consume, pass through
-                        earlyCheck.released || earlyCheck.movement != null -> {
-                            val gestureType = if (earlyCheck.released) "QUICK_TAP" else "SWIPE"
-                            android.util.Log.d("TimelineGesture", "$gestureType → Pass-through")
-                            viewModel.updateGestureDebug(gestureType, System.currentTimeMillis() - downTime,
-                                0f, 0f, "Pass-through to tasks/scroll")
-                            // Exit without consuming
-                            return@awaitEachGesture
+                        // Quick tap during early detection (released < 150ms)
+                        earlyCheck.released -> {
+                            val task = getTaskAt(downPos.x, downPos.y)
+                            val releaseTime = System.currentTimeMillis() - downTime
+
+                            android.util.Log.d("TimelineGesture", "QUICK TAP! Released after ${releaseTime}ms")
+
+                            if (task != null) {
+                                viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
+                                    "Quick-Tap nach ${releaseTime}ms: ${task.title}")
+                                onTaskClick(task)
+                            } else {
+                                val dateTime = screenPosToDateTime(downPos.x, downPos.y)
+                                if (dateTime != null) {
+                                    viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
+                                        "Quick-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
+                                }
+                            }
                         }
 
-                        // No early action → Wait for long press
-                        else -> {
-                            android.util.Log.d("TimelineGesture", "Waiting for long-press (850ms)...")
-                            viewModel.updateGestureDebug("WAITING", 150, 0f, 0f, "Waiting for 1 sec...")
+                        // Early movement detected = SWIPE → pass through
+                        earlyCheck.movement != null -> {
+                            val (initX, initY) = earlyCheck.movement
+                            android.util.Log.d("TimelineGesture", "SWIPE detected → passing through to LazyColumn")
 
-                            val longPressResult = withTimeoutOrNull(850L) {
+                            viewModel.updateGestureDebug("SWIPING",
+                                System.currentTimeMillis() - downTime,
+                                initX, initY,
+                                "Swipe erkannt → Pass-through")
+
+                            // Don't consume - let LazyColumn handle scroll
+                        }
+
+                        // No early movement - wait for timeout or release
+                        else -> {
+                            android.util.Log.d("TimelineGesture", "No early movement → WAITING for 850ms (or release)")
+                            viewModel.updateGestureDebug("WAITING", 150, 0f, 0f, "Warte auf 1000ms (1 Sek)...")
+
+                            val longPressResult = withTimeoutOrNull(850L) { // 1000ms total - 150ms already waited
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.first()
+
                                     if (!change.pressed) {
-                                        android.util.Log.d("TimelineGesture", "Released before 1 sec")
+                                        android.util.Log.d("TimelineGesture", "RELEASED before 1 second! → TAP")
                                         return@withTimeoutOrNull "released"
                                     }
                                 }
@@ -168,105 +193,128 @@ fun TimelineGestureOverlay(
                                 "timeout"
                             }
 
-                            if (longPressResult == "released") {
-                                // Tap (150ms - 1000ms) → Pass through
-                                android.util.Log.d("TimelineGesture", "TAP → Pass-through")
-                                viewModel.updateGestureDebug("TAP", System.currentTimeMillis() - downTime,
-                                    0f, 0f, "Pass-through to tasks")
-                                return@awaitEachGesture
-                            }
+                            android.util.Log.d("TimelineGesture", "longPressResult = $longPressResult")
 
-                            // LONG PRESS reached!
-                            android.util.Log.d("TimelineGesture", "LONG PRESS detected! (1 second)")
-                            val startDateTime = screenPosToDateTime(downPos.x, downPos.y)
-                            if (startDateTime == null) {
-                                android.util.Log.d("TimelineGesture", "Invalid position, ignoring")
-                                return@awaitEachGesture
-                            }
+                            when (longPressResult) {
+                                // Quick tap (released before 1000ms)
+                                "released" -> {
+                                    val task = getTaskAt(downPos.x, downPos.y)
+                                    val releaseTime = System.currentTimeMillis() - downTime
 
-                            val task = getTaskAt(downPos.x, downPos.y)
-                            viewModel.updateGestureDebug("LONG_PRESS", 1000, 0f, 0f,
-                                if (task != null) "On task: ${task.title}" else "On empty space")
+                                    android.util.Log.d("TimelineGesture", "TAP confirmed! Released after ${releaseTime}ms, task=$task")
 
-                            // Check for movement after long-press
-                            val postLongPressMovement = withTimeoutOrNull(100L) {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.first()
-
-                                    val dx = abs(change.positionChange().x)
-                                    val dy = abs(change.positionChange().y)
-
-                                    if (dx > 5f || dy > 5f) {
-                                        android.util.Log.d("TimelineGesture", "Movement detected after long-press")
-                                        return@withTimeoutOrNull true
-                                    }
-
-                                    if (!change.pressed) {
-                                        android.util.Log.d("TimelineGesture", "Released after long-press")
-                                        return@withTimeoutOrNull false
-                                    }
-                                }
-                                @Suppress("UNREACHABLE_CODE")
-                                false
-                            }
-
-                            when {
-                                // Long-press + release (no drag)
-                                postLongPressMovement == false -> {
                                     if (task != null) {
-                                        android.util.Log.d("TimelineGesture", "Long-press on task → Select")
-                                        viewModel.updateGestureDebug("TASK_SELECT", 0, 0f, 0f, "Task: ${task.title}")
-                                        onTaskLongPress(task)
+                                        viewModel.updateGestureDebug("TAP_TASK", releaseTime, 0f, 0f,
+                                            "Task-Tap nach ${releaseTime}ms: ${task.title}")
+                                        onTaskClick(task)
                                     } else {
-                                        android.util.Log.d("TimelineGesture", "Long-press on empty → 15min mark")
-                                        val endDateTime = startDateTime.plusMinutes(15)
-                                        viewModel.onDragSelectionStart(startDateTime)
-                                        viewModel.onDragSelectionUpdate(endDateTime)
-                                        viewModel.onDragSelectionEnd()
-                                        viewModel.updateGestureDebug("15MIN_MARK", 0, 0f, 0f, "Marked 15 min")
+                                        val dateTime = screenPosToDateTime(downPos.x, downPos.y)
+                                        if (dateTime != null) {
+                                            viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
+                                                "Leer-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
+                                        }
                                     }
                                 }
 
-                                // Long-press + drag → MULTI-DAY DRAG!
-                                postLongPressMovement == true -> {
-                                    android.util.Log.d("TimelineGesture", "DRAG START → Multi-day selection")
-                                    viewModel.updateGestureDebug("DRAG_START", 0, 0f, 0f, "Multi-day drag starting")
+                                // Long-press (1000ms timeout)
+                                else -> {
+                                    android.util.Log.d("TimelineGesture", "LONG_PRESS! Timeout reached (1000ms)")
+                                    val startDateTime = screenPosToDateTime(downPos.x, downPos.y)
 
-                                    viewModel.onDragSelectionStart(startDateTime)
-                                    down.consume() // NOW consume for dragging
+                                    if (startDateTime == null) {
+                                        android.util.Log.d("TimelineGesture", "Invalid start position - ignoring")
+                                        return@awaitEachGesture
+                                    }
 
-                                    drag(down.id) { change ->
-                                        val currentDateTime = screenPosToDateTime(change.position.x, change.position.y)
+                                    val task = getTaskAt(downPos.x, downPos.y)
 
-                                        if (currentDateTime != null) {
-                                            viewModel.onDragSelectionUpdate(currentDateTime)
+                                    viewModel.updateGestureDebug("LONG_PRESS", 1000, 0f, 0f,
+                                        "Long-Press erkannt (1 Sekunde)")
 
-                                            android.util.Log.d("TimelineGesture", "DRAGGING → ${currentDateTime.toLocalDate()} ${currentDateTime.toLocalTime()}")
-                                            viewModel.updateGestureDebug("DRAGGING",
-                                                System.currentTimeMillis() - downTime,
-                                                change.position.x,
-                                                change.position.y,
-                                                "${currentDateTime.toLocalDate()} ${currentDateTime.toLocalTime()}")
+                                    // Check if movement after long-press
+                                    val postLongPressMovement = withTimeoutOrNull(100L) {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.first()
+
+                                            val dx = abs(change.positionChange().x)
+                                            val dy = abs(change.positionChange().y)
+
+                                            if (dx > 5f || dy > 5f) {
+                                                return@withTimeoutOrNull true
+                                            }
+
+                                            if (!change.pressed) {
+                                                return@withTimeoutOrNull false
+                                            }
+                                        }
+                                        @Suppress("UNREACHABLE_CODE")
+                                        false
+                                    }
+
+                                    when {
+                                        // Long-press + release without movement
+                                        postLongPressMovement == false -> {
+                                            if (task != null) {
+                                                // Mark entire task
+                                                viewModel.updateGestureDebug("MARK_TASK", 0, 0f, 0f,
+                                                    "Task markieren: ${task.title}")
+                                                onTaskLongPress(task)
+                                            } else {
+                                                // Mark 15min spot
+                                                val endDateTime = startDateTime.plusMinutes(15)
+                                                viewModel.updateGestureDebug("MARK_15MIN", 0, 0f, 0f,
+                                                    "15min markieren")
+                                                viewModel.onDragSelectionStart(startDateTime)
+                                                viewModel.onDragSelectionUpdate(endDateTime)
+                                                viewModel.onDragSelectionEnd()
+                                            }
                                         }
 
-                                        change.consume()
-                                    }
+                                        // Long-press + drag (MULTI-DAY SUPPORT!)
+                                        postLongPressMovement == true -> {
+                                            viewModel.updateGestureDebug("DRAG_START", 0, 0f, 0f,
+                                                "Drag Markierung starten (Multi-Day)")
 
-                                    viewModel.onDragSelectionEnd()
-                                    android.util.Log.d("TimelineGesture", "DRAG END → Selection complete")
-                                    viewModel.updateGestureDebug("DRAG_END", 0, 0f, 0f, "Multi-day selection set")
-                                }
+                                            viewModel.onDragSelectionStart(startDateTime)
 
-                                // Timeout without movement
-                                else -> {
-                                    if (task != null) {
-                                        onTaskLongPress(task)
-                                    } else {
-                                        val endDateTime = startDateTime.plusMinutes(15)
-                                        viewModel.onDragSelectionStart(startDateTime)
-                                        viewModel.onDragSelectionUpdate(endDateTime)
-                                        viewModel.onDragSelectionEnd()
+                                            // NOW consume events for drag
+                                            down.consume()
+
+                                            // Track drag across days
+                                            drag(down.id) { change ->
+                                                val currentDateTime = screenPosToDateTime(change.position.x, change.position.y)
+
+                                                if (currentDateTime != null) {
+                                                    viewModel.onDragSelectionUpdate(currentDateTime)
+
+                                                    viewModel.updateGestureDebug("DRAGGING",
+                                                        System.currentTimeMillis() - downTime,
+                                                        change.position.x,
+                                                        change.position.y,
+                                                        "Ziehen: ${currentDateTime.toLocalDate()} ${currentDateTime.toLocalTime()}")
+                                                }
+
+                                                change.consume()
+                                            }
+
+                                            // Release after drag
+                                            viewModel.onDragSelectionEnd()
+                                            viewModel.updateGestureDebug("DRAG_END", 0, 0f, 0f,
+                                                "Multi-Day Markierung gesetzt")
+                                        }
+
+                                        // Timeout - treated as release without movement
+                                        else -> {
+                                            if (task != null) {
+                                                onTaskLongPress(task)
+                                            } else {
+                                                val endDateTime = startDateTime.plusMinutes(15)
+                                                viewModel.onDragSelectionStart(startDateTime)
+                                                viewModel.onDragSelectionUpdate(endDateTime)
+                                                viewModel.onDragSelectionEnd()
+                                            }
+                                        }
                                     }
                                 }
                             }
