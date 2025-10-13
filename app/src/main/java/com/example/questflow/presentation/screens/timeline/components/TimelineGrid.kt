@@ -54,6 +54,8 @@ fun TimelineGrid(
     // Calculate actual pixels per minute for coordinate calculations
     val pixelsPerMinute = with(density) { dpPerMinute * density.density }
 
+    android.util.Log.d("TimelineGrid", "🔍 DP/Pixel conversion: dpPerMinute=$dpPerMinute, density=${density.density}, pixelsPerMinute=$pixelsPerMinute, hourHeightDp=$hourHeightDp")
+
     // Get visible days using the offset from state
     val visibleDays = uiState.getVisibleDays()
 
@@ -274,9 +276,10 @@ private fun HourBackgroundGrid(
     isToday: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val primaryColor = MaterialTheme.colorScheme.primaryContainer
-    val hourHeightPx = 60 * dpPerMinute
+    val hourHeightPx = with(density) { hourHeightDp.toPx() }
 
     Canvas(
         modifier = modifier

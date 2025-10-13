@@ -35,17 +35,19 @@ data class TimelineSettings(
     }
 
     /**
-     * Calculate DP per minute based on screen height.
-     * IMPORTANT: This MUST be calculated for the FULL 24-hour day (1440 minutes),
-     * NOT for visibleHours! The coordinate system uses absolute positions from 00:00-23:59.
+     * Calculate DP per minute based on screen height and visible hours.
+     * This determines how much vertical space each minute occupies on screen.
      *
-     * screenHeightDp: Available screen height in DP (e.g., 800dp)
-     * Returns: DP per minute for the full 24-hour timeline
+     * screenHeightDp: Available screen height in DP (e.g., 530dp)
+     * Returns: DP per minute for rendering
      */
     fun calculatePixelsPerMinute(screenHeightDp: Float): Float {
-        // CRITICAL: Use full day (24 hours = 1440 minutes) for coordinate calculations
-        val fullDayMinutes = 24 * 60f  // Always 1440 minutes
-        return (screenHeightDp / fullDayMinutes).coerceIn(0.5f, 20f)
+        // Use visibleHours to determine zoom level
+        val visibleMinutes = visibleHours * 60f
+        val calculated = screenHeightDp / visibleMinutes
+        android.util.Log.d("TimelinePreferences", "calculatePixelsPerMinute: screenHeight=$screenHeightDp, visibleHours=$visibleHours, visibleMin=$visibleMinutes, calculated=$calculated")
+        // Set reasonable bounds
+        return calculated.coerceIn(0.3f, 20f)
     }
 
     /**

@@ -46,33 +46,66 @@ fun TimelineGestureOverlay(
     /**
      * Convert screen position to DateTime.
      * Returns null if position is outside valid areas.
+     *
+     * CRITICAL: Handles multi-day drag by detecting day overflow based on Y-position.
+     * When dragging vertically beyond 23:59, automatically switches to next/previous day.
      */
     fun screenPosToDateTime(x: Float, y: Float): LocalDateTime? {
-        // 1. Which day? (X-axis)
+        // 1. Which day column? (X-axis - determines BASE day)
         val xRelativeToContent = x - timeColumnWidthPx
         if (xRelativeToContent < 0) return null // Touch in time column
 
-        val dayColumnWidth = (xRelativeToContent) / visibleDays.size
-        val dayIndex = (xRelativeToContent / dayColumnWidth).toInt()
-        if (dayIndex !in visibleDays.indices) return null
+        // Estimate day column width (3 days equally split the remaining width)
+        // Note: This is approximate but works for touch detection
+        val estimatedDayColumnWidth = xRelativeToContent / visibleDays.size
+        val dayIndex = (xRelativeToContent / (estimatedDayColumnWidth.coerceAtLeast(1f))).toInt().coerceIn(0, visibleDays.size - 1)
 
-        val targetDay = visibleDays[dayIndex]
+        val baseDayTimeline = visibleDays[dayIndex]
+        val baseDate = baseDayTimeline.date
 
         // 2. Which time? (Y-axis + scroll offset)
-        val yRelativeToContent = y - headerHeightPx
-        if (yRelativeToContent < 0) return null // Touch in header
+        // IMPORTANT: Touch coordinates are RELATIVE to the Box (which starts AFTER the header)
+        // No need to subtract header - coordinates are already in content space!
+        val yRelativeToContent = y
+        if (yRelativeToContent < 0) return null // Sanity check
 
         val scrollOffsetPx = scrollState.firstVisibleItemIndex * hourHeightPx +
                 scrollState.firstVisibleItemScrollOffset.toFloat()
         val absoluteY = yRelativeToContent + scrollOffsetPx
 
-        val totalMinutes = (absoluteY / pixelsPerMinute).toInt().coerceIn(0, 1439)
-        val hour = totalMinutes / 60
-        val minute = totalMinutes % 60
+        // CRITICAL: Calculate minutes WITHOUT clamping to allow day overflow!
+        val totalMinutesRaw = (absoluteY / pixelsPerMinute).toInt()
 
-        android.util.Log.d("TimelineGesture", "Coords: touchX=$x, touchY=$y, scrollOffset=$scrollOffsetPx, absoluteY=$absoluteY, time=${hour}:${String.format("%02d", minute)}, day=${targetDay.date}")
+        // Calculate day offset (how many days to add/subtract based on vertical position)
+        val dayOffset = when {
+            totalMinutesRaw < 0 -> {
+                // Negative = dragged above 00:00 = previous day(s)
+                (totalMinutesRaw / 1440) - 1  // -1 to -1439 → -1 day, -1440 to -2879 → -2 days
+            }
+            totalMinutesRaw >= 1440 -> {
+                // Beyond 23:59 = next day(s)
+                totalMinutesRaw / 1440  // 1440-2879 → +1 day, 2880-4319 → +2 days
+            }
+            else -> 0  // Within same day (0-1439)
+        }
 
-        return LocalDateTime.of(targetDay.date, LocalTime.of(hour, minute))
+        // Calculate time within the target day (0-1439 minutes)
+        val minutesInDay = if (totalMinutesRaw < 0) {
+            // For negative, wrap around: -30min = 23:30 previous day
+            1440 + (totalMinutesRaw % 1440)
+        } else {
+            totalMinutesRaw % 1440
+        }
+
+        val hour = (minutesInDay / 60).coerceIn(0, 23)
+        val minute = (minutesInDay % 60).coerceIn(0, 59)
+
+        // Apply day offset to base date
+        val targetDate = baseDate.plusDays(dayOffset.toLong())
+
+        android.util.Log.d("TimelineGesture", "Coords: touchX=$x, touchY=$y, scrollOffset=$scrollOffsetPx, absoluteY=$absoluteY, totalMinutesRaw=$totalMinutesRaw, dayOffset=$dayOffset, time=${hour}:${String.format("%02d", minute)}, baseDay=${baseDate}, targetDay=${targetDate}")
+
+        return LocalDateTime.of(targetDate, LocalTime.of(hour, minute))
     }
 
     /**
@@ -100,6 +133,72 @@ fun TimelineGestureOverlay(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(visibleDays, scrollState, pixelsPerMinute) {
+                // Get total screen width in this scope
+                val totalScreenWidth = size.width
+
+                /**
+                 * Convert screen position to DateTime (inner version with access to size).
+                 */
+                fun screenPosToDateTimeInner(x: Float, y: Float): LocalDateTime? {
+                    // 1. Which day column? (X-axis - determines BASE day)
+                    val xRelativeToContent = x - timeColumnWidthPx
+                    if (xRelativeToContent < 0) return null // Touch in time column
+
+                    // Calculate actual day column width
+                    val totalContentWidth = totalScreenWidth - timeColumnWidthPx
+                    val dayColumnWidth = totalContentWidth / visibleDays.size
+                    val dayIndex = (xRelativeToContent / dayColumnWidth).toInt().coerceIn(0, visibleDays.size - 1)
+
+                    val baseDayTimeline = visibleDays[dayIndex]
+                    val baseDate = baseDayTimeline.date
+
+                    // 2. Which time? (Y-axis + scroll offset)
+                    // IMPORTANT: Touch coordinates are RELATIVE to the Box (which starts AFTER the header)
+                    // No need to subtract header - coordinates are already in content space!
+                    val yRelativeToContent = y
+                    if (yRelativeToContent < 0) return null // Sanity check
+
+                    val scrollOffsetPx = scrollState.firstVisibleItemIndex * hourHeightPx +
+                            scrollState.firstVisibleItemScrollOffset.toFloat()
+                    val absoluteY = yRelativeToContent + scrollOffsetPx
+
+                    // CRITICAL: Calculate minutes WITHOUT clamping to allow day overflow!
+                    val totalMinutesRaw = (absoluteY / pixelsPerMinute).toInt()
+
+                    android.util.Log.d("TimelineGesture", "🧮 FIXED Calculation: touchY=$y (no header subtraction!), yRel=$yRelativeToContent, scrollIdx=${scrollState.firstVisibleItemIndex}, scrollOff=${scrollState.firstVisibleItemScrollOffset}, hourHeightPx=$hourHeightPx, scrollOffsetPx=$scrollOffsetPx, absoluteY=$absoluteY, pixelsPerMinute=$pixelsPerMinute, totalMinutesRaw=$totalMinutesRaw")
+
+                    // Calculate day offset (how many days to add/subtract based on vertical position)
+                    val dayOffset = when {
+                        totalMinutesRaw < 0 -> {
+                            // Negative = dragged above 00:00 = previous day(s)
+                            (totalMinutesRaw / 1440) - 1  // -1 to -1439 → -1 day, -1440 to -2879 → -2 days
+                        }
+                        totalMinutesRaw >= 1440 -> {
+                            // Beyond 23:59 = next day(s)
+                            totalMinutesRaw / 1440  // 1440-2879 → +1 day, 2880-4319 → +2 days
+                        }
+                        else -> 0  // Within same day (0-1439)
+                    }
+
+                    // Calculate time within the target day (0-1439 minutes)
+                    val minutesInDay = if (totalMinutesRaw < 0) {
+                        // For negative, wrap around: -30min = 23:30 previous day
+                        1440 + (totalMinutesRaw % 1440)
+                    } else {
+                        totalMinutesRaw % 1440
+                    }
+
+                    val hour = (minutesInDay / 60).coerceIn(0, 23)
+                    val minute = (minutesInDay % 60).coerceIn(0, 59)
+
+                    // Apply day offset to base date
+                    val targetDate = baseDate.plusDays(dayOffset.toLong())
+
+                    android.util.Log.d("TimelineGesture", "Coords: touchX=$x, touchY=$y, xRel=$xRelativeToContent, dayColWidth=$dayColumnWidth, dayIdx=$dayIndex, scrollOffset=$scrollOffsetPx, absoluteY=$absoluteY, totalMinutesRaw=$totalMinutesRaw, dayOffset=$dayOffset, time=${hour}:${String.format("%02d", minute)}, baseDay=${baseDate}, targetDay=${targetDate}")
+
+                    return LocalDateTime.of(targetDate, LocalTime.of(hour, minute))
+                }
+
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
                     val downTime = System.currentTimeMillis()
@@ -153,7 +252,7 @@ fun TimelineGestureOverlay(
                                     "Quick-Tap nach ${releaseTime}ms: ${task.title}")
                                 onTaskClick(task)
                             } else {
-                                val dateTime = screenPosToDateTime(downPos.x, downPos.y)
+                                val dateTime = screenPosToDateTimeInner(downPos.x, downPos.y)
                                 if (dateTime != null) {
                                     viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
                                         "Quick-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
@@ -208,7 +307,7 @@ fun TimelineGestureOverlay(
                                             "Task-Tap nach ${releaseTime}ms: ${task.title}")
                                         onTaskClick(task)
                                     } else {
-                                        val dateTime = screenPosToDateTime(downPos.x, downPos.y)
+                                        val dateTime = screenPosToDateTimeInner(downPos.x, downPos.y)
                                         if (dateTime != null) {
                                             viewModel.updateGestureDebug("TAP_EMPTY", releaseTime, 0f, 0f,
                                                 "Leer-Tap nach ${releaseTime}ms @ ${dateTime.toLocalTime()} → TODO: Create Task")
@@ -219,7 +318,7 @@ fun TimelineGestureOverlay(
                                 // Long-press (1000ms timeout)
                                 else -> {
                                     android.util.Log.d("TimelineGesture", "LONG_PRESS! Timeout reached (1000ms)")
-                                    val startDateTime = screenPosToDateTime(downPos.x, downPos.y)
+                                    val startDateTime = screenPosToDateTimeInner(downPos.x, downPos.y)
 
                                     if (startDateTime == null) {
                                         android.util.Log.d("TimelineGesture", "Invalid start position - ignoring")
@@ -283,7 +382,7 @@ fun TimelineGestureOverlay(
 
                                             // Track drag across days
                                             drag(down.id) { change ->
-                                                val currentDateTime = screenPosToDateTime(change.position.x, change.position.y)
+                                                val currentDateTime = screenPosToDateTimeInner(change.position.x, change.position.y)
 
                                                 if (currentDateTime != null) {
                                                     viewModel.onDragSelectionUpdate(currentDateTime)

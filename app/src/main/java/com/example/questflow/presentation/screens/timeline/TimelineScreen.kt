@@ -59,10 +59,15 @@ fun TimelineScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Calculate pixelsPerMinute based on available screen height
-            val screenHeightDp = maxHeight.value
-            LaunchedEffect(screenHeightDp, uiState.visibleHours) {
-                viewModel.updateScreenHeight(screenHeightDp)
+            // Calculate pixelsPerMinute based on available screen height (minus header!)
+            val headerHeightDp = 48f // Must match TimelineGrid header height
+            val availableHeightDp = maxHeight.value - headerHeightDp
+
+            android.util.Log.d("TimelineScreen", "📐 BoxWithConstraints: maxHeight=${maxHeight.value}dp, header=${headerHeightDp}dp, available=${availableHeightDp}dp")
+
+            LaunchedEffect(availableHeightDp, uiState.visibleHours) {
+                android.util.Log.d("TimelineScreen", "🔄 LaunchedEffect triggered: updating screenHeight to ${availableHeightDp}dp")
+                viewModel.updateScreenHeight(availableHeightDp)
             }
 
             when {

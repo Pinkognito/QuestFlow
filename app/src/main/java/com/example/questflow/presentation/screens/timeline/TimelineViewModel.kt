@@ -36,9 +36,11 @@ class TimelineViewModel @Inject constructor(
     private var screenHeightDp: Float = 800f // Will be updated from UI
 
     init {
+        android.util.Log.d("TimelineViewModel", "🏁 init: screenHeightDp=$screenHeightDp")
         viewModelScope.launch {
             timelinePreferences.getSettings().collect { settings ->
                 val calculatedPixelsPerMinute = settings.calculatePixelsPerMinute(screenHeightDp)
+                android.util.Log.d("TimelineViewModel", "📊 Settings collected: visibleHours=${settings.visibleHours}, screenHeight=$screenHeightDp, pixelsPerMinute=$calculatedPixelsPerMinute")
                 _uiState.update { it.copy(
                     toleranceMinutes = settings.toleranceMinutes,
                     visibleHours = settings.visibleHours,
@@ -54,10 +56,13 @@ class TimelineViewModel @Inject constructor(
      * Update pixelsPerMinute based on screen height and visibleHours
      */
     fun updateScreenHeight(screenHeightDp: Float) {
+        android.util.Log.d("TimelineViewModel", "🎯 updateScreenHeight() called: screenHeightDp=$screenHeightDp (old=${this.screenHeightDp})")
         this.screenHeightDp = screenHeightDp
         val settings = timelinePreferences.getSettings().value
         val calculatedPixelsPerMinute = settings.calculatePixelsPerMinute(screenHeightDp)
+        android.util.Log.d("TimelineViewModel", "🎯 Calculated pixelsPerMinute=$calculatedPixelsPerMinute (old=${_uiState.value.pixelsPerMinute})")
         _uiState.update { it.copy(pixelsPerMinute = calculatedPixelsPerMinute) }
+        android.util.Log.d("TimelineViewModel", "🎯 UI State updated with new pixelsPerMinute=${_uiState.value.pixelsPerMinute}")
     }
 
     private fun loadInitialDays() {
