@@ -160,6 +160,32 @@ fun TimelineGrid(
                                     lastLoggedGesture = "HOLDING"
                                 }
 
+                                // Edge Detection (convert DP to pixels for comparison)
+                                val edgeBorderPx = with(density) { uiState.edgeBorderWidthDp.dp.toPx() }
+                                val screenWidthPx = size.width
+                                val screenHeightPx = size.height
+
+                                val isAtLeftEdge = currentPos.x < edgeBorderPx
+                                val isAtRightEdge = currentPos.x > (screenWidthPx - edgeBorderPx)
+                                val isAtTopEdge = currentPos.y < edgeBorderPx
+                                val isAtBottomEdge = currentPos.y > (screenHeightPx - edgeBorderPx)
+
+                                // Log edge detection (only if at any edge)
+                                if (isAtLeftEdge || isAtRightEdge || isAtTopEdge || isAtBottomEdge) {
+                                    val edgeType = when {
+                                        isAtLeftEdge -> "EDGE_LEFT"
+                                        isAtRightEdge -> "EDGE_RIGHT"
+                                        isAtTopEdge -> "EDGE_TOP"
+                                        isAtBottomEdge -> "EDGE_BOTTOM"
+                                        else -> "EDGE_UNKNOWN"
+                                    }
+
+                                    android.util.Log.d("TimelineGrid", "🔶 $edgeType at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}), border=${edgeBorderPx.toInt()}px")
+                                    viewModel.updateGestureDebug(edgeType, now - startTime, currentPos.x, currentPos.y,
+                                        "$edgeType | X: ${currentPos.x.toInt()}/${screenWidthPx.toInt()}px, Y: ${currentPos.y.toInt()}/${screenHeightPx.toInt()}px")
+                                    lastLoggedGesture = edgeType
+                                }
+
                                 // Movement Detection (> 5px)
                                 if (distance > 5f) {
                                     val direction = when {

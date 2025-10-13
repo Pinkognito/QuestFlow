@@ -21,7 +21,8 @@ import javax.inject.Singleton
 data class TimelineSettings(
     val toleranceMinutes: Int = 30,
     val visibleHours: Float = 12f, // How many hours visible on screen (2-24)
-    val snapToGridMinutes: Int = 15
+    val snapToGridMinutes: Int = 15,
+    val edgeBorderWidthDp: Float = 80f // Edge detection border width in DP (for auto-scroll)
 ) {
     /**
      * Validate settings and return corrected version if needed
@@ -30,7 +31,8 @@ data class TimelineSettings(
         return copy(
             toleranceMinutes = toleranceMinutes.coerceIn(0, 1440), // 0-24 hours
             visibleHours = visibleHours.coerceIn(2f, 24f),
-            snapToGridMinutes = snapToGridMinutes.coerceIn(1, 60)
+            snapToGridMinutes = snapToGridMinutes.coerceIn(1, 60),
+            edgeBorderWidthDp = edgeBorderWidthDp.coerceIn(40f, 200f) // 40-200dp border
         )
     }
 
@@ -73,6 +75,7 @@ class TimelinePreferences @Inject constructor(
         private const val KEY_TOLERANCE_MINUTES = "tolerance_minutes"
         private const val KEY_VISIBLE_HOURS = "visible_hours"
         private const val KEY_SNAP_TO_GRID = "snap_to_grid"
+        private const val KEY_EDGE_BORDER_WIDTH = "edge_border_width_dp"
     }
 
     private val _settings = MutableStateFlow(loadSettings())
@@ -89,7 +92,8 @@ class TimelinePreferences @Inject constructor(
         val settings = TimelineSettings(
             toleranceMinutes = prefs.getInt(KEY_TOLERANCE_MINUTES, 30),
             visibleHours = prefs.getFloat(KEY_VISIBLE_HOURS, 12f),
-            snapToGridMinutes = prefs.getInt(KEY_SNAP_TO_GRID, 15)
+            snapToGridMinutes = prefs.getInt(KEY_SNAP_TO_GRID, 15),
+            edgeBorderWidthDp = prefs.getFloat(KEY_EDGE_BORDER_WIDTH, 80f)
         )
         return settings.validated()
     }
@@ -104,6 +108,7 @@ class TimelinePreferences @Inject constructor(
             .putInt(KEY_TOLERANCE_MINUTES, validated.toleranceMinutes)
             .putFloat(KEY_VISIBLE_HOURS, validated.visibleHours)
             .putInt(KEY_SNAP_TO_GRID, validated.snapToGridMinutes)
+            .putFloat(KEY_EDGE_BORDER_WIDTH, validated.edgeBorderWidthDp)
             .apply()
 
         _settings.value = validated

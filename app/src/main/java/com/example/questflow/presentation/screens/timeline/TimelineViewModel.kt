@@ -40,12 +40,13 @@ class TimelineViewModel @Inject constructor(
         viewModelScope.launch {
             timelinePreferences.getSettings().collect { settings ->
                 val calculatedPixelsPerMinute = settings.calculatePixelsPerMinute(screenHeightDp)
-                android.util.Log.d("TimelineViewModel", "📊 Settings collected: visibleHours=${settings.visibleHours}, screenHeight=$screenHeightDp, pixelsPerMinute=$calculatedPixelsPerMinute")
+                android.util.Log.d("TimelineViewModel", "📊 Settings collected: visibleHours=${settings.visibleHours}, screenHeight=$screenHeightDp, pixelsPerMinute=$calculatedPixelsPerMinute, edgeBorder=${settings.edgeBorderWidthDp}dp")
                 _uiState.update { it.copy(
                     toleranceMinutes = settings.toleranceMinutes,
                     visibleHours = settings.visibleHours,
                     pixelsPerMinute = calculatedPixelsPerMinute,
-                    snapToGridMinutes = settings.snapToGridMinutes
+                    snapToGridMinutes = settings.snapToGridMinutes,
+                    edgeBorderWidthDp = settings.edgeBorderWidthDp
                 )}
             }
         }

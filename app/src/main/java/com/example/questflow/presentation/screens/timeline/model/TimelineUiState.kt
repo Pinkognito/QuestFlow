@@ -29,6 +29,7 @@ data class TimelineUiState(
     val visibleHours: Float = 12f, // How many hours visible on screen (zoom level)
     val pixelsPerMinute: Float = 2f, // Calculated dynamically from visibleHours and screen height
     val snapToGridMinutes: Int = 15,
+    val edgeBorderWidthDp: Float = 80f, // Edge detection border width for auto-scroll
 
     // Interaction state
     val selectedTask: TimelineTask? = null,
