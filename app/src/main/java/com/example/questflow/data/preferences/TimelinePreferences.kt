@@ -35,12 +35,17 @@ data class TimelineSettings(
     }
 
     /**
-     * Calculate pixels per minute based on screen height and visible hours.
+     * Calculate DP per minute based on screen height.
+     * IMPORTANT: This MUST be calculated for the FULL 24-hour day (1440 minutes),
+     * NOT for visibleHours! The coordinate system uses absolute positions from 00:00-23:59.
+     *
      * screenHeightDp: Available screen height in DP (e.g., 800dp)
+     * Returns: DP per minute for the full 24-hour timeline
      */
     fun calculatePixelsPerMinute(screenHeightDp: Float): Float {
-        val visibleMinutes = visibleHours * 60f
-        return (screenHeightDp / visibleMinutes).coerceIn(0.5f, 20f)
+        // CRITICAL: Use full day (24 hours = 1440 minutes) for coordinate calculations
+        val fullDayMinutes = 24 * 60f  // Always 1440 minutes
+        return (screenHeightDp / fullDayMinutes).coerceIn(0.5f, 20f)
     }
 
     /**

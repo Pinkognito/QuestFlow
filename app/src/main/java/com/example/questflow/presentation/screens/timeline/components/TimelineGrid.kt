@@ -46,9 +46,13 @@ fun TimelineGrid(
     viewModel: TimelineViewModel,
     modifier: Modifier = Modifier
 ) {
-    val pixelsPerMinute = uiState.pixelsPerMinute
-    val hourHeightDp = (60 * pixelsPerMinute).dp
+    // CRITICAL: uiState.pixelsPerMinute is actually DP per minute, not pixels!
+    val dpPerMinute = uiState.pixelsPerMinute  // DP per minute for rendering
+    val hourHeightDp = (60 * dpPerMinute).dp
     val density = androidx.compose.ui.platform.LocalDensity.current
+
+    // Calculate actual pixels per minute for coordinate calculations
+    val pixelsPerMinute = with(density) { dpPerMinute * density.density }
 
     // Get visible days using the offset from state
     val visibleDays = uiState.getVisibleDays()
@@ -105,7 +109,7 @@ fun TimelineGrid(
                                 hour = hour,
                                 hourHeightDp = hourHeightDp,
                                 dayTimeline = day,
-                                pixelsPerMinute = pixelsPerMinute,
+                                dpPerMinute = dpPerMinute,
                                 selectedTaskIds = uiState.selectedTaskIds,
                                 selectionBox = uiState.selectionBox,
                                 dragSelectionState = uiState.dragSelectionState,
@@ -122,7 +126,7 @@ fun TimelineGrid(
             TimelineGestureOverlay(
                 visibleDays = visibleDays,
                 scrollState = scrollState,
-                pixelsPerMinute = pixelsPerMinute,
+                pixelsPerMinute = pixelsPerMinute,  // Use actual pixels for coordinate calculations
                 headerHeightPx = headerHeightPx,
                 timeColumnWidthDp = 60.dp,
                 onTaskClick = onTaskClick,
@@ -143,7 +147,7 @@ private fun HourSlotWithTasks(
     hour: Int,
     hourHeightDp: androidx.compose.ui.unit.Dp,
     dayTimeline: DayTimeline,
-    pixelsPerMinute: Float,
+    dpPerMinute: Float,  // DP per minute for task rendering
     selectedTaskIds: Set<Long> = emptySet(),
     selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox? = null,
     dragSelectionState: com.example.questflow.presentation.screens.timeline.model.DragSelectionState? = null,
@@ -159,7 +163,7 @@ private fun HourSlotWithTasks(
         // Background grid for this hour slot
         HourBackgroundGrid(
             hour = hour,
-            pixelsPerMinute = pixelsPerMinute,
+            dpPerMinute = dpPerMinute,
             hourHeightDp = hourHeightDp,
             isToday = dayTimeline.isToday
         )
@@ -171,7 +175,7 @@ private fun HourSlotWithTasks(
                 selectionBox = previewBox,
                 dayDate = dayTimeline.date,
                 hour = hour,
-                pixelsPerMinute = pixelsPerMinute,
+                dpPerMinute = dpPerMinute,
                 isPreview = true
             )
         }
@@ -182,7 +186,7 @@ private fun HourSlotWithTasks(
                 selectionBox = selectionBox,
                 dayDate = dayTimeline.date,
                 hour = hour,
-                pixelsPerMinute = pixelsPerMinute,
+                dpPerMinute = dpPerMinute,
                 isPreview = false
             )
         }
@@ -198,7 +202,7 @@ private fun HourSlotWithTasks(
             // Check if task overlaps with this hour
             if (taskEndMinutes > hourStart && taskStartMinutes < hourEnd) {
                 val yOffsetInHour = if (taskStartMinutes >= hourStart) {
-                    (taskStartMinutes - hourStart) * pixelsPerMinute
+                    (taskStartMinutes - hourStart) * dpPerMinute  // Use DP for rendering!
                 } else {
                     0f // Task started before this hour
                 }
@@ -206,19 +210,19 @@ private fun HourSlotWithTasks(
                 val visibleHeight = when {
                     taskStartMinutes < hourStart && taskEndMinutes > hourEnd -> {
                         // Task spans entire hour
-                        60 * pixelsPerMinute
+                        60 * dpPerMinute  // Use DP for rendering!
                     }
                     taskStartMinutes < hourStart -> {
                         // Task started before, ends during hour
-                        (taskEndMinutes - hourStart) * pixelsPerMinute
+                        (taskEndMinutes - hourStart) * dpPerMinute  // Use DP for rendering!
                     }
                     taskEndMinutes > hourEnd -> {
                         // Task starts during hour, ends after
-                        (hourEnd - taskStartMinutes) * pixelsPerMinute
+                        (hourEnd - taskStartMinutes) * dpPerMinute  // Use DP for rendering!
                     }
                     else -> {
                         // Task fully within hour
-                        (taskEndMinutes - taskStartMinutes) * pixelsPerMinute
+                        (taskEndMinutes - taskStartMinutes) * dpPerMinute  // Use DP for rendering!
                     }
                 }
 
@@ -265,14 +269,14 @@ private fun TaskBar(
 @Composable
 private fun HourBackgroundGrid(
     hour: Int,
-    pixelsPerMinute: Float,
+    dpPerMinute: Float,  // DP per minute for rendering
     hourHeightDp: androidx.compose.ui.unit.Dp,
     isToday: Boolean,
     modifier: Modifier = Modifier
 ) {
     val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val primaryColor = MaterialTheme.colorScheme.primaryContainer
-    val hourHeightPx = 60 * pixelsPerMinute
+    val hourHeightPx = 60 * dpPerMinute
 
     Canvas(
         modifier = modifier

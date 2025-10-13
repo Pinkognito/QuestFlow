@@ -19,6 +19,7 @@ import java.time.LocalDate
  * Renders the selection box overlay within a single hour slot.
  * Similar to how tasks are rendered - only the portion that overlaps with this hour.
  *
+ * @param dpPerMinute DP per minute for rendering (not actual pixels!)
  * @param isPreview If true, renders with more transparent style (for live drag preview)
  */
 @Composable
@@ -26,7 +27,7 @@ fun RenderSelectionBoxInHourSlot(
     selectionBox: SelectionBox,
     dayDate: LocalDate,
     hour: Int,
-    pixelsPerMinute: Float,
+    dpPerMinute: Float,
     modifier: Modifier = Modifier,
     isPreview: Boolean = false
 ) {
@@ -102,9 +103,9 @@ fun RenderSelectionBoxInHourSlot(
         60
     }
 
-    // Calculate pixel positions within this hour slot
-    val yOffsetDp = visibleStartInHour * pixelsPerMinute
-    val heightDp = (visibleEndInHour - visibleStartInHour) * pixelsPerMinute
+    // Calculate DP positions within this hour slot
+    val yOffsetDp = visibleStartInHour * dpPerMinute
+    val heightDp = (visibleEndInHour - visibleStartInHour) * dpPerMinute
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val overlayColor = if (isPreview) {
