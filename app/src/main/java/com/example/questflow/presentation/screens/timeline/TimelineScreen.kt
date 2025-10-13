@@ -123,9 +123,9 @@ fun TimelineScreen(
                             )
                         }
 
-                        // DEBUG OVERLAY - Shows gesture info
-                        if (uiState.gestureDebugInfo != null) {
-                            GestureDebugOverlay(debugInfo = uiState.gestureDebugInfo!!)
+                        // DEBUG OVERLAY - ALWAYS VISIBLE for debugging
+                        uiState.gestureDebugInfo?.let { debugInfo ->
+                            GestureDebugOverlay(debugInfo = debugInfo)
                         }
                     }
                 }
