@@ -442,7 +442,14 @@ class TimelineViewModel @Inject constructor(
      * Update gesture debug info for visual feedback with history
      * Smart history: Only adds entry if gesture type changes OR direction changes (for swipes)
      */
-    fun updateGestureDebug(gestureType: String, elapsedMs: Long, dragX: Float, dragY: Float, message: String) {
+    fun updateGestureDebug(
+        gestureType: String,
+        elapsedMs: Long,
+        dragX: Float,
+        dragY: Float,
+        message: String,
+        atEdge: com.example.questflow.presentation.screens.timeline.model.EdgePosition? = null
+    ) {
         _uiState.update { state ->
             val oldHistory = state.gestureDebugInfo?.history ?: emptyList()
             val lastGestureType = state.gestureDebugInfo?.gestureType
@@ -495,7 +502,8 @@ class TimelineViewModel @Inject constructor(
                     dragX = dragX,
                     dragY = dragY,
                     message = message,
-                    history = newHistory
+                    history = newHistory,
+                    atEdge = atEdge
                 )
             )
         }

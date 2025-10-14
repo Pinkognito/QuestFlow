@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -71,6 +72,43 @@ fun TimelineGrid(
     // Header height for coordinate calculations
     val headerHeightDp = 48.dp
     val headerHeightPx = with(density) { headerHeightDp.toPx() }
+
+    // Auto-scroll effect: Continuously scroll when at edge during drag selection
+    val atEdge = uiState.gestureDebugInfo?.atEdge
+    val isDragging = uiState.dragSelectionState != null
+
+    LaunchedEffect(atEdge, isDragging) {
+        if (isDragging && atEdge != null) {
+            while (true) {
+                when (atEdge) {
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.LEFT -> {
+                        android.util.Log.d("TimelineGrid", "🔄 AUTO-SCROLL: Shifting day window LEFT")
+                        onDayWindowShift(-1) // Shift to past days
+                        kotlinx.coroutines.delay(300) // Delay between shifts
+                    }
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.RIGHT -> {
+                        android.util.Log.d("TimelineGrid", "🔄 AUTO-SCROLL: Shifting day window RIGHT")
+                        onDayWindowShift(1) // Shift to future days
+                        kotlinx.coroutines.delay(300)
+                    }
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.TOP -> {
+                        android.util.Log.d("TimelineGrid", "🔄 AUTO-SCROLL: Scrolling UP")
+                        scrollState.animateScrollBy(-200f) // Scroll up
+                        kotlinx.coroutines.delay(50)
+                    }
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.BOTTOM -> {
+                        android.util.Log.d("TimelineGrid", "🔄 AUTO-SCROLL: Scrolling DOWN")
+                        scrollState.animateScrollBy(200f) // Scroll down
+                        kotlinx.coroutines.delay(50)
+                    }
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE -> {
+                        // No edge, stop scrolling
+                        break
+                    }
+                }
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         // STICKY Header (fixed at top)
@@ -171,6 +209,14 @@ fun TimelineGrid(
                                 val isAtBottomEdge = currentPos.y > (screenHeightPx - edgeBorderPx)
 
                                 // Log edge detection (only if at any edge)
+                                val edgePosition = when {
+                                    isAtLeftEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.LEFT
+                                    isAtRightEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.RIGHT
+                                    isAtTopEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.TOP
+                                    isAtBottomEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.BOTTOM
+                                    else -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE
+                                }
+
                                 if (isAtLeftEdge || isAtRightEdge || isAtTopEdge || isAtBottomEdge) {
                                     val edgeType = when {
                                         isAtLeftEdge -> "EDGE_LEFT"
@@ -182,8 +228,16 @@ fun TimelineGrid(
 
                                     android.util.Log.d("TimelineGrid", "🔶 $edgeType at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}), border=${edgeBorderPx.toInt()}px")
                                     viewModel.updateGestureDebug(edgeType, now - startTime, currentPos.x, currentPos.y,
-                                        "$edgeType | X: ${currentPos.x.toInt()}/${screenWidthPx.toInt()}px, Y: ${currentPos.y.toInt()}/${screenHeightPx.toInt()}px")
+                                        "$edgeType | X: ${currentPos.x.toInt()}/${screenWidthPx.toInt()}px, Y: ${currentPos.y.toInt()}/${screenHeightPx.toInt()}px",
+                                        atEdge = edgePosition)
                                     lastLoggedGesture = edgeType
+                                } else {
+                                    // Not at edge, clear edge position if last gesture was an edge
+                                    if (lastLoggedGesture.startsWith("EDGE_")) {
+                                        viewModel.updateGestureDebug(lastLoggedGesture, now - startTime, currentPos.x, currentPos.y,
+                                            "Left edge zone",
+                                            atEdge = com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE)
+                                    }
                                 }
 
                                 // Movement Detection (> 5px)

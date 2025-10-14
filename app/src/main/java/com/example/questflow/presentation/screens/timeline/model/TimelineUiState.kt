@@ -246,5 +246,13 @@ data class GestureDebugInfo(
     val dragX: Float,
     val dragY: Float,
     val message: String,
-    val history: List<String> = emptyList() // Last 5 gesture states
+    val history: List<String> = emptyList(), // Last 5 gesture states
+    val atEdge: EdgePosition? = null // Which edge is currently touched (for auto-scroll)
 )
+
+/**
+ * Edge position for auto-scroll triggering
+ */
+enum class EdgePosition {
+    LEFT, RIGHT, TOP, BOTTOM, NONE
+}
