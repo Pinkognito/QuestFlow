@@ -132,161 +132,12 @@ fun TimelineGrid(
             }
         }
 
-        // Scrollable content with CONDITIONAL overlay
+        // Scrollable content with ALWAYS-ACTIVE overlay
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 state = scrollState,
                 userScrollEnabled = uiState.dragSelectionState == null, // Disable scroll during drag
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        // Comprehensive gesture tracking with live position updates
-                        awaitEachGesture {
-                            // === DOWN Phase ===
-                            val down = awaitFirstDown()
-                            val startPos = down.position
-                            val startTime = System.currentTimeMillis()
-
-                            android.util.Log.d("TimelineGrid", "🔽 TOUCH_DOWN at (${startPos.x.toInt()}, ${startPos.y.toInt()})")
-                            viewModel.updateGestureDebug("TOUCH_DOWN", 0, startPos.x, startPos.y,
-                                "Down at (${startPos.x.toInt()}, ${startPos.y.toInt()})")
-
-                            var totalDistance = 0f
-                            var totalDeltaX = 0f
-                            var totalDeltaY = 0f
-                            var lastPos = startPos
-                            var lastMoveTime = startTime
-                            var isSwipe = false
-                            var swipeDirection = ""
-                            var holdStartTime = 0L
-                            var lastLoggedGesture = "TOUCH_DOWN"
-
-                            // === MOVE Phase Loop ===
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
-
-                                if (!change.pressed) {
-                                    // === UP Phase ===
-                                    val duration = System.currentTimeMillis() - startTime
-                                    val finalPos = change.position
-
-                                    android.util.Log.d("TimelineGrid", "🔼 TOUCH_UP at (${finalPos.x.toInt()}, ${finalPos.y.toInt()}) after ${duration}ms, distance=${totalDistance.toInt()}px")
-                                    viewModel.updateGestureDebug("TOUCH_UP", duration,
-                                        finalPos.x, finalPos.y,
-                                        "Up after ${duration}ms, total=${totalDistance.toInt()}px")
-                                    break
-                                }
-
-                                val currentPos = change.position
-                                val delta = currentPos - lastPos
-                                val distance = sqrt(delta.x * delta.x + delta.y * delta.y)
-                                totalDistance += distance
-                                totalDeltaX += delta.x
-                                totalDeltaY += delta.y
-
-                                val now = System.currentTimeMillis()
-                                val timeDelta = now - lastMoveTime
-                                val velocity = if (timeDelta > 0) distance / timeDelta * 1000f else 0f
-
-                                // Holding Detection (stationary for > 500ms)
-                                if (totalDistance < 10f && (now - startTime) > 500 && lastLoggedGesture != "HOLDING") {
-                                    android.util.Log.d("TimelineGrid", "✋ HOLDING at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}) for ${now - startTime}ms")
-                                    viewModel.updateGestureDebug("HOLDING",
-                                        now - startTime, currentPos.x, currentPos.y,
-                                        "Holding for ${now - startTime}ms")
-                                    lastLoggedGesture = "HOLDING"
-                                }
-
-                                // Edge Detection (convert DP to pixels for comparison)
-                                val edgeBorderPx = with(density) { uiState.edgeBorderWidthDp.dp.toPx() }
-                                val screenWidthPx = size.width
-                                val screenHeightPx = size.height
-
-                                val isAtLeftEdge = currentPos.x < edgeBorderPx
-                                val isAtRightEdge = currentPos.x > (screenWidthPx - edgeBorderPx)
-                                val isAtTopEdge = currentPos.y < edgeBorderPx
-                                val isAtBottomEdge = currentPos.y > (screenHeightPx - edgeBorderPx)
-
-                                // Log edge detection (only if at any edge)
-                                val edgePosition = when {
-                                    isAtLeftEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.LEFT
-                                    isAtRightEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.RIGHT
-                                    isAtTopEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.TOP
-                                    isAtBottomEdge -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.BOTTOM
-                                    else -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE
-                                }
-
-                                if (isAtLeftEdge || isAtRightEdge || isAtTopEdge || isAtBottomEdge) {
-                                    val edgeType = when {
-                                        isAtLeftEdge -> "EDGE_LEFT"
-                                        isAtRightEdge -> "EDGE_RIGHT"
-                                        isAtTopEdge -> "EDGE_TOP"
-                                        isAtBottomEdge -> "EDGE_BOTTOM"
-                                        else -> "EDGE_UNKNOWN"
-                                    }
-
-                                    android.util.Log.d("TimelineGrid", "🔶 $edgeType at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}), border=${edgeBorderPx.toInt()}px")
-                                    viewModel.updateGestureDebug(edgeType, now - startTime, currentPos.x, currentPos.y,
-                                        "$edgeType | X: ${currentPos.x.toInt()}/${screenWidthPx.toInt()}px, Y: ${currentPos.y.toInt()}/${screenHeightPx.toInt()}px",
-                                        atEdge = edgePosition)
-                                    lastLoggedGesture = edgeType
-                                } else {
-                                    // Not at edge, clear edge position if last gesture was an edge
-                                    if (lastLoggedGesture.startsWith("EDGE_")) {
-                                        viewModel.updateGestureDebug(lastLoggedGesture, now - startTime, currentPos.x, currentPos.y,
-                                            "Left edge zone",
-                                            atEdge = com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE)
-                                    }
-                                }
-
-                                // Movement Detection (> 5px)
-                                if (distance > 5f) {
-                                    val direction = when {
-                                        abs(delta.y) > abs(delta.x) -> if (delta.y > 0) "DOWN" else "UP"
-                                        else -> if (delta.x > 0) "RIGHT" else "LEFT"
-                                    }
-
-                                    // Swipe Detection (velocity > 1000 px/s)
-                                    if (velocity > 1000f && !isSwipe) {
-                                        isSwipe = true
-                                        swipeDirection = direction
-                                        holdStartTime = now
-
-                                        // Calculate dominant direction percentage
-                                        val totalMovement = abs(totalDeltaX) + abs(totalDeltaY)
-                                        val verticalPercent = if (totalMovement > 0) (abs(totalDeltaY) / totalMovement * 100).toInt() else 0
-                                        val horizontalPercent = if (totalMovement > 0) (abs(totalDeltaX) / totalMovement * 100).toInt() else 0
-
-                                        android.util.Log.d("TimelineGrid", "⚡ SWIPE_$direction at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}): ${velocity.toInt()} px/s")
-                                        viewModel.updateGestureDebug("SWIPE_$direction",
-                                            now - startTime, currentPos.x, currentPos.y,
-                                            "Swipe $direction: ${velocity.toInt()} px/s | Dominant: ${if (verticalPercent > horizontalPercent) "vertical ${verticalPercent}%" else "horizontal ${horizontalPercent}%"}")
-                                        lastLoggedGesture = "SWIPE_$direction"
-
-                                    } else if (isSwipe && (now - holdStartTime) > 100) {
-                                        // Continue holding after swipe
-                                        android.util.Log.d("TimelineGrid", "🤚 SWIPE_HOLD_$swipeDirection at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}) for ${now - holdStartTime}ms")
-                                        viewModel.updateGestureDebug("SWIPE_HOLD_$swipeDirection",
-                                            now - holdStartTime, currentPos.x, currentPos.y,
-                                            "Holding after swipe for ${now - holdStartTime}ms")
-                                        lastLoggedGesture = "SWIPE_HOLD_$swipeDirection"
-
-                                    } else if (velocity < 1000f && !isSwipe) {
-                                        // Slow movement = SCROLL
-                                        android.util.Log.d("TimelineGrid", "📜 SCROLL_$direction at (${currentPos.x.toInt()}, ${currentPos.y.toInt()}): ${velocity.toInt()} px/s")
-                                        viewModel.updateGestureDebug("SCROLL_$direction",
-                                            0, currentPos.x, currentPos.y,
-                                            "Scroll $direction: ${velocity.toInt()} px/s")
-                                        lastLoggedGesture = "SCROLL_$direction"
-                                    }
-                                }
-
-                                lastPos = currentPos
-                                lastMoveTime = now
-                            }
-                        }
-                    }
+                modifier = Modifier.fillMaxSize()
             ) {
                 // 24 hour rows
                 items(24) { hour ->
@@ -318,22 +169,19 @@ fun TimelineGrid(
                 }
             }
 
-            // CONDITIONAL OVERLAY - ONLY render when drag mode is active
-            // LazyColumn handles ALL gestures by default (tap, scroll, swipe)
-            // Overlay ONLY activates after long-press on empty area
-            if (uiState.dragSelectionState != null) {
-                TimelineGestureOverlay(
-                    visibleDays = visibleDays,
-                    scrollState = scrollState,
-                    pixelsPerMinute = pixelsPerMinute,
-                    headerHeightPx = headerHeightPx,
-                    timeColumnWidthDp = 60.dp,
-                    onTaskClick = onTaskClick,
-                    onTaskLongPress = onTaskLongPress,
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            // ALWAYS-ACTIVE OVERLAY - Handles ALL gestures
+            // Smart pass-through: taps and swipes go to LazyColumn, long-press triggers drag
+            TimelineGestureOverlay(
+                visibleDays = visibleDays,
+                scrollState = scrollState,
+                pixelsPerMinute = pixelsPerMinute,
+                headerHeightPx = headerHeightPx,
+                timeColumnWidthDp = 60.dp,
+                onTaskClick = onTaskClick,
+                onTaskLongPress = onTaskLongPress,
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
@@ -356,58 +204,10 @@ private fun HourSlotWithTasks(
     viewModel: TimelineViewModel,
     modifier: Modifier = Modifier
 ) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(hourHeightDp)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        // Tap detected - show in debug
-                        android.util.Log.d("HourSlot", "👆 Tap at offset=$offset in hour=$hour, day=${dayTimeline.date}")
-                        viewModel.updateGestureDebug("TAP", 0, offset.x, offset.y, "Tap at hour $hour, day ${dayTimeline.date}")
-                    },
-                    onLongPress = { offset ->
-                        // LongPress on empty area - activate drag mode
-                        android.util.Log.d("HourSlot", "🔴 LongPress detected at offset=$offset in hour=$hour, day=${dayTimeline.date}")
-
-                        // Check if we hit a task - if so, don't activate drag mode
-                        val hourStart = hour * 60
-                        val hourEnd = (hour + 1) * 60
-                        val yInHourPx = offset.y
-                        val yInHourDp = with(density) { yInHourPx.toDp().value }
-                        val minuteInHour = (yInHourDp / dpPerMinute).toInt()
-                        val absoluteMinute = hourStart + minuteInHour
-
-                        // Check if any task is at this position
-                        val hitTask = dayTimeline.tasks.any { task ->
-                            val taskStartMinutes = task.startTime.toLocalTime().hour * 60 + task.startTime.toLocalTime().minute
-                            val taskEndMinutes = task.endTime.toLocalTime().hour * 60 + task.endTime.toLocalTime().minute
-                            absoluteMinute in taskStartMinutes until taskEndMinutes
-                        }
-
-                        if (!hitTask) {
-                            // Empty area - activate drag mode!
-                            android.util.Log.d("HourSlot", "✅ Empty area - activating drag mode at minute=$absoluteMinute")
-                            viewModel.updateGestureDebug("LONGPRESS_EMPTY", 0, offset.x, offset.y, "Activating drag mode")
-
-                            // Calculate LocalDateTime from day + minute
-                            val timeHour = absoluteMinute / 60
-                            val timeMinute = absoluteMinute % 60
-                            val startTime = java.time.LocalDateTime.of(
-                                dayTimeline.date,
-                                java.time.LocalTime.of(timeHour, timeMinute)
-                            )
-                            viewModel.onDragSelectionStart(startTime)
-                        } else {
-                            android.util.Log.d("HourSlot", "❌ Task hit - not activating drag mode")
-                            viewModel.updateGestureDebug("LONGPRESS_TASK", 0, offset.x, offset.y, "Task hit, ignoring")
-                        }
-                    }
-                )
-            }
     ) {
         // Background grid for this hour slot
         HourBackgroundGrid(
