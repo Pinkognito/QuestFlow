@@ -45,7 +45,36 @@ fun RadialContextMenu(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val actions = getActionsForMenuType(state.menuType, state.selectedTasksInBox)
+    val screenWidth = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val screenHeight = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    val buttonRadius = with(density) { 80.dp.toPx() } // Distance from center to buttons
+    val buttonSize = with(density) { 64.dp.toPx() } // Button diameter
+    val safeMargin = buttonRadius + buttonSize / 2 // Total space needed from edge
+
+    // IMPROVED: Keep buttons on screen by adjusting center position + rotating button layout if needed
+    val adjustedX = state.centerX.coerceIn(safeMargin, screenWidth - safeMargin)
+    val adjustedY = state.centerY.coerceIn(safeMargin, screenHeight - safeMargin)
+
+    // Detect edge proximity for dynamic button arrangement
+    val nearLeftEdge = state.centerX < safeMargin + 30f
+    val nearRightEdge = state.centerX > screenWidth - safeMargin - 30f
+    val nearTopEdge = state.centerY < safeMargin + 30f
+    val nearBottomEdge = state.centerY > screenHeight - safeMargin - 30f
+
+    // Adjust button angles dynamically based on edge proximity
+    val angleOffset = when {
+        nearLeftEdge && nearTopEdge -> 45f      // Bottom-right quadrant
+        nearRightEdge && nearTopEdge -> 135f    // Bottom-left quadrant
+        nearRightEdge && nearBottomEdge -> 225f // Top-left quadrant
+        nearLeftEdge && nearBottomEdge -> 315f  // Top-right quadrant
+        nearLeftEdge -> 90f   // Move buttons to right hemisphere
+        nearRightEdge -> 270f // Move buttons to left hemisphere
+        nearTopEdge -> 180f   // Move buttons to bottom hemisphere
+        nearBottomEdge -> 0f  // Move buttons to top hemisphere
+        else -> 0f            // No adjustment needed
+    }
+
+    val actions = getActionsForMenuType(state.menuType, state.selectedTasksInBox, angleOffset)
 
     // Animation for entrance
     val scale by animateFloatAsState(
@@ -77,19 +106,7 @@ fun RadialContextMenu(
                 }
             }
     ) {
-        // Menu positioned at release location
-        // Calculate smart position to keep ALL BUTTONS on screen
-        val screenWidth = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
-        val screenHeight = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
-        val buttonRadius = with(density) { 80.dp.toPx() } // Distance from center to buttons
-        val buttonSize = with(density) { 64.dp.toPx() } // Button diameter
-        val safeMargin = buttonRadius + buttonSize / 2 // Total space needed from edge
-
-        // IMPROVED: Keep buttons on screen by adjusting center position
-        val adjustedX = state.centerX.coerceIn(safeMargin, screenWidth - safeMargin)
-        val adjustedY = state.centerY.coerceIn(safeMargin, screenHeight - safeMargin)
-
-        android.util.Log.d("RadialMenu", "Position: original=(${state.centerX}, ${state.centerY}), adjusted=($adjustedX, $adjustedY), screen=($screenWidth x $screenHeight), safeMargin=$safeMargin")
+        android.util.Log.d("RadialMenu", "Position: original=(${state.centerX}, ${state.centerY}), adjusted=($adjustedX, $adjustedY), screen=($screenWidth x $screenHeight), safeMargin=$safeMargin, angleOffset=$angleOffset")
 
         Box(
             modifier = Modifier
@@ -190,13 +207,14 @@ private fun TappableActionButton(
 }
 
 /**
- * Get actions based on menu type
+ * Get actions based on menu type with dynamic angle offset for edge positioning
  */
 private fun getActionsForMenuType(
     menuType: ContextMenuType,
-    tasksInBox: Int
+    tasksInBox: Int,
+    angleOffset: Float = 0f
 ): List<ContextMenuAction> {
-    return when (menuType) {
+    val baseActions = when (menuType) {
         ContextMenuType.SELECTION_WITH_TASKS -> listOf(
             ContextMenuAction(
                 id = "insert",
@@ -208,7 +226,7 @@ private fun getActionsForMenuType(
                 id = "details",
                 label = "Details",
                 icon = Icons.Default.List,
-                angle = 90f // Top
+                angle = 90f // Down
             ),
             ContextMenuAction(
                 id = "delete",
@@ -221,7 +239,7 @@ private fun getActionsForMenuType(
                 id = "edit",
                 label = "Bearbeiten",
                 icon = Icons.Default.Edit,
-                angle = 270f // Bottom
+                angle = 270f // Up
             )
         )
 
@@ -281,4 +299,7 @@ private fun getActionsForMenuType(
             )
         )
     }
+
+    // Apply angle offset to rotate button arrangement based on screen edges
+    return baseActions.map { it.copy(angle = it.angle + angleOffset) }
 }

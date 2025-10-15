@@ -40,11 +40,12 @@ data class TimelineTask(
 
     /**
      * Get display color based on conflict state and category
+     * UPDATED: Always use category colors, conflicts shown via icon overlay
      */
     fun getDisplayColor(): String {
         return when (conflictState) {
-            ConflictState.OVERLAP -> "#FF5252"           // Red - direct overlap
-            ConflictState.TOLERANCE_WARNING -> "#2196F3" // Blue - tolerance warning
+            ConflictState.OVERLAP -> categoryColor ?: "#4CAF50"           // Category color with warning icon
+            ConflictState.TOLERANCE_WARNING -> "#2196F3" // Blue - tolerance warning (kept as-is)
             ConflictState.NO_CONFLICT -> categoryColor ?: "#4CAF50"  // Green/Category color
         }
     }

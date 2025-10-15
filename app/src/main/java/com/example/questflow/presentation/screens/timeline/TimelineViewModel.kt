@@ -500,11 +500,72 @@ class TimelineViewModel @Inject constructor(
     }
 
     /**
+     * PUBLIC: Calculate edge position from absolute coordinates
+     * Used for IMMEDIATE edge detection in onDrag callback
+     */
+    fun calculateEdgePosition(absoluteX: Float, absoluteY: Float): com.example.questflow.presentation.screens.timeline.model.EdgePosition {
+        val currentState = _uiState.value
+
+        // Edge detection for auto-scroll
+        val screenHeightPx = screenHeightDp * currentState.density
+        val screenWidthPx = currentState.timeColumnWidthPx + currentState.contentWidthPx
+
+        // Calculate day column width (each visible day gets equal width from content area)
+        val visibleDays = currentState.getVisibleDays()
+        val dayColumnWidth = if (visibleDays.isNotEmpty()) {
+            currentState.contentWidthPx / visibleDays.size
+        } else {
+            currentState.contentWidthPx / 3f  // Fallback: assume 3 days
+        }
+
+        // CRITICAL: Horizontal edge threshold = 20% of ONE day column width
+        val horizontalEdgeThreshold = dayColumnWidth * 0.2f
+
+        // CRITICAL FIX: Vertical edge threshold must be LARGE to trigger BEFORE finger reaches physical screen edge
+        // Android gesture system cancels drag when finger is at physical edge!
+        // We need ~200px threshold so auto-scroll starts early enough to keep drag alive
+        val verticalEdgeThreshold = 200f  // Fixed 200px threshold (was: edgeBorderWidthDp * density * 0.5f = 45px)
+
+        return when {
+            // Horizontal edges (day switching - LEFT/RIGHT)
+            // User must be in the leftmost 20% of the FIRST day column to trigger LEFT
+            // User must be in the rightmost 20% of the LAST day column to trigger RIGHT
+            absoluteX < currentState.timeColumnWidthPx + horizontalEdgeThreshold ->  // First 20% of first day
+                com.example.questflow.presentation.screens.timeline.model.EdgePosition.LEFT
+            absoluteX > screenWidthPx - horizontalEdgeThreshold ->  // Last 20% of last day
+                com.example.questflow.presentation.screens.timeline.model.EdgePosition.RIGHT
+
+            // Vertical edges (timeline scrolling - TOP/BOTTOM)
+            absoluteY < currentState.headerHeightPx + verticalEdgeThreshold ->
+                com.example.questflow.presentation.screens.timeline.model.EdgePosition.TOP
+            absoluteY > screenHeightPx - verticalEdgeThreshold ->
+                com.example.questflow.presentation.screens.timeline.model.EdgePosition.BOTTOM
+
+            else -> com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE
+        }
+    }
+
+    /**
      * Update drag selection using ABSOLUTE screen coordinates
      * Converts absolute X/Y to DateTime, then calls regular onDragSelectionUpdate
+     * ALSO detects edge positions for auto-scroll triggering
      */
     fun onDragSelectionUpdateAbsolute(absoluteX: Float, absoluteY: Float) {
         val currentState = _uiState.value
+
+        // Use the extracted edge calculation function
+        val atEdge = calculateEdgePosition(absoluteX, absoluteY)
+
+        // Update gesture debug info with edge position
+        updateGestureDebug(
+            gestureType = "DRAGGING",
+            elapsedMs = 0,
+            dragX = absoluteX,
+            dragY = absoluteY,
+            message = "Drag selection update",
+            atEdge = atEdge
+        )
+
         val dateTime = calculateDateTimeFromAbsolutePosition(
             absoluteX = absoluteX,
             absoluteY = absoluteY,
@@ -518,7 +579,7 @@ class TimelineViewModel @Inject constructor(
         if (dateTime != null) {
             // Only log every ~100ms equivalent (reduce spam)
             if (System.currentTimeMillis() % 3 == 0L) {
-                android.util.Log.d("TimelineViewModel", "📍 Drag update: X=${absoluteX.toInt()}px, Y=${absoluteY.toInt()}px → $dateTime")
+                android.util.Log.d("TimelineViewModel", "📍 Drag update: X=${absoluteX.toInt()}px, Y=${absoluteY.toInt()}px → $dateTime, atEdge=$atEdge")
             }
             onDragSelectionUpdate(dateTime)
         }

@@ -166,6 +166,26 @@ fun TaskBalken(
             )
         }
 
+        // Conflict warning indicator (OVERLAP only - red warning icon)
+        if (task.conflictState == com.example.questflow.domain.model.ConflictState.OVERLAP && !task.isCompleted) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(2.dp)
+                    .background(
+                        color = Color(0xFFFF5252).copy(alpha = 0.9f), // Red background
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "⚠",
+                    color = Color.White,
+                    fontSize = 10.sp
+                )
+            }
+        }
+
         // Selection indicator
         if (isSelected) {
             Box(
