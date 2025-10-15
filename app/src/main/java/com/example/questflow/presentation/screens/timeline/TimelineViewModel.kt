@@ -884,6 +884,11 @@ class TimelineViewModel @Inject constructor(
                 clearSelectionBox()
                 dismissContextMenu()
             }
+            "deselect_all" -> {
+                // Deselect all tasks (clear selection list)
+                clearSelection()
+                // Menu stays open, SelectionBox stays visible
+            }
             else -> {
                 android.util.Log.w("TimelineViewModel", "Unknown context menu action: $actionId")
                 dismissContextMenu()

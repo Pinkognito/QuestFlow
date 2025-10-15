@@ -61,12 +61,13 @@ fun RadialJoystickMenu(
 
     android.util.Log.d("RadialJoystick", "🎯 Finger=(${state.centerX.toInt()}, ${state.centerY.toInt()}), ButtonCenter=(${buttonCenterX.toInt()}, ${buttonCenterY.toInt()}), ButtonTopLeft=(${buttonX.toInt()}, ${buttonY.toInt()})")
 
-    // Actions (4 directions)
+    // Actions (5 directions) - Added "deselect_all"
     val actions = listOf(
         RadialAction(id = "select_all", label = "Alles auswählen", icon = Icons.Default.CheckCircle, angle = 0f),
-        RadialAction(id = "insert", label = "Einfügen", icon = Icons.Default.Add, angle = 90f),
-        RadialAction(id = "delete", label = "Löschen", icon = Icons.Default.Delete, angle = 180f, color = Color.Red),
-        RadialAction(id = "adjust_time", label = "Zeit anpassen", icon = Icons.Default.Edit, angle = 270f)
+        RadialAction(id = "insert", label = "Einfügen", icon = Icons.Default.Add, angle = 72f),
+        RadialAction(id = "delete", label = "Löschen", icon = Icons.Default.Delete, angle = 144f, color = Color.Red),
+        RadialAction(id = "adjust_time", label = "Zeit anpassen", icon = Icons.Default.Edit, angle = 216f),
+        RadialAction(id = "deselect_all", label = "Auswahl aufheben", icon = Icons.Default.Clear, angle = 288f)
     )
 
     // Animation

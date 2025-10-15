@@ -2,7 +2,7 @@ package com.example.questflow.presentation.screens.timeline
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,20 +37,34 @@ fun TimelineScreen(
             TimelineTopBar(
                 focusedTask = uiState.focusedTask,
                 selectionCount = uiState.selectedTaskIds.size,
+                selectionBox = uiState.selectionBox,
                 onBackClick = { navController.navigateUp() },
                 onSettingsClick = { viewModel.toggleSettings() },
                 onSelectionClick = { viewModel.toggleSelectionList() }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showSelectionBoxDialog = true },
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DateRange,
-                    contentDescription = "Zeitbereich festlegen"
+            // FAB shows different content based on SelectionBox state
+            if (uiState.selectionBox != null) {
+                // SelectionBox active → Show expandable menu with actions
+                SelectionBoxFAB(
+                    selectionBox = uiState.selectionBox!!,
+                    onSelectAllInRange = { viewModel.selectAllInRange() },
+                    onInsertIntoRange = { showBatchOperationDialog = true },
+                    onEdit = { showSelectionBoxDialog = true },
+                    onDismiss = { viewModel.clearSelectionBox() }
                 )
+            } else {
+                // No SelectionBox → Show create time range button
+                FloatingActionButton(
+                    onClick = { showSelectionBoxDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "Zeitbereich festlegen"
+                    )
+                }
             }
         }
     ) { padding ->
@@ -100,8 +114,8 @@ fun TimelineScreen(
                                 viewModel.setFocusedTask(task)
                             },
                             onTaskLongPress = { task ->
-                                // Long-press on task sets SelectionBox to task time range
-                                viewModel.setSelectionBoxFromTask(task)
+                                // Long-press on task toggles selection
+                                viewModel.toggleTaskSelection(task.id)
                             },
                             onLoadMore = { direction ->
                                 viewModel.loadMore(direction)
@@ -111,17 +125,6 @@ fun TimelineScreen(
                             },
                             viewModel = viewModel
                         )
-
-                        // SelectionBox overlay (shown over timeline)
-                        if (uiState.selectionBox != null) {
-                            SelectionBoxOverlay(
-                                selectionBox = uiState.selectionBox!!,
-                                onDismiss = { viewModel.clearSelectionBox() },
-                                onSelectAllInRange = { viewModel.selectAllInRange() },
-                                onInsertIntoRange = { showBatchOperationDialog = true },
-                                onEdit = { showSelectionBoxDialog = true }
-                            )
-                        }
 
                         // DEBUG OVERLAY - ALWAYS VISIBLE for debugging
                         uiState.gestureDebugInfo?.let { debugInfo ->
@@ -342,6 +345,89 @@ private fun EmptyState() {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(0.8f)
+            )
+        }
+    }
+}
+
+/**
+ * Expandable FAB for SelectionBox actions
+ */
+@Composable
+private fun SelectionBoxFAB(
+    selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox,
+    onSelectAllInRange: () -> Unit,
+    onInsertIntoRange: () -> Unit,
+    onEdit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Action buttons (visible when expanded)
+        if (expanded) {
+            // Dismiss button
+            SmallFloatingActionButton(
+                onClick = {
+                    expanded = false
+                    onDismiss()
+                },
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Schließen",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+
+            // Edit time button
+            SmallFloatingActionButton(
+                onClick = {
+                    expanded = false
+                    onEdit()
+                }
+            ) {
+                Icon(imageVector = Icons.Default.Edit, contentDescription = "Zeit bearbeiten")
+            }
+
+            // Insert selected tasks button
+            SmallFloatingActionButton(
+                onClick = {
+                    expanded = false
+                    onInsertIntoRange()
+                },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Einfügen",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+
+            // Select all in range button
+            SmallFloatingActionButton(
+                onClick = {
+                    onSelectAllInRange()
+                    // Keep expanded to allow multiple selections
+                }
+            ) {
+                Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Alles auswählen")
+            }
+        }
+
+        // Main FAB (always visible)
+        FloatingActionButton(
+            onClick = { expanded = !expanded },
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Icon(
+                imageVector = if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.MoreVert,
+                contentDescription = if (expanded) "Einklappen" else "Aktionen"
             )
         }
     }
