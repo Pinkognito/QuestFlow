@@ -548,7 +548,7 @@ class TimelineViewModel @Inject constructor(
     /**
      * Update drag selection using ABSOLUTE screen coordinates
      * Converts absolute X/Y to DateTime, then calls regular onDragSelectionUpdate
-     * ALSO detects edge positions for auto-scroll triggering
+     * ALSO detects edge position for auto-scroll triggering
      */
     fun onDragSelectionUpdateAbsolute(absoluteX: Float, absoluteY: Float) {
         val currentState = _uiState.value
@@ -582,6 +582,50 @@ class TimelineViewModel @Inject constructor(
                 android.util.Log.d("TimelineViewModel", "📍 Drag update: X=${absoluteX.toInt()}px, Y=${absoluteY.toInt()}px → $dateTime, atEdge=$atEdge")
             }
             onDragSelectionUpdate(dateTime)
+
+            // Edge Detection for Auto-Scroll
+            // Edge border = 20% of one day column width (for LEFT/RIGHT)
+            val visibleDays = currentState.getVisibleDays()
+            val dayColumnWidth = if (visibleDays.isNotEmpty()) {
+                currentState.contentWidthPx / visibleDays.size
+            } else {
+                currentState.contentWidthPx / 3f // Fallback to 3 days
+            }
+            val edgeBorderHorizontalPx = dayColumnWidth * 0.2f // 20% of day column width
+            val edgeBorderVerticalPx = edgeBorderHorizontalPx // Same for vertical edges
+
+            val screenWidthPx = currentState.timeColumnWidthPx + currentState.contentWidthPx
+            val screenHeightPx = screenHeightDp * currentState.density // Use screenHeightDp from init
+
+            val atEdge = when {
+                // LEFT: First 20% of first day column
+                absoluteX < currentState.timeColumnWidthPx + edgeBorderHorizontalPx ->
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.LEFT
+                // RIGHT: Last 20% of last day column
+                absoluteX > screenWidthPx - edgeBorderHorizontalPx ->
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.RIGHT
+                // TOP/BOTTOM: Use same border size
+                absoluteY < edgeBorderVerticalPx ->
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.TOP
+                absoluteY > screenHeightPx - edgeBorderVerticalPx ->
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.BOTTOM
+                else ->
+                    com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE
+            }
+
+            // Update gesture debug with edge info
+            if (atEdge != com.example.questflow.presentation.screens.timeline.model.EdgePosition.NONE) {
+                android.util.Log.d("TimelineViewModel", "🔥 EDGE DETECTED: $atEdge at (${absoluteX.toInt()}, ${absoluteY.toInt()})")
+            }
+
+            updateGestureDebug(
+                gestureType = "DRAGGING",
+                elapsedMs = 0L, // We don't track elapsed time here
+                dragX = absoluteX,
+                dragY = absoluteY,
+                message = "Drag at ($absoluteX, $absoluteY)",
+                atEdge = atEdge
+            )
         }
     }
 

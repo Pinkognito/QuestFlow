@@ -2,6 +2,7 @@ package com.example.questflow.presentation.screens.timeline.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -147,18 +149,114 @@ fun TimelineGrid(
         }
     }
 
-    Column(
+    // NEW: Gesture detection for horizontal swipe and edge auto-scroll during vertical scrolling
+    var isTouching by remember { mutableStateOf(false) }
+    var currentTouchX by remember { mutableStateOf(0f) }
+    var isVerticalScrolling by remember { mutableStateOf(false) }
+    var screenWidth by remember { mutableStateOf(0f) }
+    var dayColumnWidth by remember { mutableStateOf(0f) }
+    var horizontalSwipeTriggered by remember { mutableStateOf(false) } // Prevent multiple triggers
+    var totalDragX by remember { mutableStateOf(0f) } // Accumulate horizontal movement
+
+    // Edge auto-scroll during vertical scrolling (NOT drag-selection)
+    LaunchedEffect(isTouching, currentTouchX, isVerticalScrolling) {
+        if (isTouching && isVerticalScrolling && !isDragging && dayColumnWidth > 0f) {
+            // Detect edge position (20% of day column width)
+            val edgeBorderWidth = dayColumnWidth * 0.2f
+            val timeColumnWidth = with(density) { 60.dp.toPx() }
+            val contentStartX = timeColumnWidth
+            val contentEndX = screenWidth
+            val contentWidth = contentEndX - timeColumnWidth
+
+            val relativeX = currentTouchX - timeColumnWidth
+            val isAtLeftEdge = relativeX < edgeBorderWidth
+            val isAtRightEdge = relativeX > (contentWidth - edgeBorderWidth)
+
+            if (isAtLeftEdge || isAtRightEdge) {
+                android.util.Log.d("TimelineGrid", "🔄 EDGE AUTO-SCROLL (vertical): touchX=$currentTouchX, leftEdge=$isAtLeftEdge, rightEdge=$isAtRightEdge")
+
+                // Slow delay for edge scrolling (800ms vs 300ms for drag-selection)
+                kotlinx.coroutines.delay(800)
+
+                if (isAtLeftEdge) {
+                    android.util.Log.d("TimelineGrid", "🔄 Shifting day window LEFT (vertical scroll)")
+                    onDayWindowShift(-1)
+                } else if (isAtRightEdge) {
+                    android.util.Log.d("TimelineGrid", "🔄 Shifting day window RIGHT (vertical scroll)")
+                    onDayWindowShift(1)
+                }
+            }
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { layoutCoordinates ->
-                // Measure screen width for content area calculation
-                val newWidth = layoutCoordinates.size.width.toFloat()
-                if (newWidth != screenWidthPx && newWidth > 0f) {
-                    screenWidthPx = newWidth
-                    android.util.Log.d("TimelineGrid", "📏 Screen width measured: ${screenWidthPx}px")
+                val width = layoutCoordinates.size.width.toFloat()
+                if (width != screenWidth && width > 0f) {
+                    screenWidth = width
+                    // Calculate day column width (3 columns in content area)
+                    val timeColWidth = with(density) { 60.dp.toPx() }
+                    val contentWidth = width - timeColWidth
+                    dayColumnWidth = contentWidth / 3f
+                    android.util.Log.d("TimelineGrid", "📏 Layout measured: screenWidth=$screenWidth, dayColumnWidth=$dayColumnWidth")
                 }
             }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        isTouching = true
+                        currentTouchX = offset.x
+                        isVerticalScrolling = false
+                        horizontalSwipeTriggered = false
+                        totalDragX = 0f
+                        android.util.Log.d("TimelineGrid", "👆 Gesture start: x=${offset.x}, y=${offset.y}")
+                    },
+                    onDrag = { change, dragAmount ->
+                        currentTouchX = change.position.x
+                        totalDragX += dragAmount.x
+
+                        // Detect direction early
+                        val absX = kotlin.math.abs(dragAmount.x)
+                        val absY = kotlin.math.abs(dragAmount.y)
+
+                        if (absY > absX * 2f) {
+                            // Vertical scrolling detected
+                            if (!isVerticalScrolling) {
+                                isVerticalScrolling = true
+                                android.util.Log.d("TimelineGrid", "⬆️ Vertical scroll detected")
+                            }
+                        } else if (absX > absY * 2f && !isVerticalScrolling && !horizontalSwipeTriggered) {
+                            // Horizontal swipe detected (only if not already vertical and not already triggered)
+                            if (kotlin.math.abs(totalDragX) > 100f) {
+                                horizontalSwipeTriggered = true
+                                val direction = if (totalDragX > 0) -1 else 1 // Right swipe = past, left = future
+                                android.util.Log.d("TimelineGrid", "↔️ Horizontal swipe detected ONCE: totalDragX=$totalDragX, direction=$direction")
+                                onDayWindowShift(direction)
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        android.util.Log.d("TimelineGrid", "👆 Gesture end")
+                        isTouching = false
+                        isVerticalScrolling = false
+                        horizontalSwipeTriggered = false
+                        totalDragX = 0f
+                    },
+                    onDragCancel = {
+                        android.util.Log.d("TimelineGrid", "❌ Gesture cancelled")
+                        isTouching = false
+                        isVerticalScrolling = false
+                        horizontalSwipeTriggered = false
+                        totalDragX = 0f
+                    }
+                )
+            }
     ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
         // STICKY Header (fixed at top)
         Row(
             modifier = Modifier
@@ -217,6 +315,7 @@ fun TimelineGrid(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -543,7 +642,10 @@ private fun DayHeader(
     val dayOfMonth = date.dayOfMonth
     val month = date.monthValue
 
-    Column(
+    // Format: "15.10(Mi)"
+    val headerText = "$dayOfMonth.$month($dayOfWeek)"
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
@@ -554,29 +656,13 @@ private fun DayHeader(
                 }
             )
             .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        contentAlignment = Alignment.Center
     ) {
-        // Day of week
         Text(
-            text = dayOfWeek,
+            text = headerText,
             style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                 fontSize = 12.sp
-            ),
-            color = if (isToday) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            textAlign = TextAlign.Center
-        )
-
-        // Day and month
-        Text(
-            text = "$dayOfMonth.$month",
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 11.sp
             ),
             color = if (isToday) {
                 MaterialTheme.colorScheme.primary
