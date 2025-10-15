@@ -127,6 +127,19 @@ fun TimelineScreen(
                         uiState.gestureDebugInfo?.let { debugInfo ->
                             GestureDebugOverlay(debugInfo = debugInfo)
                         }
+
+                        // RADIAL CONTEXT MENU - Appears after drag selection
+                        uiState.contextMenu?.let { contextMenuState ->
+                            RadialContextMenu(
+                                state = contextMenuState,
+                                onActionSelected = { actionId ->
+                                    viewModel.executeContextMenuAction(actionId)
+                                },
+                                onDismiss = {
+                                    viewModel.dismissContextMenu()
+                                }
+                            )
+                        }
                     }
                 }
             }

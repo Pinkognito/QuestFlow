@@ -438,6 +438,164 @@ class TimelineViewModel @Inject constructor(
         _uiState.update { it.copy(dragSelectionState = null) }
     }
 
+    // ====== Absolute Coordinate Methods (for Multi-Day Drag) ======
+
+    /**
+     * Update layout metrics (header height, time column width, content width, density)
+     * Called from TimelineGrid once layout is measured
+     * NOTE: pixelsPerMinute is managed by settings flow and updateScreenHeight()
+     */
+    fun updateLayoutMetrics(
+        headerHeightPx: Float,
+        timeColumnWidthPx: Float,
+        contentWidthPx: Float,
+        density: Float
+    ) {
+        android.util.Log.d("TimelineViewModel", "📐 updateLayoutMetrics: headerHeight=${headerHeightPx}px, timeColWidth=${timeColumnWidthPx}px, contentWidth=${contentWidthPx}px, density=$density")
+        _uiState.update { it.copy(
+            headerHeightPx = headerHeightPx,
+            timeColumnWidthPx = timeColumnWidthPx,
+            contentWidthPx = contentWidthPx,
+            density = density
+        )}
+    }
+
+    /**
+     * Update current scroll position (for absolute coordinate calculation)
+     * Called from TimelineGrid on every scroll event
+     */
+    fun updateScrollPosition(scrollOffsetPx: Float) {
+        // Only log if significantly changed (avoid spam)
+        val oldOffset = _uiState.value.currentScrollOffsetPx
+        if (kotlin.math.abs(scrollOffsetPx - oldOffset) > 50f) {
+            android.util.Log.d("TimelineViewModel", "📜 updateScrollPosition: ${scrollOffsetPx}px (Δ${scrollOffsetPx - oldOffset}px)")
+        }
+        _uiState.update { it.copy(currentScrollOffsetPx = scrollOffsetPx) }
+    }
+
+    /**
+     * Start drag selection using ABSOLUTE screen coordinates
+     * Converts absolute X/Y to DateTime, then calls regular onDragSelectionStart
+     */
+    fun onDragSelectionStartAbsolute(absoluteX: Float, absoluteY: Float) {
+        android.util.Log.d("TimelineViewModel", "🎯 onDragSelectionStartAbsolute: X=${absoluteX}px, Y=${absoluteY}px")
+
+        val currentState = _uiState.value
+        val dateTime = calculateDateTimeFromAbsolutePosition(
+            absoluteX = absoluteX,
+            absoluteY = absoluteY,
+            visibleDays = currentState.getVisibleDays(),
+            timeColumnWidthPx = currentState.timeColumnWidthPx,
+            headerHeightPx = currentState.headerHeightPx,
+            scrollOffsetPx = currentState.currentScrollOffsetPx,
+            pixelsPerMinute = currentState.pixelsPerMinute
+        )
+
+        if (dateTime != null) {
+            android.util.Log.d("TimelineViewModel", "✅ Converted to DateTime: $dateTime")
+            onDragSelectionStart(dateTime)
+        } else {
+            android.util.Log.w("TimelineViewModel", "❌ Could not convert absolute position to DateTime (outside valid area)")
+        }
+    }
+
+    /**
+     * Update drag selection using ABSOLUTE screen coordinates
+     * Converts absolute X/Y to DateTime, then calls regular onDragSelectionUpdate
+     */
+    fun onDragSelectionUpdateAbsolute(absoluteX: Float, absoluteY: Float) {
+        val currentState = _uiState.value
+        val dateTime = calculateDateTimeFromAbsolutePosition(
+            absoluteX = absoluteX,
+            absoluteY = absoluteY,
+            visibleDays = currentState.getVisibleDays(),
+            timeColumnWidthPx = currentState.timeColumnWidthPx,
+            headerHeightPx = currentState.headerHeightPx,
+            scrollOffsetPx = currentState.currentScrollOffsetPx,
+            pixelsPerMinute = currentState.pixelsPerMinute
+        )
+
+        if (dateTime != null) {
+            // Only log every ~100ms equivalent (reduce spam)
+            if (System.currentTimeMillis() % 3 == 0L) {
+                android.util.Log.d("TimelineViewModel", "📍 Drag update: X=${absoluteX.toInt()}px, Y=${absoluteY.toInt()}px → $dateTime")
+            }
+            onDragSelectionUpdate(dateTime)
+        }
+    }
+
+    /**
+     * Calculate DateTime from absolute screen position
+     * This enables multi-day drag across different HourSlot cells
+     */
+    private fun calculateDateTimeFromAbsolutePosition(
+        absoluteX: Float,
+        absoluteY: Float,
+        visibleDays: List<com.example.questflow.presentation.screens.timeline.model.DayTimeline>,
+        timeColumnWidthPx: Float,
+        headerHeightPx: Float,
+        scrollOffsetPx: Float,
+        pixelsPerMinute: Float
+    ): LocalDateTime? {
+        val contentWidthPx = _uiState.value.contentWidthPx
+        android.util.Log.d("TimelineViewModel", "🔢 calculateDateTime: X=$absoluteX, Y=$absoluteY, scroll=$scrollOffsetPx, visibleDays=${visibleDays.size}, contentWidth=$contentWidthPx")
+
+        // 1. Which day? (X-axis)
+        val xRelativeToContent = absoluteX - timeColumnWidthPx
+        android.util.Log.d("TimelineViewModel", "  ├─ X relative to content: $xRelativeToContent (after subtracting timeCol=$timeColumnWidthPx)")
+
+        if (xRelativeToContent < 0) {
+            android.util.Log.d("TimelineViewModel", "  └─ ❌ Touch in time column")
+            return null // Touch in time column
+        }
+
+        if (visibleDays.isEmpty()) {
+            android.util.Log.d("TimelineViewModel", "  └─ ❌ No visible days")
+            return null
+        }
+
+        // Each day gets equal width from the total content area
+        val dayColumnWidth = contentWidthPx / visibleDays.size
+        val dayIndex = (xRelativeToContent / dayColumnWidth).toInt().coerceIn(0, visibleDays.size - 1)
+
+        android.util.Log.d("TimelineViewModel", "  ├─ Content width: ${contentWidthPx}px, day column width: ${dayColumnWidth}px, dayIndex: $dayIndex")
+
+        if (dayIndex !in visibleDays.indices) {
+            android.util.Log.d("TimelineViewModel", "  └─ ❌ dayIndex $dayIndex out of range [0, ${visibleDays.size-1}]")
+            return null
+        }
+
+        val targetDay = visibleDays[dayIndex]
+        android.util.Log.d("TimelineViewModel", "  ├─ ✅ Target day: ${targetDay.date}")
+
+        // 2. Which time? (Y-axis + scroll offset)
+        val yRelativeToContent = absoluteY - headerHeightPx
+        android.util.Log.d("TimelineViewModel", "  ├─ Y relative to content: $yRelativeToContent (after subtracting header=$headerHeightPx)")
+
+        if (yRelativeToContent < 0) {
+            android.util.Log.d("TimelineViewModel", "  └─ ❌ Touch in header")
+            return null // Touch in header
+        }
+
+        // Add scroll offset to get absolute Y position in full timeline
+        val absoluteYInTimeline = yRelativeToContent + scrollOffsetPx
+        android.util.Log.d("TimelineViewModel", "  ├─ Absolute Y in timeline: $absoluteYInTimeline (Y=$yRelativeToContent + scroll=$scrollOffsetPx)")
+
+        // Convert DP/min → PX/min using density
+        val density = _uiState.value.density
+        val pixelsPerMinuteActual = pixelsPerMinute * density
+        android.util.Log.d("TimelineViewModel", "  ├─ Conversion: dpPerMin=$pixelsPerMinute, density=$density, pxPerMin=$pixelsPerMinuteActual")
+
+        // Convert to minutes (0-1439 for full day)
+        val totalMinutes = (absoluteYInTimeline / pixelsPerMinuteActual).toInt().coerceIn(0, 1439)
+        val hour = (totalMinutes / 60).coerceIn(0, 23)
+        val minute = (totalMinutes % 60).coerceIn(0, 59)
+
+        android.util.Log.d("TimelineViewModel", "  └─ ✅ Time: $hour:${String.format("%02d", minute)} (totalMin=$totalMinutes)")
+
+        return LocalDateTime.of(targetDay.date, java.time.LocalTime.of(hour, minute))
+    }
+
     /**
      * Update gesture debug info for visual feedback with history
      * Smart history: Only adds entry if gesture type changes OR direction changes (for swipes)
@@ -528,6 +686,102 @@ class TimelineViewModel @Inject constructor(
         }
 
         setSelectionBox(task.startTime, task.endTime)
+    }
+
+    // ====== Context Menu Methods ======
+
+    /**
+     * Show radial context menu at finger release position
+     * Automatically determines menu type based on selection context
+     */
+    fun showContextMenu(centerX: Float, centerY: Float) {
+        val selectionBox = _uiState.value.selectionBox ?: run {
+            android.util.Log.w("TimelineViewModel", "showContextMenu called without SelectionBox")
+            return
+        }
+
+        val tasksInBox = _uiState.value.getTasksInSelectionBox()
+        val menuType = if (tasksInBox.isEmpty()) {
+            com.example.questflow.presentation.screens.timeline.model.ContextMenuType.SELECTION_EMPTY
+        } else {
+            com.example.questflow.presentation.screens.timeline.model.ContextMenuType.SELECTION_WITH_TASKS
+        }
+
+        android.util.Log.d("TimelineViewModel", "🎯 Show context menu: center=($centerX, $centerY), type=$menuType, tasksInBox=${tasksInBox.size}")
+
+        _uiState.update { it.copy(
+            contextMenu = com.example.questflow.presentation.screens.timeline.model.ContextMenuState(
+                centerX = centerX,
+                centerY = centerY,
+                selectionBox = selectionBox,
+                selectedTasksInBox = tasksInBox.size,
+                menuType = menuType
+            )
+        )}
+    }
+
+    /**
+     * Dismiss context menu
+     */
+    fun dismissContextMenu() {
+        android.util.Log.d("TimelineViewModel", "❌ Dismiss context menu")
+        _uiState.update { it.copy(contextMenu = null) }
+    }
+
+    /**
+     * Execute context menu action
+     */
+    fun executeContextMenuAction(actionId: String) {
+        val contextMenu = _uiState.value.contextMenu ?: return
+
+        android.util.Log.d("TimelineViewModel", "⚡ Execute context menu action: $actionId")
+
+        when (actionId) {
+            "insert" -> {
+                // Insert selected tasks into selection box
+                insertSelectedIntoRange()
+                // SelectionBox wird in insertSelectedIntoRange() gelöscht
+                dismissContextMenu()
+            }
+            "delete" -> {
+                // Delete all tasks in selection box
+                val tasksInBox = _uiState.value.getTasksInSelectionBox()
+                android.util.Log.d("TimelineViewModel", "Delete ${tasksInBox.size} tasks in selection box")
+                // TODO: Implement delete UseCase
+                dismissContextMenu()
+                // SelectionBox bleibt erhalten für weitere Aktionen
+            }
+            "edit" -> {
+                // Edit selection box time range
+                android.util.Log.d("TimelineViewModel", "Edit selection box - opening dialog")
+                dismissContextMenu()
+                // SelectionBox bleibt erhalten, Dialog wird vom Screen geöffnet
+                // TODO: Signal to screen to open SelectionBoxDialog
+            }
+            "details" -> {
+                // Show list of selected tasks
+                toggleSelectionList()
+                dismissContextMenu()
+                // SelectionBox bleibt erhalten
+            }
+            "create" -> {
+                // Create new task in selection box
+                android.util.Log.d("TimelineViewModel", "Create new task in selection box")
+                // TODO: Implement create task flow
+                dismissContextMenu()
+                // SelectionBox bleibt erhalten
+            }
+            "cancel" -> {
+                // Cancel selection - ONLY action that clears SelectionBox
+                clearSelectionBox()
+                dismissContextMenu()
+            }
+            else -> {
+                android.util.Log.w("TimelineViewModel", "Unknown context menu action: $actionId")
+                dismissContextMenu()
+                // SelectionBox bleibt erhalten bei unbekannten Aktionen
+            }
+        }
     }
 }
 

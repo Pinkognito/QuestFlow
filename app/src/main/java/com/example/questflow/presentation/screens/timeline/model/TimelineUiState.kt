@@ -31,6 +31,13 @@ data class TimelineUiState(
     val snapToGridMinutes: Int = 15,
     val edgeBorderWidthDp: Float = 80f, // Edge detection border width for auto-scroll
 
+    // Absolute coordinate calculation (for multi-day drag)
+    val currentScrollOffsetPx: Float = 0f, // Current scroll position in pixels
+    val headerHeightPx: Float = 144f, // Header height in pixels (default: 48dp × 3.0 density)
+    val timeColumnWidthPx: Float = 180f, // Time column width in pixels (default: 60dp × 3.0 density)
+    val contentWidthPx: Float = 900f, // Content area width in pixels (screen width - timeColumnWidth)
+    val density: Float = 3.0f, // Screen density for DP→PX conversion in coordinate calculations
+
     // Interaction state
     val selectedTask: TimelineTask? = null,
     val showSettings: Boolean = false,
@@ -51,7 +58,10 @@ data class TimelineUiState(
     val error: String? = null,
 
     // Debug state for gesture visualization
-    val gestureDebugInfo: GestureDebugInfo? = null
+    val gestureDebugInfo: GestureDebugInfo? = null,
+
+    // Context menu state (radial menu after drag release)
+    val contextMenu: ContextMenuState? = null
 ) {
     /**
      * Calculate total timeline height in pixels (full 24 hours)
@@ -256,3 +266,34 @@ data class GestureDebugInfo(
 enum class EdgePosition {
     LEFT, RIGHT, TOP, BOTTOM, NONE
 }
+
+/**
+ * Context menu state for radial menu after drag selection
+ */
+data class ContextMenuState(
+    val centerX: Float, // Screen position where finger was released
+    val centerY: Float,
+    val selectionBox: SelectionBox,
+    val selectedTasksInBox: Int, // Number of tasks within the selection box
+    val menuType: ContextMenuType
+)
+
+/**
+ * Type of context menu based on selection context
+ */
+enum class ContextMenuType {
+    SELECTION_WITH_TASKS,   // SelectionBox contains tasks → Insert/Delete/Edit options
+    SELECTION_EMPTY,        // SelectionBox is empty → Create/Insert/Edit options
+    SINGLE_TASK             // Long-press on single task → Complete/Edit/Delete options
+}
+
+/**
+ * Context menu action definition
+ */
+data class ContextMenuAction(
+    val id: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val angle: Float, // Angle in degrees: 0°=right, 90°=top, 180°=left, 270°=bottom
+    val color: androidx.compose.ui.graphics.Color? = null
+)

@@ -8,7 +8,12 @@
       "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Add text template enhancements and contact image persistence\n\nFeatures:\n- Contact image persistence fix using OpenDocument & takePersistableUriPermission\n- Text template subject field for emails and calendar events\n- Dynamic placeholder selector dialog with hierarchical navigation\n- Auto-populate subject field in email/meeting actions from templates\n\nDatabase:\n- Migration 30→31: Add subject field to text_templates table\n- Database version: 31\n\nComponents:\n- PlaceholderSelectorDialog: 5 categories (Contact, Task, Location, DateTime, User)\n- Enhanced ActionDialog: Template subject integration for EMAIL & MEETING actions\n- ContactDetailScreen: Fixed image URI permissions\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(rm:*)",
+      "Bash(timeout 15 adb logcat)",
+      "Bash(tee:*)",
+      "Bash(timeout 15 adb logcat -c)",
+      "Bash(timeout 30 adb logcat)"
     ],
     "deny": [],
     "ask": []

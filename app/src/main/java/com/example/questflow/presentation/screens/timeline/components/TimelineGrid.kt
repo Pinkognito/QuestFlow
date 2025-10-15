@@ -2,14 +2,11 @@ package com.example.questflow.presentation.screens.timeline.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
-import kotlin.math.abs
-import kotlin.math.sqrt
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,7 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,18 +29,21 @@ import com.example.questflow.presentation.screens.timeline.model.TimelineUiState
 import com.example.questflow.presentation.screens.timeline.model.DayTimeline
 import com.example.questflow.domain.model.TimelineTask
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * UNIFIED Timeline Grid - TRUE TABLE where EVERYTHING scrolls together.
+ * UNIFIED Timeline Grid - Single-Layer Gesture Architecture
  *
  * KEY ARCHITECTURE:
  * - Single LazyColumn with rows containing [Time | Day1 | Day2 | Day3]
  * - Time scrolls WITH the days - unified table
  * - Sticky header (stays visible during scroll)
- * - Drag-to-select gesture overlay (spans entire day, not just per-hour)
- * - Transparent overlay for gesture capture (doesn't block task taps)
+ * - UNIFIED GESTURE HANDLER: All gestures handled in HourSlots directly
+ * - No separate overlay - LazyColumn is always responsive
+ * - Drag-to-select with detectDragGesturesAfterLongPress (nahtlos!)
  * - Smart scroll: only when near edges during drag selection
  * - Only visible rows rendered (~5-10 out of 24)
  */
@@ -72,6 +76,39 @@ fun TimelineGrid(
     // Header height for coordinate calculations
     val headerHeightDp = 48.dp
     val headerHeightPx = with(density) { headerHeightDp.toPx() }
+    val timeColumnWidthPx = with(density) { 60.dp.toPx() }
+
+    // Measure screen width to calculate content area width
+    var screenWidthPx by remember { mutableStateOf(0f) }
+
+    // Update ViewModel with layout metrics (once at composition)
+    // NOTE: Do NOT include pixelsPerMinute as a key - it would create a feedback loop!
+    LaunchedEffect(headerHeightPx, timeColumnWidthPx, screenWidthPx, density.density) {
+        if (screenWidthPx > 0f) {
+            val contentWidthPx = screenWidthPx - timeColumnWidthPx
+            android.util.Log.d("TimelineGrid", "📐 Updating layout metrics: headerHeight=${headerHeightPx}px, timeColWidth=${timeColumnWidthPx}px, screenWidth=${screenWidthPx}px, contentWidth=${contentWidthPx}px, density=${density.density}")
+            viewModel.updateLayoutMetrics(
+                headerHeightPx = headerHeightPx,
+                timeColumnWidthPx = timeColumnWidthPx,
+                contentWidthPx = contentWidthPx,
+                density = density.density
+            )
+        }
+    }
+
+    // Update ViewModel with scroll position (on every scroll)
+    LaunchedEffect(scrollState.firstVisibleItemIndex, scrollState.firstVisibleItemScrollOffset) {
+        val hourHeightPx = with(density) { hourHeightDp.toPx() }
+        val scrollOffsetPx = scrollState.firstVisibleItemIndex * hourHeightPx +
+            scrollState.firstVisibleItemScrollOffset.toFloat()
+
+        // Only log significant changes (reduce spam)
+        if (scrollState.firstVisibleItemIndex == 0 && scrollState.firstVisibleItemScrollOffset == 0) {
+            android.util.Log.d("TimelineGrid", "📜 Scroll at top: offset=0px")
+        }
+
+        viewModel.updateScrollPosition(scrollOffsetPx)
+    }
 
     // Auto-scroll effect: Continuously scroll when at edge during drag selection
     val atEdge = uiState.gestureDebugInfo?.atEdge
@@ -110,7 +147,18 @@ fun TimelineGrid(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { layoutCoordinates ->
+                // Measure screen width for content area calculation
+                val newWidth = layoutCoordinates.size.width.toFloat()
+                if (newWidth != screenWidthPx && newWidth > 0f) {
+                    screenWidthPx = newWidth
+                    android.util.Log.d("TimelineGrid", "📏 Screen width measured: ${screenWidthPx}px")
+                }
+            }
+    ) {
         // STICKY Header (fixed at top)
         Row(
             modifier = Modifier
@@ -132,63 +180,50 @@ fun TimelineGrid(
             }
         }
 
-        // Scrollable content with ALWAYS-ACTIVE overlay
-        Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                state = scrollState,
-                userScrollEnabled = uiState.dragSelectionState == null, // Disable scroll during drag
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // 24 hour rows
-                items(24) { hour ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        // Time label (scrolls with row)
-                        TimeAxisHourRow(
+        // UNIFIED GESTURE ARCHITECTURE: LazyColumn is ALWAYS responsive
+        // Gestures handled directly in HourSlots with detectDragGesturesAfterLongPress
+        LazyColumn(
+            state = scrollState,
+            userScrollEnabled = uiState.dragSelectionState == null, // Disable scroll during drag
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // 24 hour rows
+            items(24) { hour ->
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    // Time label (scrolls with row)
+                    TimeAxisHourRow(
+                        hour = hour,
+                        hourHeightDp = hourHeightDp,
+                        modifier = Modifier.width(60.dp)
+                    )
+
+                    // 3 day columns - UNIFIED GESTURE HANDLER
+                    visibleDays.forEach { day ->
+                        HourSlotWithTasks(
                             hour = hour,
                             hourHeightDp = hourHeightDp,
-                            modifier = Modifier.width(60.dp)
+                            dayTimeline = day,
+                            dpPerMinute = dpPerMinute,
+                            pixelsPerMinute = pixelsPerMinute,
+                            scrollState = scrollState,
+                            selectedTaskIds = uiState.selectedTaskIds,
+                            selectionBox = uiState.selectionBox,
+                            dragSelectionState = uiState.dragSelectionState,
+                            onTaskClick = onTaskClick,
+                            onTaskLongPress = onTaskLongPress,
+                            viewModel = viewModel,
+                            modifier = Modifier.weight(1f)
                         )
-
-                        // 3 day columns - with LongPress detection on empty areas
-                        visibleDays.forEach { day ->
-                            HourSlotWithTasks(
-                                hour = hour,
-                                hourHeightDp = hourHeightDp,
-                                dayTimeline = day,
-                                dpPerMinute = dpPerMinute,
-                                selectedTaskIds = uiState.selectedTaskIds,
-                                selectionBox = uiState.selectionBox,
-                                dragSelectionState = uiState.dragSelectionState,
-                                onTaskClick = onTaskClick,
-                                onTaskLongPress = onTaskLongPress,
-                                viewModel = viewModel,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
                     }
                 }
             }
-
-            // ALWAYS-ACTIVE OVERLAY - Handles ALL gestures
-            // Smart pass-through: taps and swipes go to LazyColumn, long-press triggers drag
-            TimelineGestureOverlay(
-                visibleDays = visibleDays,
-                scrollState = scrollState,
-                pixelsPerMinute = pixelsPerMinute,
-                headerHeightPx = headerHeightPx,
-                timeColumnWidthDp = 60.dp,
-                onTaskClick = onTaskClick,
-                onTaskLongPress = onTaskLongPress,
-                viewModel = viewModel,
-                modifier = Modifier.fillMaxSize()
-            )
         }
     }
 }
 
 /**
  * Single hour slot for one day, containing background grid, selection box overlay, and tasks.
- * Gesture detection: LongPress on EMPTY areas activates drag mode
+ * UNIFIED GESTURE HANDLER: detectDragGesturesAfterLongPress for nahtlosen Übergang
  */
 @Composable
 private fun HourSlotWithTasks(
@@ -196,6 +231,8 @@ private fun HourSlotWithTasks(
     hourHeightDp: androidx.compose.ui.unit.Dp,
     dayTimeline: DayTimeline,
     dpPerMinute: Float,  // DP per minute for task rendering
+    pixelsPerMinute: Float,  // Pixels per minute for calculations
+    scrollState: LazyListState,
     selectedTaskIds: Set<Long> = emptySet(),
     selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox? = null,
     dragSelectionState: com.example.questflow.presentation.screens.timeline.model.DragSelectionState? = null,
@@ -204,10 +241,136 @@ private fun HourSlotWithTasks(
     viewModel: TimelineViewModel,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var lastDragPosition by remember { mutableStateOf<Offset?>(null) }
+
+    // NEW: Track absolute position of this cell on screen
+    var cellAbsolutePosition by remember { mutableStateOf(Offset.Zero) }
+
+    // CRITICAL: positionInRoot() returns position relative to ROOT (entire screen)
+    // We need to subtract TopAppBar height only (Table header is part of scrolling content)
+    // TopAppBar (Scaffold topBar): 64dp = ~192px at density 3.0
+    val topAppBarHeightPx = with(density) { 64.dp.toPx() }  // Material3 TopAppBar standard height
+
+    /**
+     * Helper: Calculate DateTime from touch position within this HourSlot
+     */
+    fun calculateDateTime(offset: Offset, slotWidth: Float, slotHeight: Float): LocalDateTime {
+        // Y-position within hour (0-59 minutes)
+        val minute = (offset.y / slotHeight * 60).toInt().coerceIn(0, 59)
+
+        // Calculate absolute scroll position to handle multi-day drag
+        val hourHeightPx = slotHeight
+        val scrollOffsetPx = scrollState.firstVisibleItemIndex * hourHeightPx +
+                scrollState.firstVisibleItemScrollOffset.toFloat()
+        val absoluteY = offset.y + (hour * hourHeightPx) + scrollOffsetPx
+
+        // Calculate total minutes from midnight
+        val totalMinutesRaw = (absoluteY / (hourHeightPx / 60)).toInt()
+
+        // Handle day overflow for multi-day drag
+        val dayOffset = when {
+            totalMinutesRaw < 0 -> (totalMinutesRaw / 1440) - 1
+            totalMinutesRaw >= 1440 -> totalMinutesRaw / 1440
+            else -> 0
+        }
+
+        val minutesInDay = if (totalMinutesRaw < 0) {
+            1440 + (totalMinutesRaw % 1440)
+        } else {
+            totalMinutesRaw % 1440
+        }
+
+        val finalHour = (minutesInDay / 60).coerceIn(0, 23)
+        val finalMinute = (minutesInDay % 60).coerceIn(0, 59)
+        val targetDate = dayTimeline.date.plusDays(dayOffset.toLong())
+
+        return LocalDateTime.of(targetDate, LocalTime.of(finalHour, finalMinute))
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(hourHeightDp)
+            .onGloballyPositioned { layoutCoordinates ->
+                // Track absolute screen position of this cell
+                val newPosition = layoutCoordinates.positionInRoot()
+                if (cellAbsolutePosition != newPosition) {
+                    cellAbsolutePosition = newPosition
+                    android.util.Log.d("HourSlot", "📍 Cell position updated: day=${dayTimeline.date}, hour=$hour, position=$newPosition")
+                }
+            }
+            .pointerInput(Unit) {
+                // UNIFIED GESTURE HANDLER: Nahtloser Long-Press → Drag mit ABSOLUTEN Koordinaten
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { relativeOffset ->
+                        // relativeOffset = Position innerhalb dieser Zelle
+                        // cellAbsolutePosition = Position dieser Zelle auf dem Screen
+                        val absoluteScreenPos = relativeOffset + cellAbsolutePosition
+
+                        // CRITICAL FIX: positionInRoot() includes TopAppBar!
+                        // We need to subtract TopAppBar to get timeline-relative Y coordinate
+                        val correctedY = absoluteScreenPos.y - topAppBarHeightPx
+
+                        android.util.Log.d("HourSlot", "🔥 DRAG START: day=${dayTimeline.date}, hour=$hour")
+                        android.util.Log.d("HourSlot", "  ├─ Relative offset: $relativeOffset")
+                        android.util.Log.d("HourSlot", "  ├─ Cell absolute pos: $cellAbsolutePosition")
+                        android.util.Log.d("HourSlot", "  ├─ Absolute screen pos: $absoluteScreenPos")
+                        android.util.Log.d("HourSlot", "  ├─ TopAppBar height: ${topAppBarHeightPx}px")
+                        android.util.Log.d("HourSlot", "  └─ Corrected Y (TopAppBar subtracted): $correctedY")
+
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+
+                        lastDragPosition = absoluteScreenPos
+
+                        // NEW: Use absolute coordinates for multi-day drag (with BOTH headers corrected)
+                        viewModel.onDragSelectionStartAbsolute(
+                            absoluteX = absoluteScreenPos.x,
+                            absoluteY = correctedY
+                        )
+                    },
+                    onDrag = { change, dragAmount ->
+                        // Live Update während Drag mit ABSOLUTEN Koordinaten
+                        val absoluteScreenPos = change.position + cellAbsolutePosition
+
+                        // CRITICAL FIX: Subtract TopAppBar height here too
+                        val correctedY = absoluteScreenPos.y - topAppBarHeightPx
+
+                        lastDragPosition = absoluteScreenPos
+
+                        // NEW: Use absolute coordinates for multi-day drag (with TopAppBar corrected)
+                        viewModel.onDragSelectionUpdateAbsolute(
+                            absoluteX = absoluteScreenPos.x,
+                            absoluteY = correctedY
+                        )
+
+                        // Only log occasionally (reduce spam)
+                        if (System.currentTimeMillis() % 5 == 0L) {
+                            android.util.Log.d("HourSlot", "📍 DRAG UPDATE: relative=${change.position}, absolute=$absoluteScreenPos, correctedY=$correctedY")
+                        }
+                    },
+                    onDragEnd = {
+                        // Finger Released - Show Context Menu
+                        val releasePos = lastDragPosition
+
+                        android.util.Log.d("HourSlot", "✅ DRAG END at absolute position: $releasePos")
+                        viewModel.onDragSelectionEnd()
+
+                        if (releasePos != null) {
+                            viewModel.showContextMenu(releasePos.x, releasePos.y)
+                        }
+
+                        viewModel.clearGestureDebug()
+                    },
+                    onDragCancel = {
+                        // Drag Cancelled
+                        android.util.Log.d("HourSlot", "❌ DRAG CANCELLED")
+                        viewModel.onDragSelectionCancel()
+                        viewModel.clearGestureDebug()
+                    }
+                )
+            }
     ) {
         // Background grid for this hour slot
         HourBackgroundGrid(
