@@ -9,19 +9,22 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Settings dialog for timeline view.
- * UPDATED: Now supports 0-24 hours tolerance and zoom control (visible hours).
+ * UPDATED: Supports tolerance, zoom, and long-press delay configuration.
  */
 @Composable
 fun TimelineSettingsDialog(
     currentTolerance: Int, // In minutes (0-1440)
     currentVisibleHours: Float, // Zoom level (2-24 hours)
+    currentLongPressDelayMs: Long = 250L, // Long-press delay in ms
     onDismiss: () -> Unit,
     onToleranceChange: (Int) -> Unit,
     onVisibleHoursChange: (Float) -> Unit,
+    onLongPressDelayChange: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var toleranceHours by remember { mutableStateOf(currentTolerance / 60f) }
     var visibleHours by remember { mutableStateOf(currentVisibleHours) }
+    var longPressDelayMs by remember { mutableStateOf(currentLongPressDelayMs.toFloat()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -107,6 +110,36 @@ fun TimelineSettingsDialog(
                     }
                 }
 
+                // Long-Press Delay setting (50-1000ms)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Long-Press Verzögerung: ${longPressDelayMs.toInt()}ms",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+
+                    Text(
+                        text = "Zeit bis Drag-Selektion oder Task-Toggle startet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Slider(
+                        value = longPressDelayMs,
+                        onValueChange = { longPressDelayMs = it },
+                        valueRange = 50f..1000f,
+                        steps = 18, // 50ms steps
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("50ms (sehr schnell)", style = MaterialTheme.typography.labelSmall)
+                        Text("1000ms (langsam)", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+
                 // Info text
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -135,6 +168,7 @@ fun TimelineSettingsDialog(
                     val totalMinutes = (toleranceHours * 60).toInt()
                     onToleranceChange(totalMinutes)
                     onVisibleHoursChange(visibleHours)
+                    onLongPressDelayChange(longPressDelayMs.toLong())
                     onDismiss()
                 }
             ) {

@@ -3,6 +3,8 @@ package com.example.questflow.presentation.screens.timeline.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.questflow.domain.model.TimelineTask
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Task bar component for vertical timeline view.
@@ -30,6 +33,7 @@ import com.example.questflow.domain.model.TimelineTask
 fun TaskBalken(
     task: TimelineTask,
     pixelsPerMinute: Float,
+    longPressDelayMs: Long = 250L,
     onLongPress: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -76,10 +80,52 @@ fun TaskBalken(
             )
             .pointerInput(task.id) {
                 if (!task.isExternal) { // External events are not clickable
-                    detectTapGestures(
-                        onTap = { onClick() },
-                        onLongPress = { onLongPress() }
-                    )
+                    // CUSTOM 500ms Long-Press detection
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val downPosition = down.position
+                        val downTime = System.currentTimeMillis()
+
+                        android.util.Log.d("TaskBalken", "👇 Task touch down: ${task.title}")
+
+                        // Wait for configurable long press
+                        val longPressDetected = withTimeoutOrNull(longPressDelayMs) {
+                            var currentEvent = down
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                currentEvent = event.changes.first()
+
+                                // Check if moved too much (> 20px = not a long press)
+                                val delta = (currentEvent.position - downPosition).getDistance()
+                                if (delta > 20f) {
+                                    android.util.Log.d("TaskBalken", "❌ Moved too much, not long press")
+                                    return@withTimeoutOrNull false
+                                }
+
+                                // Check if released (could be tap)
+                                if (!currentEvent.pressed) {
+                                    val duration = System.currentTimeMillis() - downTime
+                                    android.util.Log.d("TaskBalken", "👆 Released after ${duration}ms")
+                                    return@withTimeoutOrNull false
+                                }
+                            }
+                            @Suppress("UNREACHABLE_CODE")
+                            true
+                        }
+
+                        if (longPressDetected == null) {
+                            // 500ms passed = Long press!
+                            android.util.Log.d("TaskBalken", "✅ Long press detected: ${task.title}")
+                            onLongPress()
+                            // Consume remaining events
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                        } else if (longPressDetected == false) {
+                            // Released early = Tap
+                            android.util.Log.d("TaskBalken", "👆 Tap detected: ${task.title}")
+                            onClick()
+                        }
+                    }
                 }
             }
             .padding(horizontal = 6.dp, vertical = 4.dp),

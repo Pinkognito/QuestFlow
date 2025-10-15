@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -19,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -30,6 +35,7 @@ import com.example.questflow.presentation.screens.timeline.TimelineViewModel
 import com.example.questflow.presentation.screens.timeline.model.TimelineUiState
 import com.example.questflow.presentation.screens.timeline.model.DayTimeline
 import com.example.questflow.domain.model.TimelineTask
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.LocalDateTime
@@ -52,6 +58,7 @@ import java.util.Locale
 @Composable
 fun TimelineGrid(
     uiState: TimelineUiState,
+    longPressDelayMs: Long = 250L,
     onTaskClick: (TimelineTask) -> Unit,
     onTaskLongPress: (TimelineTask) -> Unit,
     onLoadMore: (direction: TimelineViewModel.LoadDirection) -> Unit,
@@ -304,6 +311,7 @@ fun TimelineGrid(
                             dpPerMinute = dpPerMinute,
                             pixelsPerMinute = pixelsPerMinute,
                             scrollState = scrollState,
+                            longPressDelayMs = longPressDelayMs,
                             selectedTaskIds = uiState.selectedTaskIds,
                             selectionBox = uiState.selectionBox,
                             dragSelectionState = uiState.dragSelectionState,
@@ -332,6 +340,7 @@ private fun HourSlotWithTasks(
     dpPerMinute: Float,  // DP per minute for task rendering
     pixelsPerMinute: Float,  // Pixels per minute for calculations
     scrollState: LazyListState,
+    longPressDelayMs: Long = 250L,
     selectedTaskIds: Set<Long> = emptySet(),
     selectionBox: com.example.questflow.presentation.screens.timeline.model.SelectionBox? = null,
     dragSelectionState: com.example.questflow.presentation.screens.timeline.model.DragSelectionState? = null,
@@ -401,74 +410,91 @@ private fun HourSlotWithTasks(
                 }
             }
             .pointerInput(Unit) {
-                // UNIFIED GESTURE HANDLER: Nahtloser Long-Press → Drag mit ABSOLUTEN Koordinaten
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { relativeOffset ->
-                        // relativeOffset = Position innerhalb dieser Zelle
-                        // cellAbsolutePosition = Position dieser Zelle auf dem Screen
-                        val absoluteScreenPos = relativeOffset + cellAbsolutePosition
+                // CUSTOM 500ms Long-Press → Drag mit ABSOLUTEN Koordinaten
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downPosition = down.position
 
-                        // CRITICAL FIX: positionInRoot() includes TopAppBar!
-                        // We need to subtract TopAppBar to get timeline-relative Y coordinate
+                    android.util.Log.d("HourSlot", "👇 Touch down at: $downPosition")
+
+                    // Wait for configurable long press
+                    val longPressDetected = withTimeoutOrNull(longPressDelayMs) {
+                        // Wait for pointer to go up or move significantly
+                        var currentEvent = down
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            currentEvent = event.changes.first()
+
+                            // Check if moved too much (> 20px = not a long press)
+                            val delta = (currentEvent.position - downPosition).getDistance()
+                            if (delta > 20f) {
+                                android.util.Log.d("HourSlot", "❌ Moved too much ($delta px), not a long press")
+                                return@withTimeoutOrNull false
+                            }
+
+                            // Check if released (tap, not long press)
+                            if (!currentEvent.pressed) {
+                                android.util.Log.d("HourSlot", "❌ Released too early, not a long press")
+                                return@withTimeoutOrNull false
+                            }
+                        }
+                        @Suppress("UNREACHABLE_CODE")
+                        true
+                    }
+
+                    // If timeout occurred, it's a long press!
+                    if (longPressDetected == null) {
+                        android.util.Log.d("HourSlot", "✅ ${longPressDelayMs}ms long press detected!")
+
+                        // Calculate absolute position
+                        val relativeOffset = downPosition
+                        val absoluteScreenPos = relativeOffset + cellAbsolutePosition
                         val correctedY = absoluteScreenPos.y - topAppBarHeightPx
 
                         android.util.Log.d("HourSlot", "🔥 DRAG START: day=${dayTimeline.date}, hour=$hour")
                         android.util.Log.d("HourSlot", "  ├─ Relative offset: $relativeOffset")
                         android.util.Log.d("HourSlot", "  ├─ Cell absolute pos: $cellAbsolutePosition")
                         android.util.Log.d("HourSlot", "  ├─ Absolute screen pos: $absoluteScreenPos")
-                        android.util.Log.d("HourSlot", "  ├─ TopAppBar height: ${topAppBarHeightPx}px")
-                        android.util.Log.d("HourSlot", "  └─ Corrected Y (TopAppBar subtracted): $correctedY")
+                        android.util.Log.d("HourSlot", "  └─ Corrected Y: $correctedY")
 
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-
                         lastDragPosition = absoluteScreenPos
 
-                        // NEW: Use absolute coordinates for multi-day drag (with BOTH headers corrected)
                         viewModel.onDragSelectionStartAbsolute(
                             absoluteX = absoluteScreenPos.x,
                             absoluteY = correctedY
                         )
-                    },
-                    onDrag = { change, dragAmount ->
-                        // Live Update während Drag mit ABSOLUTEN Koordinaten
-                        val absoluteScreenPos = change.position + cellAbsolutePosition
 
-                        // CRITICAL FIX: Subtract TopAppBar height here too
-                        val correctedY = absoluteScreenPos.y - topAppBarHeightPx
+                        // Now handle drag
+                        drag(down.id) { change ->
+                            val absoluteScreenPos = change.position + cellAbsolutePosition
+                            val correctedY = absoluteScreenPos.y - topAppBarHeightPx
 
-                        lastDragPosition = absoluteScreenPos
+                            lastDragPosition = absoluteScreenPos
 
-                        // NEW: Use absolute coordinates for multi-day drag (with TopAppBar corrected)
-                        viewModel.onDragSelectionUpdateAbsolute(
-                            absoluteX = absoluteScreenPos.x,
-                            absoluteY = correctedY
-                        )
+                            viewModel.onDragSelectionUpdateAbsolute(
+                                absoluteX = absoluteScreenPos.x,
+                                absoluteY = correctedY
+                            )
 
-                        // Only log occasionally (reduce spam)
-                        if (System.currentTimeMillis() % 5 == 0L) {
-                            android.util.Log.d("HourSlot", "📍 DRAG UPDATE: relative=${change.position}, absolute=$absoluteScreenPos, correctedY=$correctedY")
+                            if (System.currentTimeMillis() % 5 == 0L) {
+                                android.util.Log.d("HourSlot", "📍 DRAG UPDATE: absolute=$absoluteScreenPos, correctedY=$correctedY")
+                            }
                         }
-                    },
-                    onDragEnd = {
-                        // Finger Released - Show Context Menu
+
+                        // Drag ended
                         val releasePos = lastDragPosition
+                        android.util.Log.d("HourSlot", "✅ DRAG END at: $releasePos")
 
-                        android.util.Log.d("HourSlot", "✅ DRAG END at absolute position: $releasePos")
                         viewModel.onDragSelectionEnd()
-
                         if (releasePos != null) {
                             viewModel.showContextMenu(releasePos.x, releasePos.y)
                         }
-
                         viewModel.clearGestureDebug()
-                    },
-                    onDragCancel = {
-                        // Drag Cancelled
-                        android.util.Log.d("HourSlot", "❌ DRAG CANCELLED")
-                        viewModel.onDragSelectionCancel()
-                        viewModel.clearGestureDebug()
+                    } else {
+                        android.util.Log.d("HourSlot", "⏭️ Not a long press, ignoring")
                     }
-                )
+                }
             }
     ) {
         // Background grid for this hour slot
@@ -539,6 +565,7 @@ private fun HourSlotWithTasks(
 
                 TaskBar(
                     task = task,
+                    longPressDelayMs = longPressDelayMs,
                     onClick = { onTaskClick(task) },
                     onLongPress = { onTaskLongPress(task) },
                     isSelected = task.id in selectedTaskIds,
@@ -559,6 +586,7 @@ private fun HourSlotWithTasks(
 @Composable
 private fun TaskBar(
     task: TimelineTask,
+    longPressDelayMs: Long = 250L,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     isSelected: Boolean = false,
@@ -567,6 +595,7 @@ private fun TaskBar(
     TaskBalken(
         task = task,
         pixelsPerMinute = 2f,
+        longPressDelayMs = longPressDelayMs,
         onLongPress = onLongPress,
         onClick = onClick,
         isSelected = isSelected,

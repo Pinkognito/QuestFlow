@@ -25,7 +25,8 @@ class TimelineViewModel @Inject constructor(
     private val detectConflictsUseCase: DetectConflictsUseCase,
     private val updateTaskTimeUseCase: UpdateTaskTimeUseCase,
     private val batchTaskPositioningUseCase: com.example.questflow.domain.usecase.timeline.BatchTaskPositioningUseCase,
-    private val timelinePreferences: TimelinePreferences
+    private val timelinePreferences: TimelinePreferences,
+    val settingsRepository: com.example.questflow.data.repository.SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TimelineUiState())
@@ -188,6 +189,14 @@ class TimelineViewModel @Inject constructor(
 
     fun updateVisibleHours(hours: Float) {
         timelinePreferences.visibleHours = hours
+    }
+
+    fun updateLongPressDelay(delayMs: Long) {
+        settingsRepository.setLongPressDelay(delayMs)
+    }
+
+    fun getLongPressDelay(): Long {
+        return settingsRepository.getLongPressDelay()
     }
 
     fun refresh() {

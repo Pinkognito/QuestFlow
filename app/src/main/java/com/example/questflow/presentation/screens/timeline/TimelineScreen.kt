@@ -106,9 +106,12 @@ fun TimelineScreen(
 
                 // Content
                 else -> {
+                    val longPressDelayMs by viewModel.settingsRepository.longPressDelayMs.collectAsState()
+
                     Box(modifier = Modifier.fillMaxSize()) {
                         TimelineGrid(
                             uiState = uiState,
+                            longPressDelayMs = longPressDelayMs,
                             onTaskClick = { task ->
                                 viewModel.onTaskClick(task)
                                 viewModel.setFocusedTask(task)
@@ -162,9 +165,11 @@ fun TimelineScreen(
         TimelineSettingsDialog(
             currentTolerance = uiState.toleranceMinutes,
             currentVisibleHours = uiState.visibleHours,
+            currentLongPressDelayMs = viewModel.getLongPressDelay(),
             onDismiss = { viewModel.toggleSettings() },
             onToleranceChange = { viewModel.updateTolerance(it) },
-            onVisibleHoursChange = { viewModel.updateVisibleHours(it) }
+            onVisibleHoursChange = { viewModel.updateVisibleHours(it) },
+            onLongPressDelayChange = { viewModel.updateLongPressDelay(it) }
         )
     }
 
