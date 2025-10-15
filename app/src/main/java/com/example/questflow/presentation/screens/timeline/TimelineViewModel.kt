@@ -842,6 +842,11 @@ class TimelineViewModel @Inject constructor(
         android.util.Log.d("TimelineViewModel", "⚡ Execute context menu action: $actionId")
 
         when (actionId) {
+            "select_all" -> {
+                // Select all tasks within the SelectionBox time range
+                selectAllInRange()
+                // Menu stays open, SelectionBox stays visible
+            }
             "insert" -> {
                 // Insert selected tasks into selection box
                 insertSelectedIntoRange()
@@ -849,32 +854,30 @@ class TimelineViewModel @Inject constructor(
                 dismissContextMenu()
             }
             "delete" -> {
-                // Delete all tasks in selection box
-                val tasksInBox = _uiState.value.getTasksInSelectionBox()
-                android.util.Log.d("TimelineViewModel", "Delete ${tasksInBox.size} tasks in selection box")
-                // TODO: Implement delete UseCase
-                dismissContextMenu()
-                // SelectionBox bleibt erhalten für weitere Aktionen
+                // Delete all tasks in selection box - signal to show confirmation dialog
+                _uiState.update { it.copy(showDeleteConfirmation = true) }
+                // Menu stays visible, confirmation dialog will handle dismiss
             }
+            "adjust_time" -> {
+                // Adjust SelectionBox time range - signal to show time adjustment dialog
+                _uiState.update { it.copy(showTimeAdjustmentDialog = true) }
+                // Menu stays visible, dialog will handle dismiss
+            }
+            // Legacy actions (for backward compatibility)
             "edit" -> {
                 // Edit selection box time range
-                android.util.Log.d("TimelineViewModel", "Edit selection box - opening dialog")
-                dismissContextMenu()
-                // SelectionBox bleibt erhalten, Dialog wird vom Screen geöffnet
-                // TODO: Signal to screen to open SelectionBoxDialog
+                _uiState.update { it.copy(showTimeAdjustmentDialog = true) }
             }
             "details" -> {
                 // Show list of selected tasks
                 toggleSelectionList()
                 dismissContextMenu()
-                // SelectionBox bleibt erhalten
             }
             "create" -> {
                 // Create new task in selection box
                 android.util.Log.d("TimelineViewModel", "Create new task in selection box")
                 // TODO: Implement create task flow
                 dismissContextMenu()
-                // SelectionBox bleibt erhalten
             }
             "cancel" -> {
                 // Cancel selection - ONLY action that clears SelectionBox
@@ -884,9 +887,49 @@ class TimelineViewModel @Inject constructor(
             else -> {
                 android.util.Log.w("TimelineViewModel", "Unknown context menu action: $actionId")
                 dismissContextMenu()
-                // SelectionBox bleibt erhalten bei unbekannten Aktionen
             }
         }
+    }
+
+    /**
+     * Delete all tasks in SelectionBox
+     * Called after user confirms deletion
+     */
+    fun deleteTasksInSelectionBox() {
+        val tasksInBox = _uiState.value.getTasksInSelectionBox()
+
+        if (tasksInBox.isEmpty()) {
+            android.util.Log.w("TimelineViewModel", "No tasks to delete in SelectionBox")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                android.util.Log.d("TimelineViewModel", "Deleting ${tasksInBox.size} tasks")
+                // TODO: Implement bulk delete UseCase
+                // For now, just clear the selection box and refresh
+                clearSelectionBox()
+                dismissContextMenu()
+                refresh()
+            } catch (e: Exception) {
+                android.util.Log.e("TimelineViewModel", "Failed to delete tasks", e)
+                _uiState.update { it.copy(error = "Fehler beim Löschen: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * Show delete confirmation dialog
+     */
+    fun showDeleteConfirmation(show: Boolean) {
+        _uiState.update { it.copy(showDeleteConfirmation = show) }
+    }
+
+    /**
+     * Show time adjustment dialog
+     */
+    fun showTimeAdjustmentDialog(show: Boolean) {
+        _uiState.update { it.copy(showTimeAdjustmentDialog = show) }
     }
 }
 

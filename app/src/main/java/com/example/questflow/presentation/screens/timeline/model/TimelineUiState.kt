@@ -61,7 +61,11 @@ data class TimelineUiState(
     val gestureDebugInfo: GestureDebugInfo? = null,
 
     // Context menu state (radial menu after drag release)
-    val contextMenu: ContextMenuState? = null
+    val contextMenu: ContextMenuState? = null,
+
+    // Dialog states for menu actions
+    val showDeleteConfirmation: Boolean = false,
+    val showTimeAdjustmentDialog: Boolean = false
 ) {
     /**
      * Calculate total timeline height in pixels (full 24 hours)

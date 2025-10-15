@@ -128,9 +128,9 @@ fun TimelineScreen(
                             GestureDebugOverlay(debugInfo = debugInfo)
                         }
 
-                        // RADIAL CONTEXT MENU - Appears after drag selection
+                        // RADIAL JOYSTICK MENU - Press button and swipe to select
                         uiState.contextMenu?.let { contextMenuState ->
-                            RadialContextMenu(
+                            RadialJoystickMenu(
                                 state = contextMenuState,
                                 onActionSelected = { actionId ->
                                     viewModel.executeContextMenuAction(actionId)
@@ -200,6 +200,36 @@ fun TimelineScreen(
             onConfirm = { sortOption ->
                 viewModel.insertSelectedIntoRange(sortOption)
                 showBatchOperationDialog = false
+            }
+        )
+    }
+
+    // Delete confirmation dialog
+    if (uiState.showDeleteConfirmation) {
+        val tasksInBox = uiState.getTasksInSelectionBox()
+        DeleteConfirmationDialog(
+            taskCount = tasksInBox.size,
+            onConfirm = {
+                viewModel.deleteTasksInSelectionBox()
+                viewModel.showDeleteConfirmation(false)
+            },
+            onDismiss = {
+                viewModel.showDeleteConfirmation(false)
+            }
+        )
+    }
+
+    // Time adjustment dialog
+    if (uiState.showTimeAdjustmentDialog) {
+        SelectionBoxDialog(
+            initialStart = uiState.selectionBox?.startTime,
+            initialEnd = uiState.selectionBox?.endTime,
+            onDismiss = {
+                viewModel.showTimeAdjustmentDialog(false)
+            },
+            onConfirm = { start, end ->
+                viewModel.setSelectionBox(start, end)
+                viewModel.showTimeAdjustmentDialog(false)
             }
         )
     }

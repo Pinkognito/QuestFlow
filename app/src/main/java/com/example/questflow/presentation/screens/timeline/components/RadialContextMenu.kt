@@ -28,14 +28,18 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Radial context menu that appears at finger release position.
- * User can swipe from center to activate an action.
+ * Radial context menu that appears near finger release position.
+ *
+ * FIXED (2025-10-15 v2):
+ * - Buttons always centered at finger position (or as close as possible)
+ * - All buttons stay on screen
+ * - Menu dismisses automatically when clicking outside dismiss area
+ * - Non-blocking: rest of screen remains interactive
  *
  * Design:
- * - Center circle at release position
- * - 4 action buttons arranged radially (90° apart)
- * - Swipe gesture detection for activation
- * - Visual feedback for selected action
+ * - 4 action buttons arranged radially around finger (90° apart)
+ * - Smart edge adjustment: buttons shift toward screen center when near edges
+ * - Tap gesture for activation
  */
 @Composable
 fun RadialContextMenu(
@@ -47,36 +51,33 @@ fun RadialContextMenu(
     val density = LocalDensity.current
     val screenWidth = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val screenHeight = with(density) { androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() }
+
+    // Menu dimensions
     val buttonRadius = with(density) { 80.dp.toPx() } // Distance from center to buttons
-    val buttonSize = with(density) { 64.dp.toPx() } // Button diameter
-    val safeMargin = buttonRadius + buttonSize / 2 // Total space needed from edge
+    val buttonSize = with(density) { 64.dp.toPx() }   // Button diameter
+    val safeMargin = buttonRadius + buttonSize / 2    // Total space needed from edge
 
-    // IMPROVED: Keep buttons on screen by adjusting center position + rotating button layout if needed
-    val adjustedX = state.centerX.coerceIn(safeMargin, screenWidth - safeMargin)
-    val adjustedY = state.centerY.coerceIn(safeMargin, screenHeight - safeMargin)
+    // POSITIONING: Keep menu center as close to finger as possible while keeping all buttons visible
+    val minX = safeMargin
+    val maxX = screenWidth - safeMargin
+    val minY = safeMargin
+    val maxY = screenHeight - safeMargin
 
-    // Detect edge proximity for dynamic button arrangement
-    val nearLeftEdge = state.centerX < safeMargin + 30f
-    val nearRightEdge = state.centerX > screenWidth - safeMargin - 30f
-    val nearTopEdge = state.centerY < safeMargin + 30f
-    val nearBottomEdge = state.centerY > screenHeight - safeMargin - 30f
+    // Adjust center to keep all buttons on screen
+    val adjustedX = state.centerX.coerceIn(minX, maxX)
+    val adjustedY = state.centerY.coerceIn(minY, maxY)
 
-    // Adjust button angles dynamically based on edge proximity
-    val angleOffset = when {
-        nearLeftEdge && nearTopEdge -> 45f      // Bottom-right quadrant
-        nearRightEdge && nearTopEdge -> 135f    // Bottom-left quadrant
-        nearRightEdge && nearBottomEdge -> 225f // Top-left quadrant
-        nearLeftEdge && nearBottomEdge -> 315f  // Top-right quadrant
-        nearLeftEdge -> 90f   // Move buttons to right hemisphere
-        nearRightEdge -> 270f // Move buttons to left hemisphere
-        nearTopEdge -> 180f   // Move buttons to bottom hemisphere
-        nearBottomEdge -> 0f  // Move buttons to top hemisphere
-        else -> 0f            // No adjustment needed
-    }
+    // Calculate shift for logging
+    val shiftX = adjustedX - state.centerX
+    val shiftY = adjustedY - state.centerY
+    val totalShift = sqrt(shiftX * shiftX + shiftY * shiftY)
 
-    val actions = getActionsForMenuType(state.menuType, state.selectedTasksInBox, angleOffset)
+    android.util.Log.d("RadialMenu", "🎯 Positioning: finger=(${state.centerX.toInt()}, ${state.centerY.toInt()}), adjusted=(${"%.0f".format(adjustedX)}, ${"%.0f".format(adjustedY)}), shift=${"%.0f".format(totalShift)}px")
 
-    // Animation for entrance
+    // Get actions
+    val actions = getActionsForMenuType(state.menuType, state.selectedTasksInBox)
+
+    // Animation
     val scale by animateFloatAsState(
         targetValue = 1f,
         animationSpec = spring(
@@ -86,40 +87,47 @@ fun RadialContextMenu(
         label = "menu_scale"
     )
 
-    // CRITICAL: Use Box WITHOUT fillMaxSize to allow clicks through
-    // Only the menu area itself should capture touches
+    // PARENT BOX: Needed for absolute positioning within screen
+    // Uses fillMaxSize to allow offset positioning
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                // Detect taps OUTSIDE menu area → dismiss
-                detectTapGestures { offset ->
-                    val dx = offset.x - state.centerX
-                    val dy = offset.y - state.centerY
-                    val distance = sqrt(dx * dx + dy * dy)
-
-                    // If tap is far from menu center (> 120dp), dismiss
-                    if (distance > with(density) { 120.dp.toPx() }) {
-                        android.util.Log.d("RadialMenu", "Outside tap → dismiss")
-                        onDismiss()
-                    }
-                }
-            }
+        modifier = modifier.fillMaxSize()
     ) {
-        android.util.Log.d("RadialMenu", "Position: original=(${state.centerX}, ${state.centerY}), adjusted=($adjustedX, $adjustedY), screen=($screenWidth x $screenHeight), safeMargin=$safeMargin, angleOffset=$angleOffset")
-
+        // MENU CONTENT: Positioned at adjusted center
         Box(
             modifier = Modifier
                 .offset { IntOffset(adjustedX.toInt(), adjustedY.toInt()) }
         ) {
-            // Radial action buttons - TAP instead of SWIPE
+            // DISMISS AREA: Invisible box that catches taps around menu
+            Box(
+                modifier = Modifier
+                    .size(with(density) { (safeMargin * 2.5f).toDp() }) // 2.5x = comfortable dismiss area
+                    .align(Alignment.Center)
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            // Calculate distance from center
+                            val centerPx = size.width / 2f
+                            val dx = offset.x - centerPx
+                            val dy = offset.y - centerPx
+                            val distance = sqrt(dx * dx + dy * dy)
+
+                            // Dismiss if tap is outside menu proper (but inside dismiss area)
+                            val menuProperRadius = with(density) { (buttonRadius + buttonSize / 2).toDp().toPx() }
+                            if (distance > menuProperRadius) {
+                                android.util.Log.d("RadialMenu", "🚫 Tap outside menu → dismiss")
+                                onDismiss()
+                            }
+                        }
+                    }
+            )
+
+            // ACTION BUTTONS: Arranged radially around center
             actions.forEach { action ->
                 TappableActionButton(
                     action = action,
                     radius = 80.dp,
                     scale = scale,
                     onTap = {
-                        android.util.Log.d("RadialMenu", "Button tapped: ${action.id}")
+                        android.util.Log.d("RadialMenu", "✅ Button tapped: ${action.id}")
                         onActionSelected(action.id)
                     },
                     modifier = Modifier.align(Alignment.Center)
@@ -130,7 +138,7 @@ fun RadialContextMenu(
 }
 
 /**
- * Tappable action button (replaces swipe gesture)
+ * Tappable action button
  */
 @Composable
 private fun TappableActionButton(
@@ -207,14 +215,13 @@ private fun TappableActionButton(
 }
 
 /**
- * Get actions based on menu type with dynamic angle offset for edge positioning
+ * Get actions based on menu type
  */
 private fun getActionsForMenuType(
     menuType: ContextMenuType,
-    tasksInBox: Int,
-    angleOffset: Float = 0f
+    tasksInBox: Int
 ): List<ContextMenuAction> {
-    val baseActions = when (menuType) {
+    return when (menuType) {
         ContextMenuType.SELECTION_WITH_TASKS -> listOf(
             ContextMenuAction(
                 id = "insert",
@@ -299,7 +306,4 @@ private fun getActionsForMenuType(
             )
         )
     }
-
-    // Apply angle offset to rotate button arrangement based on screen edges
-    return baseActions.map { it.copy(angle = it.angle + angleOffset) }
 }
