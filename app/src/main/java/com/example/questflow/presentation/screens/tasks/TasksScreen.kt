@@ -85,6 +85,9 @@ fun TasksScreen(
     var showBatchEditDialog by remember { mutableStateOf(false) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
+    // Display Settings Dialog State
+    var showDisplaySettingsDialog by remember { mutableStateOf(false) }
+
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
     LaunchedEffect(globalStats?.xp) {
@@ -184,11 +187,68 @@ fun TasksScreen(
                         )
                     }
                 } else {
-                    // Normal FAB: Add new task
-                    FloatingActionButton(
-                        onClick = { showAddTaskDialog = true }
+                    // Normal: Action buttons + Add Task FAB
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.End
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Task")
+                        // Horizontal row with 3 action buttons
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Timeline button
+                            SmallFloatingActionButton(
+                                onClick = { navController.navigate("timeline") },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = "Timeline",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Display Settings button
+                            SmallFloatingActionButton(
+                                onClick = { showDisplaySettingsDialog = true },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ) {
+                                Icon(
+                                    Icons.Default.List,
+                                    contentDescription = "Anzeige",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Filter button with badge
+                            SmallFloatingActionButton(
+                                onClick = { viewModel.toggleFilterDialog() },
+                                containerColor = if (filterSettings.isActive())
+                                    MaterialTheme.colorScheme.tertiary
+                                else
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = if (filterSettings.isActive())
+                                    MaterialTheme.colorScheme.onTertiary
+                                else
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Filter",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        // Add Task FAB
+                        FloatingActionButton(
+                            onClick = { showAddTaskDialog = true }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Auftrag erstellen")
+                        }
                     }
                 }
             },
@@ -239,61 +299,7 @@ fun TasksScreen(
                         },
                         level = globalStats?.level ?: 1,
                         totalXp = globalStats?.xp ?: 0,
-                        previousXp = previousXp,
-                        actions = {
-                            // Timeline button
-                            IconButton(onClick = { navController.navigate("timeline") }) {
-                                Icon(
-                                    Icons.Default.DateRange,
-                                    contentDescription = "Timeline öffnen",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-
-                            // Display Settings button
-                            var showDisplaySettingsDialog by remember { mutableStateOf(false) }
-                            IconButton(onClick = { showDisplaySettingsDialog = true }) {
-                                Icon(
-                                    Icons.Default.List,
-                                    contentDescription = "Anzeige-Einstellungen",
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-
-                            // Filter button
-                            IconButton(onClick = { viewModel.toggleFilterDialog() }) {
-                                Badge(
-                                    containerColor = if (filterSettings.isActive())
-                                        MaterialTheme.colorScheme.tertiary
-                                    else
-                                        MaterialTheme.colorScheme.surface
-                                ) {
-                                    Icon(
-                                        Icons.Default.Settings,
-                                        contentDescription = "Filter",
-                                        modifier = Modifier.size(24.dp),
-                                        tint = if (filterSettings.isActive())
-                                            MaterialTheme.colorScheme.onTertiary
-                                        else
-                                            MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            // Layout Config Dialog (V2 - Advanced)
-                            if (showDisplaySettingsDialog) {
-                                com.example.questflow.presentation.components.TaskLayoutConfigDialog(
-                                    layoutConfig = layoutConfig,
-                                    onDismiss = { showDisplaySettingsDialog = false },
-                                    onConfigChange = { config ->
-                                        viewModel.updateLayoutConfig(config)
-                                    },
-                                    onResetToDefaults = {
-                                        viewModel.resetLayoutToDefaults()
-                                    }
-                                )
-                            }
-                        }
+                        previousXp = previousXp
                     )
                 }
             }
@@ -511,6 +517,20 @@ fun TasksScreen(
                 }
             )
         }
+    }
+
+    // Layout Config Dialog (V2 - Advanced)
+    if (showDisplaySettingsDialog) {
+        com.example.questflow.presentation.components.TaskLayoutConfigDialog(
+            layoutConfig = layoutConfig,
+            onDismiss = { showDisplaySettingsDialog = false },
+            onConfigChange = { config ->
+                viewModel.updateLayoutConfig(config)
+            },
+            onResetToDefaults = {
+                viewModel.resetLayoutToDefaults()
+            }
+        )
     }
 
     // Add Task Dialog using the unified Today dialog
