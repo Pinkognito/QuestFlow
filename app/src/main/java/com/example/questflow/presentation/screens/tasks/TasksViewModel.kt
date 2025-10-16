@@ -43,7 +43,8 @@ class TasksViewModel @Inject constructor(
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
     private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository,
     private val searchFilterRepository: com.example.questflow.data.repository.TaskSearchFilterRepository,
-    private val searchTasksWithFiltersUseCase: com.example.questflow.domain.usecase.SearchTasksWithFiltersUseCase
+    private val searchTasksWithFiltersUseCase: com.example.questflow.domain.usecase.SearchTasksWithFiltersUseCase,
+    private val displaySettingsRepository: com.example.questflow.data.repository.TaskDisplaySettingsRepository
 ) : ViewModel() {
     // NOTE: calculateXpRewardUseCase entfernt - wird jetzt in UpdateTaskWithCalendarUseCase verwendet
     // NOTE: calendarManager, statsRepository, categoryRepository, taskRepository still needed for:
@@ -674,6 +675,76 @@ class TasksViewModel @Inject constructor(
      */
     suspend fun searchTasksWithMatchInfo(tasks: List<com.example.questflow.domain.model.Task>, query: String): List<com.example.questflow.domain.model.TaskSearchResult> {
         return searchTasksWithFiltersUseCase.searchWithMatchInfo(tasks, query)
+    }
+
+    /**
+     * Get task display settings flow
+     */
+    fun getDisplaySettings(): Flow<com.example.questflow.data.database.entity.TaskDisplaySettingsEntity> {
+        return flow {
+            displaySettingsRepository.getSettings().collect { settings ->
+                emit(settings)
+            }
+        }
+    }
+
+    /**
+     * Update task display settings
+     */
+    fun updateDisplaySettings(settings: com.example.questflow.data.database.entity.TaskDisplaySettingsEntity) {
+        android.util.Log.d("DisplaySettings", "ViewModel.updateDisplaySettings called: showDueDate=${settings.showDueDate}, showDifficulty=${settings.showDifficulty}")
+        viewModelScope.launch {
+            displaySettingsRepository.updateSettings(settings)
+            android.util.Log.d("DisplaySettings", "Repository.updateSettings completed")
+        }
+    }
+
+    /**
+     * Reset display settings to defaults
+     */
+    fun resetDisplaySettings() {
+        viewModelScope.launch {
+            displaySettingsRepository.resetToDefaults()
+        }
+    }
+
+    /**
+     * Get layout configuration for 2-column display
+     */
+    suspend fun getLayoutConfig(): List<com.example.questflow.domain.model.TaskDisplayElementConfig> {
+        return displaySettingsRepository.getLayoutConfig()
+    }
+
+    /**
+     * Update layout configuration
+     */
+    fun updateLayoutConfig(config: List<com.example.questflow.domain.model.TaskDisplayElementConfig>) {
+        viewModelScope.launch {
+            displaySettingsRepository.updateLayoutConfig(config)
+        }
+    }
+
+    /**
+     * Update specific element configuration
+     */
+    fun updateElement(
+        type: com.example.questflow.domain.model.DisplayElementType,
+        enabled: Boolean? = null,
+        column: com.example.questflow.domain.model.DisplayColumn? = null,
+        priority: Int? = null
+    ) {
+        viewModelScope.launch {
+            displaySettingsRepository.updateElement(type, enabled, column, priority)
+        }
+    }
+
+    /**
+     * Reset layout configuration to defaults
+     */
+    fun resetLayoutToDefaults() {
+        viewModelScope.launch {
+            displaySettingsRepository.resetLayoutToDefaults()
+        }
     }
 }
 

@@ -68,6 +68,7 @@ fun TasksScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
     val categories by appViewModel.categories.collectAsState()
+    val categoriesMap = remember(categories) { categories.associateBy { it.id } }
     val globalStats by appViewModel.globalStats.collectAsState()
     val showFilterDialog by viewModel.showFilterDialog.collectAsState()
     val filterSettings by viewModel.filterSettings.collectAsState()
@@ -119,6 +120,17 @@ fun TasksScreen(
     val searchFilterSettings by viewModel.getSearchFilterSettings().collectAsState(
         initial = com.example.questflow.data.database.entity.TaskSearchFilterSettingsEntity()
     )
+
+    // Load display settings to control what's shown in task cards
+    val displaySettings by viewModel.getDisplaySettings().collectAsState(
+        initial = com.example.questflow.data.database.entity.TaskDisplaySettingsEntity()
+    )
+
+    // Load layout configuration for 2-column display
+    var layoutConfig by remember { mutableStateOf<List<com.example.questflow.domain.model.TaskDisplayElementConfig>>(emptyList()) }
+    LaunchedEffect(displaySettings) {
+        layoutConfig = viewModel.getLayoutConfig()
+    }
 
     // Filter tasks based on search query with configurable filters
     // Returns TaskSearchResult with match information
@@ -238,6 +250,16 @@ fun TasksScreen(
                                 )
                             }
 
+                            // Display Settings button
+                            var showDisplaySettingsDialog by remember { mutableStateOf(false) }
+                            IconButton(onClick = { showDisplaySettingsDialog = true }) {
+                                Icon(
+                                    Icons.Default.List,
+                                    contentDescription = "Anzeige-Einstellungen",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
                             // Filter button
                             IconButton(onClick = { viewModel.toggleFilterDialog() }) {
                                 Badge(
@@ -256,6 +278,20 @@ fun TasksScreen(
                                             MaterialTheme.colorScheme.onSurface
                                     )
                                 }
+                            }
+
+                            // Layout Config Dialog (V2 - Advanced)
+                            if (showDisplaySettingsDialog) {
+                                com.example.questflow.presentation.components.TaskLayoutConfigDialog(
+                                    layoutConfig = layoutConfig,
+                                    onDismiss = { showDisplaySettingsDialog = false },
+                                    onConfigChange = { config ->
+                                        viewModel.updateLayoutConfig(config)
+                                    },
+                                    onResetToDefaults = {
+                                        viewModel.resetLayoutToDefaults()
+                                    }
+                                )
                             }
                         }
                     )
@@ -366,294 +402,72 @@ fun TasksScreen(
                     // Track if this task is selected in multi-select mode (using link if exists)
                     val isSelected = link?.let { selectedTaskLinks.contains(it) } ?: false
 
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    if (multiSelectMode) {
-                                        // Toggle selection (only if link exists)
-                                        link?.let {
-                                            selectedTaskLinks = if (isSelected) {
-                                                selectedTaskLinks - it
-                                            } else {
-                                                selectedTaskLinks + it
-                                            }
-                                        }
-                                    } else {
-                                        // Normal: Open task for editing
-                                        // Create temp link if not exists
-                                        val editLink = link ?: CalendarEventLinkEntity(
-                                            id = 0,
-                                            calendarEventId = task.calendarEventId ?: 0,
-                                            title = task.title,
-                                            startsAt = task.dueDate ?: now,
-                                            endsAt = (task.dueDate ?: now).plusHours(1),
-                                            xp = task.xpReward,
-                                            xpPercentage = task.xpPercentage ?: 60,
-                                            categoryId = task.categoryId,
-                                            taskId = task.id
-                                        )
-                                        selectedEditLink = editLink
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!multiSelectMode && link != null) {
-                                        // Enter multi-select mode and select this task (only if link exists)
-                                        multiSelectMode = true
-                                        selectedTaskLinks = setOf(link)
-                                    }
+                    com.example.questflow.presentation.components.TaskCardV2(
+                        task = task,
+                        layoutConfig = layoutConfig,
+                        matchedFilters = matchedFilters,
+                        availableTasks = availableTasks,
+                        categoriesMap = categoriesMap,
+                        isExpired = isExpired,
+                        isClaimed = isClaimed,
+                        isSelected = isSelected,
+                        searchQuery = searchQuery,
+                        dateFormatter = dateFormatter,
+                        onClaimClick = if (link != null && !link.rewarded && link.status != "CLAIMED") {
+                            {
+                                viewModel.claimXp(link.id) {
+                                    appViewModel.refreshStats()
                                 }
-                            ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = when {
-                                isSelected -> MaterialTheme.colorScheme.primaryContainer
-                                isClaimed -> MaterialTheme.colorScheme.surfaceVariant
-                                isExpired -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                                else -> MaterialTheme.colorScheme.surface
                             }
-                        ),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (isSelected) 4.dp else 1.dp
+                        } else null,
+                        modifier = Modifier.combinedClickable(
+                            onClick = {
+                                if (multiSelectMode) {
+                                    // Toggle selection (only if link exists)
+                                    link?.let {
+                                        selectedTaskLinks = if (isSelected) {
+                                            selectedTaskLinks - it
+                                        } else {
+                                            selectedTaskLinks + it
+                                        }
+                                    }
+                                } else {
+                                    // Normal: Open task for editing
+                                    // Create temp link if not exists
+                                    val editLink = link ?: CalendarEventLinkEntity(
+                                        id = 0,
+                                        calendarEventId = task.calendarEventId ?: 0,
+                                        title = task.title,
+                                        startsAt = task.dueDate ?: now,
+                                        endsAt = (task.dueDate ?: now).plusHours(1),
+                                        xp = task.xpReward,
+                                        xpPercentage = task.xpPercentage ?: 60,
+                                        categoryId = task.categoryId,
+                                        taskId = task.id
+                                    )
+                                    selectedEditLink = editLink
+                                }
+                            },
+                            onLongClick = {
+                                if (!multiSelectMode && link != null) {
+                                    // Enter multi-select mode and select this task (only if link exists)
+                                    multiSelectMode = true
+                                    selectedTaskLinks = setOf(link)
+                                }
+                            }
                         )
-                    ) {
-                        // Modern Card Layout with Golden Ratio proportions
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp), // Primary padding (golden ratio base)
-                            horizontalArrangement = Arrangement.spacedBy(10.dp), // Secondary padding (16/1.618)
-                            verticalAlignment = Alignment.CenterVertically
+                    )
+
+                    // Multi-select checkbox overlay
+                    if (multiSelectMode) {
+                        Box(
+                            modifier = Modifier.padding(16.dp)
                         ) {
-                            // Leading: Checkbox in multi-select mode
-                            if (multiSelectMode) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = null,
-                                    modifier = Modifier.size(40.dp)
-                                )
-                            }
-
-                            // Content: Main task information (takes remaining space)
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(6.dp) // Tertiary padding (10/1.618)
-                            ) {
-                                // Title Row with badges - 62% visual weight
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Build title with path and icons
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        // Parent path (if subtask)
-                                        if (isSubtask && parentTask != null) {
-                                            Text(
-                                                text = "${parentTask.title} /",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                                maxLines = 1,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                            )
-                                        }
-
-                                        // Task title with icon
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (isParentTask) {
-                                                Text(
-                                                    "📁",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                            Text(
-                                                text = task.title,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                fontWeight = if (isParentTask) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isExpired && !isClaimed)
-                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                                else
-                                                    MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 2,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                        }
-                                    }
-
-                                    // Badges Column (right aligned)
-                                    Column(
-                                        horizontalAlignment = Alignment.End,
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        if (isExpired && !isClaimed) {
-                                            Badge(
-                                                containerColor = MaterialTheme.colorScheme.error,
-                                                contentColor = MaterialTheme.colorScheme.onError
-                                            ) {
-                                                Text(
-                                                    "Abgelaufen",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                        if (isParentTask) {
-                                            val subtaskCount = availableTasks.count { it.parentTaskId == task.id }
-                                            Badge(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            ) {
-                                                Text(
-                                                    "$subtaskCount",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Search Match Badges (only when searching)
-                                if (searchQuery.isNotEmpty() && matchedFilters.isNotEmpty()) {
-                                    androidx.compose.foundation.layout.FlowRow(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        matchedFilters.take(3).forEach { matchInfo ->
-                                            androidx.compose.material3.FilterChip(
-                                                selected = false,
-                                                onClick = {},
-                                                label = {
-                                                    Text(
-                                                        text = matchInfo.getDisplayText(),
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        maxLines = 1,
-                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                    )
-                                                },
-                                                leadingIcon = {
-                                                    androidx.compose.material.icons.Icons.Default.CheckCircle.let { icon ->
-                                                        Icon(
-                                                            icon,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-                                                },
-                                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                    iconColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                                ),
-                                                border = null
-                                            )
-                                        }
-                                        // Show "+X more" if there are more matches
-                                        if (matchedFilters.size > 3) {
-                                            androidx.compose.material3.FilterChip(
-                                                selected = false,
-                                                onClick = {},
-                                                label = {
-                                                    Text(
-                                                        text = "+${matchedFilters.size - 3} mehr",
-                                                        style = MaterialTheme.typography.labelSmall
-                                                    )
-                                                },
-                                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                                    labelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                                ),
-                                                border = null
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Metadata Row - 38% visual weight
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Start date (from task.dueDate or link.startsAt)
-                                    task.dueDate?.let { dueDate ->
-                                        Text(
-                                            text = dueDate.format(dateFormatter),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1
-                                        )
-
-                                        // Separator
-                                        Text(
-                                            "•",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    // Difficulty
-                                    val difficultyText = when (task.xpPercentage ?: 60) {
-                                        20 -> "Trivial"
-                                        40 -> "Einfach"
-                                        60 -> "Mittel"
-                                        80 -> "Schwer"
-                                        100 -> "Episch"
-                                        else -> "Mittel"
-                                    }
-                                    Text(
-                                        text = difficultyText,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (isExpired && !isClaimed)
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        else
-                                            MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-
-                            // Trailing: Claim button or status (only if calendar link exists)
-                            if (link != null && (link.rewarded || link.status == "CLAIMED")) {
-                                Text(
-                                    "✓",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            } else if (link != null) {
-                                Button(
-                                    onClick = {
-                                        viewModel.claimXp(link.id) {
-                                            appViewModel.refreshStats()
-                                        }
-                                    },
-                                    colors = if (isExpired) {
-                                        ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.error,
-                                            contentColor = MaterialTheme.colorScheme.onError
-                                        )
-                                    } else {
-                                        ButtonDefaults.buttonColors()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    modifier = Modifier.heightIn(min = 36.dp)
-                                ) {
-                                    Text(
-                                        if (isExpired) "Claim" else "Claim",
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                }
-                            }
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = null,
+                                modifier = Modifier.size(40.dp)
+                            )
                         }
                     }
                 }
