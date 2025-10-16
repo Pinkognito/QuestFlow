@@ -170,13 +170,30 @@ fun TasksScreen(
     }
 
     // Also apply text search on top of advanced filter
+    // Need to check both link fields AND task fields (especially description)
     val filteredLinks = if (searchQuery.isEmpty()) {
         android.util.Log.d("TasksScreen", "No search query, using baseLinks: ${baseLinks.size}")
         baseLinks
     } else {
+        // Create a map of taskId -> Task for quick lookup
+        val taskMap = filteredTasksWithMatches.associateBy { it.task.id }
+
         val searchFiltered = baseLinks.filter { link ->
-            link.title.contains(searchQuery, ignoreCase = true) ||
-            (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+            // Check link title
+            val matchesTitle = link.title.contains(searchQuery, ignoreCase = true)
+
+            // Check category name
+            val matchesCategory = link.categoryId != null &&
+                categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true
+
+            // Check task description (if link has a taskId)
+            val matchesTaskDescription = link.taskId != null &&
+                taskMap[link.taskId]?.task?.description?.contains(searchQuery, ignoreCase = true) == true
+
+            // Check if the task itself was found by the advanced search
+            val taskWasFound = link.taskId != null && taskMap.containsKey(link.taskId)
+
+            matchesTitle || matchesCategory || matchesTaskDescription || taskWasFound
         }
         android.util.Log.d("TasksScreen", "Search filtered: ${searchFiltered.size}/${baseLinks.size}")
         searchFiltered
@@ -244,60 +261,54 @@ fun TasksScreen(
                         )
                     }
                 } else {
-                    // Normal: Action buttons + Add Task FAB
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.End
+                    // Normal: All action buttons in horizontal row
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Horizontal row with 3 action buttons
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Timeline button
+                        SmallFloatingActionButton(
+                            onClick = { navController.navigate("timeline") },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         ) {
-                            // Timeline button
-                            SmallFloatingActionButton(
-                                onClick = { navController.navigate("timeline") },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ) {
-                                Icon(
-                                    Icons.Default.DateRange,
-                                    contentDescription = "Timeline",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                            Icon(
+                                Icons.Default.DateRange,
+                                contentDescription = "Timeline",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                            // Display Settings button
-                            SmallFloatingActionButton(
-                                onClick = { showDisplaySettingsDialog = true },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            ) {
-                                Icon(
-                                    Icons.Default.List,
-                                    contentDescription = "Anzeige",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                        // Display Settings button
+                        SmallFloatingActionButton(
+                            onClick = { showDisplaySettingsDialog = true },
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            Icon(
+                                Icons.Default.List,
+                                contentDescription = "Anzeige",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                            // Advanced Filter button with badge
-                            SmallFloatingActionButton(
-                                onClick = { viewModel.toggleAdvancedFilterDialog() },
-                                containerColor = if (currentAdvancedFilter.isActive())
-                                    MaterialTheme.colorScheme.tertiary
-                                else
-                                    MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = if (currentAdvancedFilter.isActive())
-                                    MaterialTheme.colorScheme.onTertiary
-                                else
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                            ) {
-                                Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Filter",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                        // Advanced Filter button with badge
+                        SmallFloatingActionButton(
+                            onClick = { viewModel.toggleAdvancedFilterDialog() },
+                            containerColor = if (currentAdvancedFilter.isActive())
+                                MaterialTheme.colorScheme.tertiary
+                            else
+                                MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = if (currentAdvancedFilter.isActive())
+                                MaterialTheme.colorScheme.onTertiary
+                            else
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Filter",
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
                         // Add Task FAB
