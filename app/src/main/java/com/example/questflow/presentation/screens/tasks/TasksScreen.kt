@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +43,7 @@ import java.time.LocalDateTime
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import com.example.questflow.presentation.components.AddTaskDialog
 import com.example.questflow.presentation.components.RecurringConfig
+import com.example.questflow.domain.model.getDisplayText
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
@@ -54,7 +56,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun TasksScreen(
     appViewModel: AppViewModel,
@@ -113,18 +115,26 @@ fun TasksScreen(
         }
     }
 
-    // Filter tasks based on search query - calculated before Scaffold for TopBar access
-    val filteredTasks = if (searchQuery.isEmpty()) {
-        uiState.tasks
+    // Load search filter settings to trigger re-search when they change
+    val searchFilterSettings by viewModel.getSearchFilterSettings().collectAsState(
+        initial = com.example.questflow.data.database.entity.TaskSearchFilterSettingsEntity()
+    )
+
+    // Filter tasks based on search query with configurable filters
+    // Returns TaskSearchResult with match information
+    val filteredTasksWithMatches = if (searchQuery.isEmpty()) {
+        uiState.tasks.map { com.example.questflow.domain.model.TaskSearchResult(it, emptyList()) }
     } else {
-        uiState.tasks.filter { task ->
-            // Search in title or description
-            task.title.contains(searchQuery, ignoreCase = true) ||
-            task.description.contains(searchQuery, ignoreCase = true) ||
-            // Search in category name
-            (task.categoryId != null && categories.find { it.id == task.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
+        // Use coroutine to call suspend function
+        var searchResult by remember { mutableStateOf<List<com.example.questflow.domain.model.TaskSearchResult>>(emptyList()) }
+        LaunchedEffect(searchQuery, uiState.tasks, searchFilterSettings) {
+            searchResult = viewModel.searchTasksWithMatchInfo(uiState.tasks, searchQuery)
         }
+        searchResult
     }
+
+    // Extract just the tasks for backwards compatibility
+    val filteredTasks = filteredTasksWithMatches.map { it.task }
 
     // Also keep filtered links for backwards compatibility (XP claiming etc.)
     val filteredLinks = if (searchQuery.isEmpty()) {
@@ -257,24 +267,67 @@ fun TasksScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Search bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                // Search bar with filter settings
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Suche nach Name, Metadaten, Tags...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suchen") },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Löschen")
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Suche nach Name, Metadaten, Tags...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suchen") },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Löschen")
+                                }
                             }
-                        }
-                    },
-                    singleLine = true
-                )
+                        },
+                        singleLine = true
+                    )
+
+                    // Filter settings button
+                    var showSearchFilterDialog by remember { mutableStateOf(false) }
+                    IconButton(
+                        onClick = { showSearchFilterDialog = true },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Such-Filter Einstellungen",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Filter settings dialog
+                    if (showSearchFilterDialog) {
+                        com.example.questflow.presentation.components.TaskSearchFilterDialog(
+                            currentSettings = searchFilterSettings,
+                            onDismiss = { showSearchFilterDialog = false },
+                            onSettingsChange = { settings ->
+                                viewModel.updateSearchFilterSettings(settings)
+                            },
+                            onResetToDefaults = {
+                                viewModel.resetSearchFilterSettings()
+                            }
+                        )
+                    }
+                }
+
+                // Show task count when search is active
+                if (searchQuery.isNotEmpty()) {
+                    Text(
+                        text = "${filteredTasks.size} ${if (filteredTasks.size == 1) "Task" else "Tasks"} gefunden",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
 
                 if (filteredTasks.isEmpty()) {
                     Box(
@@ -292,7 +345,10 @@ fun TasksScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filteredTasks, key = { it.id }) { task ->
+                        items(filteredTasksWithMatches, key = { it.task.id }) { taskSearchResult ->
+                    val task = taskSearchResult.task
+                    val matchedFilters = taskSearchResult.matchedFilters
+
                     // Find corresponding calendar link if exists
                     val link = uiState.links.find { it.taskId == task.id }
 
@@ -460,6 +516,63 @@ fun TasksScreen(
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
                                             }
+                                        }
+                                    }
+                                }
+
+                                // Search Match Badges (only when searching)
+                                if (searchQuery.isNotEmpty() && matchedFilters.isNotEmpty()) {
+                                    androidx.compose.foundation.layout.FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        matchedFilters.take(3).forEach { matchInfo ->
+                                            androidx.compose.material3.FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = {
+                                                    Text(
+                                                        text = matchInfo.getDisplayText(),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                },
+                                                leadingIcon = {
+                                                    androidx.compose.material.icons.Icons.Default.CheckCircle.let { icon ->
+                                                        Icon(
+                                                            icon,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                },
+                                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    iconColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                                ),
+                                                border = null
+                                            )
+                                        }
+                                        // Show "+X more" if there are more matches
+                                        if (matchedFilters.size > 3) {
+                                            androidx.compose.material3.FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = {
+                                                    Text(
+                                                        text = "+${matchedFilters.size - 3} mehr",
+                                                        style = MaterialTheme.typography.labelSmall
+                                                    )
+                                                },
+                                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                                    labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                                ),
+                                                border = null
+                                            )
                                         }
                                     }
                                 }

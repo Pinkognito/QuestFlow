@@ -1,5 +1,6 @@
 package com.example.questflow.presentation.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -8,11 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.ContentScale
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,7 +34,6 @@ fun AddTaskDialog(
     inheritFromTask: com.example.questflow.domain.model.Task? = null,  // Inherit category from parent
     inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null  // Inherit time from parent
 ) {
-    val context = LocalContext.current
     var taskTitle by remember { mutableStateOf("") }
     var taskDescription by remember { mutableStateOf("") }
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
@@ -80,26 +80,25 @@ fun AddTaskDialog(
     var selectedContactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showContactDialog by remember { mutableStateOf(false) }
 
+    // Fullscreen selection dialogs state
+    var showCategorySelectionDialog by remember { mutableStateOf(false) }
+    var showParentSelectionDialog by remember { mutableStateOf(false) }
+
     // Date and time state - START (inherit from parent calendar link if provided)
     val currentDateTime = remember {
         inheritFromCalendarLink?.startsAt ?: java.time.LocalDateTime.now()
     }
-    var selectedYear by remember { mutableStateOf(currentDateTime.year) }
-    var selectedMonth by remember { mutableStateOf(currentDateTime.monthValue) }
-    var selectedDay by remember { mutableStateOf(currentDateTime.dayOfMonth) }
-    var selectedHour by remember { mutableStateOf(currentDateTime.hour) }
-    var selectedMinute by remember { mutableStateOf(currentDateTime.minute) }
+
+    // Date and time state using ModernDateTimePicker
+    var startDateTime by remember {
+        mutableStateOf(inheritFromCalendarLink?.startsAt ?: java.time.LocalDateTime.now())
+    }
 
     // Date and time state - END (inherit from parent calendar link if provided, otherwise 1 hour after start)
     val defaultEndDateTime = inheritFromCalendarLink?.endsAt ?: currentDateTime.plusHours(1)
-    var endYear by remember { mutableStateOf(defaultEndDateTime.year) }
-    var endMonth by remember { mutableStateOf(defaultEndDateTime.monthValue) }
-    var endDay by remember { mutableStateOf(defaultEndDateTime.dayOfMonth) }
-    var endHour by remember { mutableStateOf(defaultEndDateTime.hour) }
-    var endMinute by remember { mutableStateOf(defaultEndDateTime.minute) }
-
-    val dateTimeText = "$selectedDay.$selectedMonth.$selectedYear $selectedHour:${String.format("%02d", selectedMinute)}"
-    val endDateTimeText = "$endDay.$endMonth.$endYear $endHour:${String.format("%02d", endMinute)}"
+    var endDateTime by remember {
+        mutableStateOf(defaultEndDateTime)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -140,122 +139,56 @@ fun AddTaskDialog(
                     }
 
                     item {
-                        var categoryExpanded by remember { mutableStateOf(false) }
-                        var categorySearchQuery by remember { mutableStateOf("") }
-                        val categoryFocusRequester = remember { FocusRequester() }
-
-                        OutlinedTextField(
-                            value = taskCategory?.name ?: "Allgemein",
-                            onValueChange = { },
-                            readOnly = true,
-                            trailingIcon = {
-                                IconButton(onClick = {
-                                    categoryExpanded = !categoryExpanded
-                                    if (categoryExpanded) {
-                                        categorySearchQuery = ""
-                                    }
-                                }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            leadingIcon = {
-                                taskCategory?.let { cat ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                try {
-                                                    Color(android.graphics.Color.parseColor(cat.color))
-                                                } catch (e: Exception) {
-                                                    MaterialTheme.colorScheme.primary
-                                                }
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = cat.emoji,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
-                            }
-                        )
-
-                        DropdownMenu(
-                            expanded = categoryExpanded,
-                            onDismissRequest = {
-                                categoryExpanded = false
-                                categorySearchQuery = ""
-                            }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCategorySelectionDialog = true },
+                            shape = MaterialTheme.shapes.small,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         ) {
-                            // Search field that auto-focuses
-                            OutlinedTextField(
-                                value = categorySearchQuery,
-                                onValueChange = { categorySearchQuery = it },
-                                placeholder = { Text("Suchen...") },
-                                singleLine = true,
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .focusRequester(categoryFocusRequester)
-                            )
-
-                            // Auto-focus when dropdown opens
-                            androidx.compose.runtime.LaunchedEffect(categoryExpanded) {
-                                if (categoryExpanded) {
-                                    kotlinx.coroutines.delay(100)
-                                    categoryFocusRequester.requestFocus()
-                                }
-                            }
-
-                            // Filtered categories
-                            val filteredCategories = categories.filter {
-                                it.name.contains(categorySearchQuery, ignoreCase = true) ||
-                                it.emoji.contains(categorySearchQuery, ignoreCase = true)
-                            }
-
-                            if (filteredCategories.isEmpty()) {
-                                androidx.compose.foundation.layout.Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall)
-                                }
-                            } else {
-                                filteredCategories.forEach { category ->
-                                    DropdownMenuItem(
-                                        leadingIcon = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        try {
-                                                            Color(android.graphics.Color.parseColor(category.color))
-                                                        } catch (e: Exception) {
-                                                            MaterialTheme.colorScheme.primary
-                                                        }
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = category.emoji,
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                            }
-                                        },
-                                        text = { Text(category.name) },
-                                        onClick = {
-                                            taskCategory = category
-                                            categoryExpanded = false
-                                            categorySearchQuery = ""
+                                    taskCategory?.let { cat ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    try {
+                                                        Color(android.graphics.Color.parseColor(cat.color))
+                                                    } catch (e: Exception) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = cat.emoji,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
                                         }
+                                    }
+                                    Text(
+                                        text = taskCategory?.name ?: "Allgemein",
+                                        style = MaterialTheme.typography.bodyLarge
                                     )
                                 }
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Kategorie wählen",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -266,99 +199,40 @@ fun AddTaskDialog(
                     }
 
                     item {
-                        var parentExpanded by remember { mutableStateOf(false) }
-                        var parentSearchQuery by remember { mutableStateOf("") }
-                        val parentFocusRequester = remember { FocusRequester() }
-
-                        OutlinedTextField(
-                            value = selectedParentTask?.title ?: "Keine (Hauptaufgabe)",
-                            onValueChange = { },
-                            readOnly = true,
-                            trailingIcon = {
-                                IconButton(onClick = {
-                                    parentExpanded = !parentExpanded
-                                    if (parentExpanded) {
-                                        parentSearchQuery = ""
-                                    }
-                                }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            leadingIcon = {
-                                Text(
-                                    text = if (selectedParentTask != null) "📁" else "🎯",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        )
-
-                        DropdownMenu(
-                            expanded = parentExpanded,
-                            onDismissRequest = {
-                                parentExpanded = false
-                                parentSearchQuery = ""
-                            }
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showParentSelectionDialog = true },
+                            shape = MaterialTheme.shapes.small,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         ) {
-                            // Search field that auto-focuses
-                            OutlinedTextField(
-                                value = parentSearchQuery,
-                                onValueChange = { parentSearchQuery = it },
-                                placeholder = { Text("Suchen...") },
-                                singleLine = true,
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .focusRequester(parentFocusRequester)
-                            )
-
-                            // Auto-focus when dropdown opens
-                            androidx.compose.runtime.LaunchedEffect(parentExpanded) {
-                                if (parentExpanded) {
-                                    kotlinx.coroutines.delay(100)
-                                    parentFocusRequester.requestFocus()
-                                }
-                            }
-
-                            // Filter tasks by search query
-                            val filteredTasks = availableTasks.tasks.filter {
-                                it.title.contains(parentSearchQuery, ignoreCase = true) ||
-                                it.description.contains(parentSearchQuery, ignoreCase = true)
-                            }
-
-                            // Option: No parent (main task) - always shown
-                            DropdownMenuItem(
-                                leadingIcon = { Text("🎯", style = MaterialTheme.typography.bodyMedium) },
-                                text = { Text("Keine (Hauptaufgabe)") },
-                                onClick = {
-                                    selectedParentTask = null
-                                    parentExpanded = false
-                                    parentSearchQuery = ""
-                                }
-                            )
-
-                            // Show filtered tasks
-                            if (filteredTasks.isEmpty() && parentSearchQuery.isNotEmpty()) {
-                                androidx.compose.foundation.layout.Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Keine Ergebnisse", style = MaterialTheme.typography.bodySmall)
-                                }
-                            } else {
-                                filteredTasks.forEach { task ->
-                                    DropdownMenuItem(
-                                        leadingIcon = { Text("📁", style = MaterialTheme.typography.bodyMedium) },
-                                        text = { Text(task.title) },
-                                        onClick = {
-                                            selectedParentTask = task
-                                            parentExpanded = false
-                                            parentSearchQuery = ""
-                                        }
+                                    Text(
+                                        text = if (selectedParentTask != null) "📁" else "🎯",
+                                        style = MaterialTheme.typography.headlineMedium
+                                    )
+                                    Text(
+                                        text = selectedParentTask?.title ?: "Kein (Haupt-Task)",
+                                        style = MaterialTheme.typography.bodyLarge
                                     )
                                 }
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Parent Task wählen",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -492,122 +366,92 @@ fun AddTaskDialog(
                                 Text("Auswählen")
                             }
                         }
+
+                        // Show selected contacts with photos - ALWAYS EXPANDED
+                        if (selectedContactIds.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Header
+                            Text(
+                                "Verknüpfte Kontakte (${selectedContactIds.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+
+                            // Contact List - always visible
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    val selectedContacts = availableContacts.filter { it.id in selectedContactIds }
+                                    selectedContacts.forEach { contact ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // Contact photo or icon
+                                            if (contact.photoUri != null) {
+                                                coil.compose.AsyncImage(
+                                                    model = android.net.Uri.parse(contact.photoUri),
+                                                    contentDescription = "Kontaktfoto",
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.Person,
+                                                    contentDescription = "Kein Foto",
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                                                        .padding(6.dp),
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                            }
+
+                                            Text(
+                                                text = contact.displayName,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     item {
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
                     }
 
-                    // Date and Time Selection - START
+                    // Date and Time Selection - START with ModernDateTimePicker
                     item {
-                        Text("Start:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $dateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        ModernDateTimePicker(
+                            label = "Start",
+                            dateTime = startDateTime,
+                            onDateTimeChange = { startDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
                         )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            selectedYear = year
-                                            selectedMonth = month + 1
-                                            selectedDay = dayOfMonth
-                                        },
-                                        selectedYear,
-                                        selectedMonth - 1,
-                                        selectedDay
-                                    )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            selectedHour = hourOfDay
-                                            selectedMinute = minute
-                                        },
-                                        selectedHour,
-                                        selectedMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
-                            }
-                        }
                     }
 
-                    // Date and Time Selection - END
+                    // Date and Time Selection - END with ModernDateTimePicker
                     item {
-                        Text("Ende:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "📅 $endDateTimeText",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        ModernDateTimePicker(
+                            label = "Ende",
+                            dateTime = endDateTime,
+                            onDateTimeChange = { endDateTime = it },
+                            modifier = Modifier.fillMaxWidth()
                         )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    val picker = DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            endYear = year
-                                            endMonth = month + 1
-                                            endDay = dayOfMonth
-                                        },
-                                        endYear,
-                                        endMonth - 1,
-                                        endDay
-                                    )
-                                    picker.datePicker.minDate = 0
-                                    picker.datePicker.maxDate = Long.MAX_VALUE
-                                    picker.show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("📅 Datum")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            endHour = hourOfDay
-                                            endMinute = minute
-                                        },
-                                        endHour,
-                                        endMinute,
-                                        true
-                                    ).show()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("🕐 Uhrzeit")
-                            }
-                        }
                     }
 
                     item {
@@ -759,14 +603,13 @@ fun AddTaskDialog(
                         taskTitle
                     }
 
-                    val startDateTime = java.time.LocalDateTime.of(
-                        selectedYear, selectedMonth, selectedDay,
-                        selectedHour, selectedMinute
-                    )
-                    val endDateTime = java.time.LocalDateTime.of(
-                        endYear, endMonth, endDay,
-                        endHour, endMinute
-                    )
+                    // Debug log
+                    android.util.Log.d("AddTaskDialog", "Creating task with:")
+                    android.util.Log.d("AddTaskDialog", "  isRecurring: $isRecurring")
+                    android.util.Log.d("AddTaskDialog", "  recurringConfig: $recurringConfig")
+                    android.util.Log.d("AddTaskDialog", "  recurringConfig.mode: ${recurringConfig.mode}")
+                    android.util.Log.d("AddTaskDialog", "  recurringConfig.triggerMode: ${recurringConfig.triggerMode}")
+
                     viewModel.createTaskWithCalendar(
                         title = finalTitle,
                         description = taskDescription,
@@ -818,6 +661,43 @@ fun AddTaskDialog(
                 selectedContactIds = newContactIds
                 showContactDialog = false
             }
+        )
+    }
+
+    // Category Selection Fullscreen Dialog
+    if (showCategorySelectionDialog) {
+        FullscreenSelectionDialog(
+            title = "Kategorie wählen",
+            items = categories,
+            selectedItem = taskCategory,
+            onItemSelected = { category ->
+                taskCategory = category
+            },
+            onDismiss = { showCategorySelectionDialog = false },
+            itemLabel = { it.name },
+            itemDescription = { "${it.emoji} ${it.name}" },
+            allowNone = false
+        )
+    }
+
+    // Parent Task Selection Fullscreen Dialog
+    if (showParentSelectionDialog) {
+        FullscreenSelectionDialog(
+            title = "Parent Task wählen",
+            items = availableTasks.tasks,
+            selectedItem = selectedParentTask,
+            onItemSelected = { parent ->
+                selectedParentTask = parent
+            },
+            onDismiss = { showParentSelectionDialog = false },
+            itemLabel = { it.title },
+            itemDescription = { task ->
+                val hasSubtasks = availableTasks.tasks.any { it.parentTaskId == task.id }
+                if (hasSubtasks) "📁 ${task.title}" else task.title
+            },
+            allowNone = true,
+            noneLabel = "Kein (Haupt-Task)",
+            searchPlaceholder = "Task suchen..."
         )
     }
 }

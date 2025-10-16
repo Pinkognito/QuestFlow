@@ -197,6 +197,13 @@ class TodayViewModel @Inject constructor(
     ) {
         if (title.isBlank()) return
 
+        // Debug log incoming parameters
+        android.util.Log.d("TodayViewModel", "createTaskWithCalendar called:")
+        android.util.Log.d("TodayViewModel", "  isRecurring: $isRecurring")
+        android.util.Log.d("TodayViewModel", "  recurringConfig: $recurringConfig")
+        android.util.Log.d("TodayViewModel", "  recurringConfig.mode: ${recurringConfig?.mode}")
+        android.util.Log.d("TodayViewModel", "  recurringConfig.triggerMode: ${recurringConfig?.triggerMode}")
+
         viewModelScope.launch {
             // Check permission again before creating
             checkCalendarPermission()
@@ -271,6 +278,13 @@ class TodayViewModel @Inject constructor(
                 triggerMode = recurringConfig?.triggerMode?.name
             )
 
+            android.util.Log.d("TodayViewModel", "Task entity before insert:")
+            android.util.Log.d("TodayViewModel", "  task.isRecurring: ${task.isRecurring}")
+            android.util.Log.d("TodayViewModel", "  task.recurringType: ${task.recurringType}")
+            android.util.Log.d("TodayViewModel", "  task.recurringInterval: ${task.recurringInterval}")
+            android.util.Log.d("TodayViewModel", "  task.recurringDays: ${task.recurringDays}")
+            android.util.Log.d("TodayViewModel", "  task.triggerMode: ${task.triggerMode}")
+
             val taskId = taskRepository.insertTask(task)
 
             // STEP 2: Create calendar event WITH taskId for deep linking
@@ -321,7 +335,8 @@ class TodayViewModel @Inject constructor(
                     categoryId = effectiveCategoryId,
                     deleteOnClaim = deleteOnClaim,
                     deleteOnExpiry = deleteOnExpiry,
-                    taskId = taskId
+                    taskId = taskId,
+                    isRecurring = isRecurring
                 )
 
                 // If task is already expired, immediately update the link status
@@ -343,7 +358,8 @@ class TodayViewModel @Inject constructor(
                     categoryId = effectiveCategoryId,
                     deleteOnClaim = deleteOnClaim,
                     deleteOnExpiry = deleteOnExpiry,
-                    taskId = taskId
+                    taskId = taskId,
+                    isRecurring = isRecurring
                 )
 
                 // Mark as expired immediately

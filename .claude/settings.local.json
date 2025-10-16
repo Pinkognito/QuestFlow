@@ -25,7 +25,12 @@
       "Bash(git commit:*)",
       "Bash(git rebase:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: Revert overlay experiment - restore working drag-to-select\n\nReverted all overlay-related changes that broke core functionality:\n- Removed overlay gesture layer that blocked swipe gestures\n- Restored gesture handling in HourSlots (original architecture)\n- Restored userScrollEnabled behavior\n- Fixed: Can now swipe/drag in all directions again\n- Fixed: Task clicks working again\n\nKnown issue remains: Drag cancels after ~1 hour of scrolling\n(LazyColumn recycling problem - will address separately)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(adb kill-server:*)",
+      "Bash(adb start-server:*)",
+      "Bash(timeout 10 adb wait-for-device:*)",
+      "Bash(adb devices:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

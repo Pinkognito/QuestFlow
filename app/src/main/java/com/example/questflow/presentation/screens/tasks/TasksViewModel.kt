@@ -41,7 +41,9 @@ class TasksViewModel @Inject constructor(
     private val taskRepository: TaskRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
-    private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository
+    private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository,
+    private val searchFilterRepository: com.example.questflow.data.repository.TaskSearchFilterRepository,
+    private val searchTasksWithFiltersUseCase: com.example.questflow.domain.usecase.SearchTasksWithFiltersUseCase
 ) : ViewModel() {
     // NOTE: calculateXpRewardUseCase entfernt - wird jetzt in UpdateTaskWithCalendarUseCase verwendet
     // NOTE: calendarManager, statsRepository, categoryRepository, taskRepository still needed for:
@@ -635,6 +637,43 @@ class TasksViewModel @Inject constructor(
                 android.util.Log.e("TasksViewModel", "Failed to batch delete tasks", e)
             }
         }
+    }
+
+    /**
+     * Get search filter settings flow
+     */
+    fun getSearchFilterSettings() = searchFilterRepository.getSettings()
+
+    /**
+     * Update search filter settings
+     */
+    fun updateSearchFilterSettings(settings: com.example.questflow.data.database.entity.TaskSearchFilterSettingsEntity) {
+        viewModelScope.launch {
+            searchFilterRepository.updateSettings(settings)
+        }
+    }
+
+    /**
+     * Reset search filter settings to defaults
+     */
+    fun resetSearchFilterSettings() {
+        viewModelScope.launch {
+            searchFilterRepository.resetToDefaults()
+        }
+    }
+
+    /**
+     * Search tasks with configured filters
+     */
+    suspend fun searchTasksWithFilters(tasks: List<com.example.questflow.domain.model.Task>, query: String): List<com.example.questflow.domain.model.Task> {
+        return searchTasksWithFiltersUseCase(tasks, query)
+    }
+
+    /**
+     * Search tasks with configured filters and return match information
+     */
+    suspend fun searchTasksWithMatchInfo(tasks: List<com.example.questflow.domain.model.Task>, query: String): List<com.example.questflow.domain.model.TaskSearchResult> {
+        return searchTasksWithFiltersUseCase.searchWithMatchInfo(tasks, query)
     }
 }
 

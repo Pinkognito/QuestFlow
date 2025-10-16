@@ -19,7 +19,8 @@ class CalendarLinkRepository @Inject constructor(
         categoryId: Long? = null,
         deleteOnClaim: Boolean = false,
         deleteOnExpiry: Boolean = false,
-        taskId: Long? = null
+        taskId: Long? = null,
+        isRecurring: Boolean = false
     ): Long {
         return calendarEventLinkDao.insert(
             CalendarEventLinkEntity(
@@ -33,7 +34,8 @@ class CalendarLinkRepository @Inject constructor(
                 rewarded = false,
                 deleteOnClaim = deleteOnClaim,
                 deleteOnExpiry = deleteOnExpiry,
-                taskId = taskId
+                taskId = taskId,
+                isRecurring = isRecurring
             )
         )
     }
