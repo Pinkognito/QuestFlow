@@ -162,6 +162,10 @@ object TaskFilterSerializer {
             append("ids:${filter.selectedCategoryIds.joinToString(LIST_DELIMITER)}")
             append(FIELD_DELIMITER)
             append("uncategorized:${filter.includeUncategorized}")
+            append(FIELD_DELIMITER)
+            append("useSelected:${filter.useSelectedCategory}")
+            append(FIELD_DELIMITER)
+            append("useAllExcept:${filter.useAllExceptSelected}")
         }
     }
 
@@ -286,7 +290,9 @@ object TaskFilterSerializer {
         return CategoryFilter(
             enabled = true,
             selectedCategoryIds = ids,
-            includeUncategorized = map["uncategorized"]?.toBoolean() ?: true
+            includeUncategorized = map["uncategorized"]?.toBoolean() ?: true,
+            useSelectedCategory = map["useSelected"]?.toBoolean() ?: false,
+            useAllExceptSelected = map["useAllExcept"]?.toBoolean() ?: false
         )
     }
 

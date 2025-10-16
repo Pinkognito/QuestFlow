@@ -115,9 +115,16 @@ data class PriorityFilter(
 data class CategoryFilter(
     val enabled: Boolean = false,
     val selectedCategoryIds: Set<Long> = emptySet(),
-    val includeUncategorized: Boolean = true
+    val includeUncategorized: Boolean = true,
+    val useSelectedCategory: Boolean = false,  // Use the category from dropdown (left top)
+    val useAllExceptSelected: Boolean = false  // Use all categories EXCEPT the one from dropdown
 ) {
-    fun isActive(): Boolean = enabled && (selectedCategoryIds.isNotEmpty() || !includeUncategorized)
+    fun isActive(): Boolean = enabled && (
+        selectedCategoryIds.isNotEmpty() ||
+        !includeUncategorized ||
+        useSelectedCategory ||
+        useAllExceptSelected
+    )
 }
 
 /**

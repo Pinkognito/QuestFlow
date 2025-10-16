@@ -157,7 +157,8 @@ class TasksViewModel @Inject constructor(
                 links = allLinks,
                 filter = filter,
                 categories = categories,
-                textSearchQuery = "" // Text search handled separately
+                textSearchQuery = "", // Text search handled separately
+                selectedCategoryId = selectedCategoryId // Pass dropdown category
             )
 
             android.util.Log.d("AdvancedFilter", "Filtered links: ${result.filteredCount}/${result.totalCount}")
@@ -327,7 +328,8 @@ class TasksViewModel @Inject constructor(
                         links = allLinks,
                         filter = currentFilter,
                         categories = categories,
-                        textSearchQuery = ""
+                        textSearchQuery = "",
+                        selectedCategoryId = selectedCategoryId // Pass dropdown category
                     )
                     android.util.Log.d("AdvancedFilter", "Filtered result: ${result.filteredCount}/${result.totalCount}")
                     _uiState.value = _uiState.value.copy(

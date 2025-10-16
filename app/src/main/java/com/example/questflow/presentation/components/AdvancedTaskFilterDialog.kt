@@ -255,8 +255,40 @@ private fun FilterTab(
                 }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Quick options for dropdown category
+                    Text(
+                        "Schnellauswahl (Dropdown-Kategorie):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    FilterCheckbox(
+                        label = "Ausgewählte Kategorie",
+                        checked = filter.categoryFilters.useSelectedCategory,
+                        onCheckedChange = {
+                            onFilterChange(filter.copy(categoryFilters = filter.categoryFilters.copy(useSelectedCategory = it)))
+                        }
+                    )
+
+                    FilterCheckbox(
+                        label = "Alle außer ausgewählte",
+                        checked = filter.categoryFilters.useAllExceptSelected,
+                        onCheckedChange = {
+                            onFilterChange(filter.copy(categoryFilters = filter.categoryFilters.copy(useAllExceptSelected = it)))
+                        }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    Text(
+                        "Spezifische Kategorien:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
                     categories.forEach { category ->
-                        FilterCheckbox(
+                        HighlightedFilterCheckbox(
                             label = "${category.emoji} ${category.name}",
                             checked = filter.categoryFilters.selectedCategoryIds.contains(category.id),
                             onCheckedChange = { checked ->
@@ -850,6 +882,38 @@ private fun FilterCheckbox(
         Checkbox(checked = checked, onCheckedChange = onCheckedChange)
         Spacer(modifier = Modifier.width(8.dp))
         Text(label, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun HighlightedFilterCheckbox(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (checked)
+                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp, horizontal = 8.dp)
+        ) {
+            Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal
+            )
+        }
     }
 }
 

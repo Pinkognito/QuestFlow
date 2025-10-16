@@ -20,7 +20,8 @@ class ApplyAdvancedTaskFilterUseCase @Inject constructor() {
         links: List<CalendarEventLinkEntity>,
         filter: AdvancedTaskFilter,
         categories: List<CategoryEntity>,
-        textSearchQuery: String = ""
+        textSearchQuery: String = "",
+        selectedCategoryId: Long? = null  // Category from dropdown (left top)
     ): FilteredTaskResult {
         var filtered = links
 
@@ -42,7 +43,7 @@ class ApplyAdvancedTaskFilterUseCase @Inject constructor() {
 
         // Apply category filters
         if (filter.categoryFilters.enabled) {
-            filtered = applyCategoryFilter(filtered, filter.categoryFilters)
+            filtered = applyCategoryFilter(filtered, filter.categoryFilters, selectedCategoryId)
         }
 
         // Apply date filters
@@ -154,9 +155,35 @@ class ApplyAdvancedTaskFilterUseCase @Inject constructor() {
 
     private fun applyCategoryFilter(
         links: List<CalendarEventLinkEntity>,
-        filter: CategoryFilter
+        filter: CategoryFilter,
+        selectedCategoryId: Long?
     ): List<CalendarEventLinkEntity> {
         return links.filter { link ->
+            // Handle quick selection options first (dropdown category)
+            val matchesQuickSelection = when {
+                // Both options selected = show all (no filtering)
+                filter.useSelectedCategory && filter.useAllExceptSelected -> true
+
+                // Only "Ausgewählte Kategorie" = show only selected category from dropdown
+                filter.useSelectedCategory && !filter.useAllExceptSelected -> {
+                    link.categoryId == selectedCategoryId
+                }
+
+                // Only "Alle außer ausgewählte" = show all EXCEPT selected category
+                !filter.useSelectedCategory && filter.useAllExceptSelected -> {
+                    link.categoryId != selectedCategoryId
+                }
+
+                // Neither option selected = continue with specific category filters
+                else -> null
+            }
+
+            // If quick selection matched, return that result
+            if (matchesQuickSelection != null) {
+                return@filter matchesQuickSelection
+            }
+
+            // Otherwise apply specific category filters
             if (link.categoryId == null) {
                 filter.includeUncategorized
             } else {
