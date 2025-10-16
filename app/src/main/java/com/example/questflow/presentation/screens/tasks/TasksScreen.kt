@@ -43,7 +43,9 @@ import java.time.LocalDateTime
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import com.example.questflow.presentation.components.AddTaskDialog
 import com.example.questflow.presentation.components.RecurringConfig
+import com.example.questflow.presentation.components.AdvancedTaskFilterDialog
 import com.example.questflow.domain.model.getDisplayText
+import com.example.questflow.domain.model.SortOption
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
@@ -71,6 +73,9 @@ fun TasksScreen(
     val categoriesMap = remember(categories) { categories.associateBy { it.id } }
     val globalStats by appViewModel.globalStats.collectAsState()
     val showFilterDialog by viewModel.showFilterDialog.collectAsState()
+    val showAdvancedFilterDialog by viewModel.showAdvancedFilterDialog.collectAsState()
+    val currentAdvancedFilter by viewModel.currentAdvancedFilter.collectAsState()
+    val filterPresets by viewModel.filterPresets.collectAsState()
     val filterSettings by viewModel.filterSettings.collectAsState()
     val availableTasks by viewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm")
@@ -87,6 +92,9 @@ fun TasksScreen(
 
     // Display Settings Dialog State
     var showDisplaySettingsDialog by remember { mutableStateOf(false) }
+
+    // Filter Info Expanded State
+    var filterInfoExpanded by remember { mutableStateOf(false) }
 
     // Track previous XP for animation
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
@@ -148,18 +156,67 @@ fun TasksScreen(
         searchResult
     }
 
-    // Extract just the tasks for backwards compatibility
-    val filteredTasks = filteredTasksWithMatches.map { it.task }
-
-    // Also keep filtered links for backwards compatibility (XP claiming etc.)
-    val filteredLinks = if (searchQuery.isEmpty()) {
-        uiState.links
+    // Apply advanced filter if active, otherwise use all links
+    val filteredResult = uiState.filteredLinksResult
+    val baseLinks = if (filteredResult != null) {
+        android.util.Log.d("TasksScreen", "=== USING FILTERED RESULT ===")
+        android.util.Log.d("TasksScreen", "Filtered count: ${filteredResult.filteredCount}/${filteredResult.totalCount}")
+        android.util.Log.d("TasksScreen", "allTasks.size: ${filteredResult.allTasks.size}")
+        filteredResult.allTasks
     } else {
-        uiState.links.filter { link ->
+        android.util.Log.d("TasksScreen", "=== NO FILTER ACTIVE, using all links ===")
+        android.util.Log.d("TasksScreen", "uiState.links.size: ${uiState.links.size}")
+        uiState.links
+    }
+
+    // Also apply text search on top of advanced filter
+    val filteredLinks = if (searchQuery.isEmpty()) {
+        android.util.Log.d("TasksScreen", "No search query, using baseLinks: ${baseLinks.size}")
+        baseLinks
+    } else {
+        val searchFiltered = baseLinks.filter { link ->
             link.title.contains(searchQuery, ignoreCase = true) ||
             (link.categoryId != null && categories.find { it.id == link.categoryId }?.name?.contains(searchQuery, ignoreCase = true) == true)
         }
+        android.util.Log.d("TasksScreen", "Search filtered: ${searchFiltered.size}/${baseLinks.size}")
+        searchFiltered
     }
+
+    android.util.Log.d("TasksScreen", "=== FINAL filteredLinks.size: ${filteredLinks.size} ===")
+    if (filteredLinks.isNotEmpty()) {
+        android.util.Log.d("TasksScreen", "First 3 tasks: ${filteredLinks.take(3).map { it.title }}")
+    }
+
+    // CRITICAL: Filter AND SORT tasks based on filtered links
+    // If advanced filter is active, only show tasks that have a corresponding filtered link
+    // AND maintain the sort order from the filtered links
+    val finalFilteredTasks = if (filteredResult != null) {
+        android.util.Log.d("TasksScreen", "=== FILTERING & SORTING TASKS by filtered links ===")
+        android.util.Log.d("TasksScreen", "Filtered links count: ${filteredLinks.size}")
+        android.util.Log.d("TasksScreen", "Original filteredTasksWithMatches: ${filteredTasksWithMatches.size}")
+
+        // Create a map of taskId -> TaskSearchResult for quick lookup
+        val taskMap = filteredTasksWithMatches.associateBy { it.task.id }
+
+        // Create ordered list following the link order (sorted by UseCase)
+        val sortedTasks = filteredLinks.mapNotNull { link ->
+            link.taskId?.let { taskId ->
+                taskMap[taskId]
+            }
+        }
+
+        android.util.Log.d("TasksScreen", "Tasks after link filter & sort: ${sortedTasks.size}")
+        if (sortedTasks.isNotEmpty()) {
+            android.util.Log.d("TasksScreen", "First 5 sorted task titles: ${sortedTasks.take(5).map { it.task.title }}")
+        }
+        sortedTasks
+    } else {
+        android.util.Log.d("TasksScreen", "No advanced filter, using all filteredTasksWithMatches: ${filteredTasksWithMatches.size}")
+        filteredTasksWithMatches
+    }
+
+    // Extract just the tasks for backwards compatibility
+    val filteredTasks = finalFilteredTasks.map { it.task }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -223,14 +280,14 @@ fun TasksScreen(
                                 )
                             }
 
-                            // Filter button with badge
+                            // Advanced Filter button with badge
                             SmallFloatingActionButton(
-                                onClick = { viewModel.toggleFilterDialog() },
-                                containerColor = if (filterSettings.isActive())
+                                onClick = { viewModel.toggleAdvancedFilterDialog() },
+                                containerColor = if (currentAdvancedFilter.isActive())
                                     MaterialTheme.colorScheme.tertiary
                                 else
                                     MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = if (filterSettings.isActive())
+                                contentColor = if (currentAdvancedFilter.isActive())
                                     MaterialTheme.colorScheme.onTertiary
                                 else
                                     MaterialTheme.colorScheme.onSecondaryContainer
@@ -321,7 +378,7 @@ fun TasksScreen(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Suche nach Name, Metadaten, Tags...") },
+                        placeholder = { Text("Suche...") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suchen") },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
@@ -361,14 +418,99 @@ fun TasksScreen(
                     }
                 }
 
-                // Show task count when search is active
-                if (searchQuery.isNotEmpty()) {
-                    Text(
-                        text = "${filteredTasks.size} ${if (filteredTasks.size == 1) "Task" else "Tasks"} gefunden",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
+                // Show task count with filter/search info (collapsible)
+                if (searchQuery.isNotEmpty() || filteredResult != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clickable { filterInfoExpanded = !filterInfoExpanded },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Main count (always visible)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.List,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Text(
+                                        text = "${filteredTasks.size} ${if (filteredTasks.size == 1) "Task" else "Tasks"}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                                Icon(
+                                    if (filterInfoExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = if (filterInfoExpanded) "Einklappen" else "Ausklappen",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+
+                            // Expanded details
+                            if (filterInfoExpanded) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f)
+                                )
+
+                                // Show filter info if advanced filter is active
+                                if (filteredResult != null) {
+                                    Text(
+                                        text = "Gefiltert: ${filteredResult.filteredCount}/${filteredResult.totalCount} Links",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                    )
+
+                                    // Show active filter count
+                                    val activeFilterCount = currentAdvancedFilter.getActiveFilterCount()
+                                    if (activeFilterCount > 0) {
+                                        Text(
+                                            text = "$activeFilterCount ${if (activeFilterCount == 1) "Filter" else "Filter"} aktiv",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    // Show sort info
+                                    if (currentAdvancedFilter.sortOptions.isNotEmpty() &&
+                                        currentAdvancedFilter.sortOptions.first() != SortOption.DEFAULT) {
+                                        Text(
+                                            text = "Sortiert: ${currentAdvancedFilter.sortOptions.first().displayName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
+                                }
+
+                                // Show search info
+                                if (searchQuery.isNotEmpty()) {
+                                    Text(
+                                        text = "Suche: \"$searchQuery\"",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.tertiary
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (filteredTasks.isEmpty()) {
@@ -387,7 +529,7 @@ fun TasksScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filteredTasksWithMatches, key = { it.task.id }) { taskSearchResult ->
+                        items(finalFilteredTasks, key = { it.task.id }) { taskSearchResult ->
                     val task = taskSearchResult.task
                     val matchedFilters = taskSearchResult.matchedFilters
 
@@ -506,14 +648,28 @@ fun TasksScreen(
             // In production, you'd show a Snackbar here
         }
 
-        // Filter Dialog
-        if (showFilterDialog) {
-            CalendarFilterDialog(
-                filterSettings = filterSettings,
-                onDismiss = { viewModel.toggleFilterDialog() },
-                onApply = { settings ->
-                    viewModel.updateFilterSettings(settings)
-                    viewModel.toggleFilterDialog()
+        // Advanced Filter Dialog
+        if (showAdvancedFilterDialog) {
+            AdvancedTaskFilterDialog(
+                currentFilter = currentAdvancedFilter,
+                categories = categories,
+                presets = filterPresets,
+                onDismiss = {
+                    viewModel.toggleAdvancedFilterDialog()
+                },
+                onApply = { filter ->
+                    // Only apply filter, don't close dialog here
+                    // Dialog closes itself via onDismiss
+                    viewModel.applyAdvancedFilter(filter)
+                },
+                onSavePreset = { filter, name, desc ->
+                    viewModel.saveFilterAsPreset(filter, name, desc)
+                },
+                onLoadPreset = { presetId ->
+                    viewModel.loadFilterPreset(presetId)
+                },
+                onDeletePreset = { presetId ->
+                    viewModel.deleteFilterPreset(presetId)
                 }
             )
         }

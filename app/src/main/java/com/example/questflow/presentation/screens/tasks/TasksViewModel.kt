@@ -18,6 +18,9 @@ import com.example.questflow.domain.usecase.RecordCalendarXpUseCase
 import com.example.questflow.domain.usecase.CheckExpiredEventsUseCase
 import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
 import com.example.questflow.domain.usecase.UpdateTaskWithCalendarUseCase
+import com.example.questflow.domain.usecase.ApplyAdvancedTaskFilterUseCase
+import com.example.questflow.data.repository.TaskFilterRepository
+import com.example.questflow.domain.model.AdvancedTaskFilter
 import com.example.questflow.presentation.components.RecurringConfig
 import com.example.questflow.presentation.components.RecurringMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -44,7 +47,9 @@ class TasksViewModel @Inject constructor(
     private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository,
     private val searchFilterRepository: com.example.questflow.data.repository.TaskSearchFilterRepository,
     private val searchTasksWithFiltersUseCase: com.example.questflow.domain.usecase.SearchTasksWithFiltersUseCase,
-    private val displaySettingsRepository: com.example.questflow.data.repository.TaskDisplaySettingsRepository
+    private val displaySettingsRepository: com.example.questflow.data.repository.TaskDisplaySettingsRepository,
+    private val taskFilterRepository: TaskFilterRepository,
+    private val applyAdvancedFilterUseCase: ApplyAdvancedTaskFilterUseCase
 ) : ViewModel() {
     // NOTE: calculateXpRewardUseCase entfernt - wird jetzt in UpdateTaskWithCalendarUseCase verwendet
     // NOTE: calendarManager, statsRepository, categoryRepository, taskRepository still needed for:
@@ -61,8 +66,17 @@ class TasksViewModel @Inject constructor(
     private val _showFilterDialog = MutableStateFlow(false)
     val showFilterDialog: StateFlow<Boolean> = _showFilterDialog.asStateFlow()
 
+    private val _showAdvancedFilterDialog = MutableStateFlow(false)
+    val showAdvancedFilterDialog: StateFlow<Boolean> = _showAdvancedFilterDialog.asStateFlow()
+
+    private val _currentAdvancedFilter = MutableStateFlow(AdvancedTaskFilter())
+    val currentAdvancedFilter: StateFlow<AdvancedTaskFilter> = _currentAdvancedFilter.asStateFlow()
+
     val filterSettings: StateFlow<TaskFilterSettings> = filterPreferences.getSettings()
     val uiSettings: StateFlow<com.example.questflow.data.preferences.UISettings> = uiPreferences.getSettings()
+
+    private val _filterPresets = MutableStateFlow<List<com.example.questflow.data.database.entity.TaskFilterPresetEntity>>(emptyList())
+    val filterPresets: StateFlow<List<com.example.questflow.data.database.entity.TaskFilterPresetEntity>> = _filterPresets.asStateFlow()
 
     init {
         loadFilterSettings()
@@ -70,6 +84,29 @@ class TasksViewModel @Inject constructor(
         loadCalendarLinks()  // Still load for XP claiming
         loadCalendarEvents()
         loadStats()
+        loadFilterPresets()
+        loadSavedFilter()
+    }
+
+    private fun loadSavedFilter() {
+        viewModelScope.launch {
+            // Load last used filter from SharedPreferences
+            val savedFilter = taskFilterRepository.getCurrentFilter()
+            _currentAdvancedFilter.value = savedFilter
+
+            // Apply the saved filter if it's active
+            if (savedFilter.isActive()) {
+                applyAdvancedFilter(savedFilter)
+            }
+        }
+    }
+
+    private fun loadFilterPresets() {
+        viewModelScope.launch {
+            taskFilterRepository.getAllPresetsFlow().collect { presets ->
+                _filterPresets.value = presets
+            }
+        }
     }
 
     private fun loadFilterSettings() {
@@ -90,6 +127,77 @@ class TasksViewModel @Inject constructor(
 
     fun toggleFilterDialog() {
         _showFilterDialog.value = !_showFilterDialog.value
+    }
+
+    fun toggleAdvancedFilterDialog() {
+        _showAdvancedFilterDialog.value = !_showAdvancedFilterDialog.value
+    }
+
+    fun applyAdvancedFilter(filter: AdvancedTaskFilter) {
+        viewModelScope.launch {
+            android.util.Log.d("AdvancedFilter", "=== APPLYING ADVANCED FILTER ===")
+            android.util.Log.d("AdvancedFilter", "Filter.isActive() = ${filter.isActive()}")
+            android.util.Log.d("AdvancedFilter", "StatusFilter: enabled=${filter.statusFilters.enabled}")
+            android.util.Log.d("AdvancedFilter", "  showCompleted=${filter.statusFilters.showCompleted}, showOpen=${filter.statusFilters.showOpen}")
+            android.util.Log.d("AdvancedFilter", "  showExpired=${filter.statusFilters.showExpired}")
+            android.util.Log.d("AdvancedFilter", "  showClaimed=${filter.statusFilters.showClaimed}, showUnclaimed=${filter.statusFilters.showUnclaimed}")
+            android.util.Log.d("AdvancedFilter", "StatusFilter.isActive() = ${filter.statusFilters.isActive()}")
+
+            _currentAdvancedFilter.value = filter
+
+            // Save filter for persistence
+            taskFilterRepository.saveCurrentFilter(filter)
+
+            // Apply filter to all links
+            val allLinks = calendarLinkRepository.getAllLinks().first()
+            android.util.Log.d("AdvancedFilter", "Total links before filter: ${allLinks.size}")
+
+            val categories = categoryRepository.getAllCategories().first()
+            val result = applyAdvancedFilterUseCase.execute(
+                links = allLinks,
+                filter = filter,
+                categories = categories,
+                textSearchQuery = "" // Text search handled separately
+            )
+
+            android.util.Log.d("AdvancedFilter", "Filtered links: ${result.filteredCount}/${result.totalCount}")
+            android.util.Log.d("AdvancedFilter", "Sort options: ${filter.sortOptions}")
+            android.util.Log.d("AdvancedFilter", "Group by: ${filter.groupBy}")
+
+            _uiState.value = _uiState.value.copy(
+                filteredLinksResult = result
+            )
+        }
+    }
+
+    fun saveFilterAsPreset(filter: AdvancedTaskFilter, name: String, description: String) {
+        viewModelScope.launch {
+            taskFilterRepository.saveFilterAsPreset(filter, name, description)
+        }
+    }
+
+    fun loadFilterPreset(presetId: Long) {
+        viewModelScope.launch {
+            val preset = taskFilterRepository.getPresetById(presetId)
+            preset?.let {
+                val filter = taskFilterRepository.deserializeFilter(it.filterJson)
+                applyAdvancedFilter(filter)
+            }
+        }
+    }
+
+    fun deleteFilterPreset(presetId: Long) {
+        viewModelScope.launch {
+            taskFilterRepository.deletePreset(presetId)
+        }
+    }
+
+    fun clearAdvancedFilter() {
+        viewModelScope.launch {
+            _currentAdvancedFilter.value = AdvancedTaskFilter()
+            taskFilterRepository.clearCurrentFilter()
+            loadCalendarLinks()  // Reload with simple filter
+        }
     }
 
     fun updateFilterSettings(settings: TaskFilterSettings) {
@@ -206,8 +314,35 @@ class TasksViewModel @Inject constructor(
             }
 
             calendarLinkRepository.getAllLinks().collect { allLinks ->
-                val filteredLinks = filterLinks(allLinks)
-                _uiState.value = _uiState.value.copy(links = filteredLinks)
+                // Check if advanced filter is active
+                val currentFilter = _currentAdvancedFilter.value
+                android.util.Log.d("AdvancedFilter", "=== loadCalendarLinks: ${allLinks.size} links loaded ===")
+                android.util.Log.d("AdvancedFilter", "Current filter isActive: ${currentFilter.isActive()}")
+
+                if (currentFilter.isActive()) {
+                    android.util.Log.d("AdvancedFilter", "Re-applying advanced filter to fresh data")
+                    // Re-apply advanced filter to fresh data
+                    val categories = categoryRepository.getAllCategories().first()
+                    val result = applyAdvancedFilterUseCase.execute(
+                        links = allLinks,
+                        filter = currentFilter,
+                        categories = categories,
+                        textSearchQuery = ""
+                    )
+                    android.util.Log.d("AdvancedFilter", "Filtered result: ${result.filteredCount}/${result.totalCount}")
+                    _uiState.value = _uiState.value.copy(
+                        links = allLinks,  // Keep all links for reference
+                        filteredLinksResult = result  // But show filtered results
+                    )
+                } else {
+                    android.util.Log.d("AdvancedFilter", "Using simple filter (no advanced filter active)")
+                    // Use simple filter if no advanced filter active
+                    val filteredLinks = filterLinks(allLinks)
+                    _uiState.value = _uiState.value.copy(
+                        links = filteredLinks,
+                        filteredLinksResult = null  // Clear advanced filter results
+                    )
+                }
             }
         }
     }
@@ -760,7 +895,8 @@ data class TasksUiState(
     val showOpen: Boolean = true,
     val filterByCategory: Boolean = false,
     val showOnlyWithCalendar: Boolean = false,
-    val dateFilterType: DateFilterType = DateFilterType.ALL
+    val dateFilterType: DateFilterType = DateFilterType.ALL,
+    val filteredLinksResult: com.example.questflow.domain.usecase.FilteredTaskResult? = null
 )
 
 

@@ -45,9 +45,11 @@ import com.example.questflow.data.database.entity.*
         // Task Search Filter Settings
         TaskSearchFilterSettingsEntity::class,
         // Task Display Settings
-        TaskDisplaySettingsEntity::class
+        TaskDisplaySettingsEntity::class,
+        // Task Filter Presets
+        TaskFilterPresetEntity::class
     ],
-    version = 40,
+    version = 41,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -91,6 +93,9 @@ abstract class QuestFlowDatabase : RoomDatabase() {
 
     // Task Display Settings DAO
     abstract fun taskDisplaySettingsDao(): TaskDisplaySettingsDao
+
+    // Task Filter Presets DAO
+    abstract fun taskFilterPresetDao(): TaskFilterPresetDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"

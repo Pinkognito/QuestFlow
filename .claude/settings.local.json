@@ -31,7 +31,9 @@
       "Bash(timeout 10 adb wait-for-device:*)",
       "Bash(adb devices:*)",
       "Bash(git checkout:*)",
-      "Bash(timeout 10 adb logcat:*)"
+      "Bash(timeout 10 adb logcat:*)",
+      "Bash(adb shell pm:*)",
+      "Bash(timeout 20 adb logcat:*)"
     ],
     "deny": [],
     "ask": []
