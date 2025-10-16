@@ -159,11 +159,49 @@ fun TemplateCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = template.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = template.title,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        // Typ Badge
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    when (template.type) {
+                                        "WHATSAPP" -> "WhatsApp"
+                                        "EMAIL" -> "E-Mail"
+                                        "CALENDAR" -> "Kalender"
+                                        else -> "Allgemein"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            modifier = Modifier.height(24.dp)
+                        )
+                        // Standard Badge
+                        if (template.isDefault) {
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        "⭐ Standard",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                ),
+                                modifier = Modifier.height(24.dp)
+                            )
+                        }
+                    }
+                }
                 IconButton(onClick = { showMenu = true }) {
                     Icon(Icons.Default.MoreVert, "Optionen")
                 }
@@ -258,12 +296,24 @@ fun TextTemplateEditorDialog(
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf(template?.title ?: "") }
-    var subject by remember { mutableStateOf(template?.subject ?: "") }
+    var subjectField by remember { mutableStateOf(TextFieldValue(template?.subject ?: "")) }
     var contentField by remember { mutableStateOf(TextFieldValue(template?.content ?: "")) }
     var description by remember { mutableStateOf(template?.description ?: "") }
+    var selectedType by remember { mutableStateOf(template?.type ?: "GENERAL") }
+    var isDefault by remember { mutableStateOf(template?.isDefault ?: false) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by remember { mutableStateOf("") }
-    var showPlaceholderDialog by remember { mutableStateOf(false) }
+    var showPlaceholderDialogForSubject by remember { mutableStateOf(false) }
+    var showPlaceholderDialogForContent by remember { mutableStateOf(false) }
+    var showTypeDropdown by remember { mutableStateOf(false) }
+
+    val templateTypes = listOf("GENERAL", "WHATSAPP", "EMAIL", "CALENDAR")
+    val typeLabels = mapOf(
+        "GENERAL" to "Allgemein",
+        "WHATSAPP" to "WhatsApp",
+        "EMAIL" to "E-Mail",
+        "CALENDAR" to "Kalender"
+    )
 
     LaunchedEffect(template) {
         if (template != null) {
@@ -288,10 +338,20 @@ fun TextTemplateEditorDialog(
                 }
                 item {
                     OutlinedTextField(
-                        value = subject,
-                        onValueChange = { subject = it },
+                        value = subjectField,
+                        onValueChange = { subjectField = it },
                         label = { Text("Betreff (optional, für E-Mails/Termine)") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showPlaceholderDialogForSubject = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Platzhalter einfügen",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     )
                 }
                 item {
@@ -302,6 +362,71 @@ fun TextTemplateEditorDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+
+                // Typ-Auswahl
+                item {
+                    Text(
+                        "Typ:",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                item {
+                    ExposedDropdownMenuBox(
+                        expanded = showTypeDropdown,
+                        onExpandedChange = { showTypeDropdown = it }
+                    ) {
+                        OutlinedTextField(
+                            value = typeLabels[selectedType] ?: "Allgemein",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Template-Typ") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showTypeDropdown) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = showTypeDropdown,
+                            onDismissRequest = { showTypeDropdown = false }
+                        ) {
+                            templateTypes.forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(typeLabels[type] ?: type) },
+                                    onClick = {
+                                        selectedType = type
+                                        showTypeDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Standard-Vorlage Checkbox
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isDefault,
+                            onCheckedChange = { isDefault = it }
+                        )
+                        Column(modifier = Modifier.padding(start = 8.dp)) {
+                            Text(
+                                "Standard-Vorlage",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                "Wird automatisch bei diesem Typ vorausgewählt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
                 item {
                     OutlinedTextField(
                         value = contentField,
@@ -312,7 +437,7 @@ fun TextTemplateEditorDialog(
                             .heightIn(min = 120.dp),
                         maxLines = 8,
                         trailingIcon = {
-                            IconButton(onClick = { showPlaceholderDialog = true }) {
+                            IconButton(onClick = { showPlaceholderDialogForContent = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Platzhalter einfügen",
@@ -370,6 +495,7 @@ fun TextTemplateEditorDialog(
             Button(
                 onClick = {
                     val content = contentField.text
+                    val subject = subjectField.text
                     if (title.isNotBlank() && content.isNotBlank()) {
                         if (template == null) {
                             viewModel.createTemplate(
@@ -377,6 +503,8 @@ fun TextTemplateEditorDialog(
                                 content = content,
                                 description = description.ifBlank { null },
                                 subject = subject.ifBlank { null },
+                                type = selectedType,
+                                isDefault = isDefault,
                                 tags = tags
                             )
                         } else {
@@ -385,7 +513,9 @@ fun TextTemplateEditorDialog(
                                     title = title,
                                     content = content,
                                     description = description.ifBlank { null },
-                                    subject = subject.ifBlank { null }
+                                    subject = subject.ifBlank { null },
+                                    type = selectedType,
+                                    isDefault = isDefault
                                 ),
                                 tags
                             )
@@ -405,12 +535,34 @@ fun TextTemplateEditorDialog(
         }
     )
 
-    // Platzhalter-Auswahl Dialog
-    if (showPlaceholderDialog) {
+    // Platzhalter-Auswahl Dialog für Betreff
+    if (showPlaceholderDialogForSubject) {
         com.example.questflow.presentation.components.PlaceholderSelectorDialog(
-            onDismiss = { showPlaceholderDialog = false },
+            onDismiss = { showPlaceholderDialogForSubject = false },
             onPlaceholderSelected = { placeholder ->
-                // Füge Platzhalter an Cursor-Position ein
+                // Füge Platzhalter an Cursor-Position im Betreff ein
+                val currentText = subjectField.text
+                val selection = subjectField.selection
+                val newText = currentText.substring(0, selection.start) +
+                              placeholder +
+                              currentText.substring(selection.end)
+
+                subjectField = TextFieldValue(
+                    text = newText,
+                    selection = androidx.compose.ui.text.TextRange(
+                        selection.start + placeholder.length
+                    )
+                )
+            }
+        )
+    }
+
+    // Platzhalter-Auswahl Dialog für Text
+    if (showPlaceholderDialogForContent) {
+        com.example.questflow.presentation.components.PlaceholderSelectorDialog(
+            onDismiss = { showPlaceholderDialogForContent = false },
+            onPlaceholderSelected = { placeholder ->
+                // Füge Platzhalter an Cursor-Position im Text ein
                 val currentText = contentField.text
                 val selection = contentField.selection
                 val newText = currentText.substring(0, selection.start) +

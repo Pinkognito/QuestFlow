@@ -12,6 +12,12 @@ interface TextTemplateDao {
     @Query("SELECT * FROM text_templates WHERE id = :id")
     suspend fun getTemplateById(id: Long): TextTemplateEntity?
 
+    @Query("SELECT * FROM text_templates WHERE type = :type AND isDefault = 1 LIMIT 1")
+    suspend fun getDefaultByType(type: String): TextTemplateEntity?
+
+    @Query("SELECT * FROM text_templates WHERE type = :type ORDER BY isDefault DESC, lastUsedAt DESC, usageCount DESC")
+    fun getTemplatesByTypeFlow(type: String): Flow<List<TextTemplateEntity>>
+
     @Query("""
         SELECT DISTINCT t.* FROM text_templates t
         LEFT JOIN text_template_tags tt ON t.id = tt.templateId

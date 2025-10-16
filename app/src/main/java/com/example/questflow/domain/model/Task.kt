@@ -26,7 +26,10 @@ data class Task(
     val nextDueDate: LocalDateTime? = null,
     val isEditable: Boolean = true,
     val parentTaskId: Long? = null,
-    val autoCompleteParent: Boolean = false
+    val autoCompleteParent: Boolean = false,
+    // Calendar Event Custom Fields (optional - supports placeholders)
+    val calendarEventCustomTitle: String? = null,
+    val calendarEventCustomDescription: String? = null
 )
 
 enum class Priority {

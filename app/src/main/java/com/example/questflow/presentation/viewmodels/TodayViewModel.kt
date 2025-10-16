@@ -197,7 +197,9 @@ class TodayViewModel @Inject constructor(
         recurringConfig: com.example.questflow.presentation.components.RecurringConfig? = null,
         parentTaskId: Long? = null,
         autoCompleteParent: Boolean = false,
-        contactIds: Set<Long> = emptySet()
+        contactIds: Set<Long> = emptySet(),
+        calendarEventCustomTitle: String? = null,
+        calendarEventCustomDescription: String? = null
     ) {
         if (title.isBlank()) return
 
@@ -279,7 +281,9 @@ class TodayViewModel @Inject constructor(
                 autoCompleteParent = autoCompleteParent,
                 recurringInterval = recurringInterval,
                 recurringDays = recurringDays,
-                triggerMode = recurringConfig?.triggerMode?.name
+                triggerMode = recurringConfig?.triggerMode?.name,
+                calendarEventCustomTitle = calendarEventCustomTitle,
+                calendarEventCustomDescription = calendarEventCustomDescription
             )
 
             android.util.Log.d("TodayViewModel", "Task entity before insert:")
@@ -315,7 +319,9 @@ class TodayViewModel @Inject constructor(
                         xpReward = xpReward,
                         xpPercentage = xpPercentage,
                         categoryColor = category?.color,
-                        taskId = taskId // Deep link!
+                        taskId = taskId, // Deep link!
+                        customTitle = calendarEventCustomTitle,
+                        customDescription = calendarEventCustomDescription
                     )
                 }
             }
@@ -470,6 +476,8 @@ class TodayViewModel @Inject constructor(
     }
 
     fun getTextTemplates() = textTemplateRepository.getAllTemplatesFlow()
+
+    suspend fun getDefaultCalendarTemplate() = textTemplateRepository.getDefaultByType("CALENDAR")
 
     fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
 

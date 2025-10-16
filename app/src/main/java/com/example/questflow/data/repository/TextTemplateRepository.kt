@@ -22,6 +22,10 @@ class TextTemplateRepository @Inject constructor(
 
     suspend fun getTemplatesByTag(tag: String): List<TextTemplateEntity> = templateDao.getTemplatesByTag(tag)
 
+    suspend fun getDefaultByType(type: String): TextTemplateEntity? = templateDao.getDefaultByType(type)
+
+    fun getTemplatesByTypeFlow(type: String): Flow<List<TextTemplateEntity>> = templateDao.getTemplatesByTypeFlow(type)
+
     suspend fun insertTemplate(template: TextTemplateEntity): Long = templateDao.insertTemplate(template)
 
     suspend fun updateTemplate(template: TextTemplateEntity) = templateDao.updateTemplate(template)

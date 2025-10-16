@@ -10,6 +10,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.CalendarContract
 import androidx.core.content.ContextCompat
+import com.example.questflow.domain.placeholder.PlaceholderResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,7 +22,8 @@ import javax.inject.Singleton
 
 @Singleton
 class CalendarManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val placeholderResolver: PlaceholderResolver
 ) {
     companion object {
         private const val CALENDAR_DISPLAY_NAME = "QuestFlow Tasks"
@@ -103,25 +105,55 @@ class CalendarManager @Inject constructor(
         xpReward: Int,
         xpPercentage: Int = 60,
         categoryColor: String? = null,
-        taskId: Long? = null
+        taskId: Long? = null,
+        customTitle: String? = null,
+        customDescription: String? = null
     ): Long? = withContext(Dispatchers.IO) {
         if (!hasCalendarPermission()) return@withContext null
 
         val calendarId = getOrCreateCalendar() ?: return@withContext null
 
+        // Resolve custom title/description with placeholders if provided
+        val resolvedTitle = if (customTitle != null && taskId != null) {
+            try {
+                placeholderResolver.resolve(customTitle, taskId)
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarManager", "Failed to resolve custom title: ${e.message}")
+                taskTitle // Fallback to original
+            }
+        } else {
+            taskTitle // Use original title with emoji
+        }
+
+        val resolvedDescription = if (customDescription != null && taskId != null) {
+            try {
+                placeholderResolver.resolve(customDescription, taskId)
+            } catch (e: Exception) {
+                android.util.Log.e("CalendarManager", "Failed to resolve custom description: ${e.message}")
+                taskDescription // Fallback to original
+            }
+        } else {
+            taskDescription // Use original description
+        }
+
         val values = ContentValues().apply {
             put(CalendarContract.Events.DTSTART, startTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             put(CalendarContract.Events.DTEND, endTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
-            put(CalendarContract.Events.TITLE, taskTitle) // Title already includes emoji from ViewModel
+            put(CalendarContract.Events.TITLE, resolvedTitle)
 
-            // Build description with taskId for reference
-            val descriptionText = buildString {
-                append(taskDescription)
-                append("\n\n🎮 XP Reward: $xpReward")
-                if (taskId != null) {
-                    // Include taskId as reference - app will handle opening from notification
-                    append("\n\n📱 Öffne QuestFlow, um den Task zu bearbeiten")
-                    append("\n(Task ID: $taskId)")
+            // Build description: Use custom description OR fallback to original with XP info
+            val descriptionText = if (customDescription != null) {
+                // User provided custom description - use it as-is (already resolved)
+                resolvedDescription
+            } else {
+                // No custom description - use original with XP info
+                buildString {
+                    append(resolvedDescription)
+                    append("\n\n🎮 XP Reward: $xpReward")
+                    if (taskId != null) {
+                        append("\n\n📱 Öffne QuestFlow, um den Task zu bearbeiten")
+                        append("\n(Task ID: $taskId)")
+                    }
                 }
             }
             put(CalendarContract.Events.DESCRIPTION, descriptionText)

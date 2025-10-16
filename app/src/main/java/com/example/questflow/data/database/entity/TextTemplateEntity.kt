@@ -18,9 +18,19 @@ data class TextTemplateEntity(
     val description: String? = null,        // Optional: Was macht dieser Baustein?
     val subject: String? = null,            // Optional: Betreff für E-Mails/Termine
 
+    val type: String = "GENERAL",           // GENERAL, WHATSAPP, EMAIL, CALENDAR
+    val isDefault: Boolean = false,         // Standard-Vorlage für den Typ
+
     val usageCount: Int = 0,                // Wie oft wurde er verwendet?
     val lastUsedAt: LocalDateTime? = null,  // Wann zuletzt verwendet?
 
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val updatedAt: LocalDateTime = LocalDateTime.now()
 )
+
+enum class TemplateType {
+    GENERAL,    // Allgemeine Vorlage
+    WHATSAPP,   // WhatsApp-Nachricht
+    EMAIL,      // E-Mail
+    CALENDAR    // Kalender-Event
+}

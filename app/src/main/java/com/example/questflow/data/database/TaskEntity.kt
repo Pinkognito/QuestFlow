@@ -34,7 +34,10 @@ data class TaskEntity(
     // Task editing fields
     val isEditable: Boolean = true,
     val parentTaskId: Long? = null, // Reference to parent task for subtasks
-    val autoCompleteParent: Boolean = false // Auto-complete parent when all subtasks done
+    val autoCompleteParent: Boolean = false, // Auto-complete parent when all subtasks done
+    // Calendar Event Custom Fields (optional - supports placeholders like {task.title}, {kontakt.name})
+    val calendarEventCustomTitle: String? = null,
+    val calendarEventCustomDescription: String? = null
 )
 
 enum class RecurringType {

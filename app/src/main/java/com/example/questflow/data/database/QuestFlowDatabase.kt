@@ -49,7 +49,7 @@ import com.example.questflow.data.database.entity.*
         // Task Filter Presets
         TaskFilterPresetEntity::class
     ],
-    version = 41,
+    version = 43,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

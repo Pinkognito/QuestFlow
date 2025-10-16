@@ -64,7 +64,15 @@ class TextTemplateViewModel @Inject constructor(
         _selectedTagFilter.value = tag
     }
 
-    fun createTemplate(title: String, content: String, description: String?, subject: String?, tags: List<String>) {
+    fun createTemplate(
+        title: String,
+        content: String,
+        description: String?,
+        subject: String?,
+        type: String,
+        isDefault: Boolean,
+        tags: List<String>
+    ) {
         viewModelScope.launch {
             try {
                 val template = TextTemplateEntity(
@@ -72,6 +80,8 @@ class TextTemplateViewModel @Inject constructor(
                     content = content,
                     description = description,
                     subject = subject,
+                    type = type,
+                    isDefault = isDefault,
                     createdAt = LocalDateTime.now(),
                     updatedAt = LocalDateTime.now()
                 )

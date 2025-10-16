@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +45,22 @@ fun AddTaskDialog(
     val categories by viewModel.categories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val availableTasks by viewModel.uiState.collectAsState()
+
+    // Calendar Event Custom Fields
+    var calendarEventSectionExpanded by rememberSaveable { mutableStateOf(false) }
+    var calendarEventCustomTitle by remember { mutableStateOf("") }
+    var calendarEventCustomDescription by remember { mutableStateOf("") }
+    val textTemplates by viewModel.textTemplates.collectAsState(initial = emptyList())
+    var showTitleTemplateDialog by remember { mutableStateOf(false) }
+    var showDescriptionTemplateDialog by remember { mutableStateOf(false) }
+
+    // Load default CALENDAR template on first composition
+    LaunchedEffect(Unit) {
+        viewModel.getDefaultCalendarTemplate()?.let { defaultTemplate ->
+            calendarEventCustomTitle = defaultTemplate.subject ?: defaultTemplate.content
+            calendarEventCustomDescription = defaultTemplate.content
+        }
+    }
 
     // Inherit category from parent task if provided
     val inheritedCategory = remember(inheritFromTask, categories) {
@@ -671,6 +688,170 @@ fun AddTaskDialog(
                                     Text(getRecurringButtonText(recurringConfig))
                                 }
                             }
+
+                            // Calendar Event Configuration Section (Expandable)
+                            if (addToCalendar) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Divider()
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // Header (clickable to expand/collapse)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { calendarEventSectionExpanded = !calendarEventSectionExpanded }
+                                                .padding(16.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DateRange,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                                Column {
+                                                    Text(
+                                                        "Kalender-Event anpassen",
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                    Text(
+                                                        "Titel & Beschreibung mit Platzhaltern",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                                    )
+                                                }
+                                            }
+                                            Icon(
+                                                imageVector = if (calendarEventSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (calendarEventSectionExpanded) "Einklappen" else "Ausklappen",
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+
+                                        // Expandable Content
+                                        if (calendarEventSectionExpanded) {
+                                            Divider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.2f))
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                // Title Section
+                                                Text(
+                                                    "Betreff:",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+
+                                                // Template Dropdown Button for Title
+                                                OutlinedButton(
+                                                    onClick = { showTitleTemplateDialog = true },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    enabled = textTemplates.isNotEmpty()
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.List,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        if (textTemplates.isEmpty()) "Keine Templates verfügbar"
+                                                        else "Textbaustein auswählen"
+                                                    )
+                                                }
+
+                                                // Title TextField
+                                                OutlinedTextField(
+                                                    value = calendarEventCustomTitle,
+                                                    onValueChange = { calendarEventCustomTitle = it },
+                                                    label = { Text("Event-Titel (optional)") },
+                                                    placeholder = { Text("z.B. Meeting mit {kontakt.name}") },
+                                                    maxLines = 2,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                // Description Section
+                                                Text(
+                                                    "Beschreibung:",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+
+                                                // Template Dropdown Button for Description
+                                                OutlinedButton(
+                                                    onClick = { showDescriptionTemplateDialog = true },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    enabled = textTemplates.isNotEmpty()
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.List,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        if (textTemplates.isEmpty()) "Keine Templates verfügbar"
+                                                        else "Textbaustein auswählen"
+                                                    )
+                                                }
+
+                                                // Description TextField
+                                                OutlinedTextField(
+                                                    value = calendarEventCustomDescription,
+                                                    onValueChange = { calendarEventCustomDescription = it },
+                                                    label = { Text("Event-Beschreibung (optional)") },
+                                                    placeholder = { Text("z.B. Aufgabe: {task.title}\nKontakt: {kontakt.name}") },
+                                                    maxLines = 4,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+
+                                                // Info Card
+                                                Card(
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                                    )
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Info,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                        Text(
+                                                            "Platzhalter: {task.title}, {task.description}, {kontakt.name}, {kontakt.name.all}, {standort.name}",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         } else {
                             Card(
                                 colors = CardDefaults.cardColors(
@@ -723,7 +904,9 @@ fun AddTaskDialog(
                         recurringConfig = if (isRecurring) recurringConfig else null,
                         parentTaskId = selectedParentTask?.id,
                         autoCompleteParent = autoCompleteParent,
-                        contactIds = selectedContactIds
+                        contactIds = selectedContactIds,
+                        calendarEventCustomTitle = calendarEventCustomTitle.ifBlank { null },
+                        calendarEventCustomDescription = calendarEventCustomDescription.ifBlank { null }
                     )
                     onDismiss()
                 }
@@ -813,6 +996,115 @@ fun AddTaskDialog(
             onTimeSlotSelected = { newStart, newEnd ->
                 startDateTime = newStart
                 endDateTime = newEnd
+            }
+        )
+    }
+
+    // Template Selection Dialog for Title
+    if (showTitleTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTitleTemplateDialog = false },
+            title = { Text("Textbaustein für Betreff wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    // Use subject if available, otherwise use content
+                                    calendarEventCustomTitle = template.subject ?: template.content
+                                    showTitleTemplateDialog = false
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = template.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                template.description?.let { desc ->
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                Text(
+                                    text = template.subject ?: template.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTitleTemplateDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Template Selection Dialog for Description
+    if (showDescriptionTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showDescriptionTemplateDialog = false },
+            title = { Text("Textbaustein für Beschreibung wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    calendarEventCustomDescription = template.content
+                                    showDescriptionTemplateDialog = false
+                                },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = template.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                template.description?.let { desc ->
+                                    Text(
+                                        text = desc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                Text(
+                                    text = template.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    maxLines = 3
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDescriptionTemplateDialog = false }) {
+                    Text("Abbrechen")
+                }
             }
         )
     }
