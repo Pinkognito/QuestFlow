@@ -24,6 +24,8 @@ import com.example.questflow.domain.usecase.CalculateXpRewardUseCase
 import com.example.questflow.domain.usecase.CompleteTaskUseCase
 import com.example.questflow.domain.usecase.CreateCalendarLinkUseCase
 import com.example.questflow.domain.usecase.UpdateTaskWithCalendarUseCase
+import com.example.questflow.domain.usecase.DetectScheduleConflictsUseCase
+import com.example.questflow.domain.usecase.FindFreeTimeSlotsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -41,6 +43,8 @@ class TodayViewModel @Inject constructor(
     private val completeTaskUseCase: CompleteTaskUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
+    private val detectScheduleConflictsUseCase: DetectScheduleConflictsUseCase,
+    private val findFreeTimeSlotsUseCase: FindFreeTimeSlotsUseCase,
     private val metadataContactDao: MetadataContactDao,
     private val taskContactLinkDao: TaskContactLinkDao,
     private val textTemplateRepository: TextTemplateRepository,
@@ -468,6 +472,45 @@ class TodayViewModel @Inject constructor(
     fun getTextTemplates() = textTemplateRepository.getAllTemplatesFlow()
 
     fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
+
+    /**
+     * Check for scheduling conflicts with existing events
+     */
+    suspend fun checkScheduleConflicts(
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+        excludeEventId: Long? = null
+    ) = detectScheduleConflictsUseCase(startTime, endTime, excludeEventId)
+
+    /**
+     * Find free time slots for task scheduling
+     */
+    suspend fun findFreeTimeSlots(
+        startDate: java.time.LocalDate,
+        endDate: java.time.LocalDate,
+        minDurationMinutes: Long = 30,
+        excludeEventId: Long? = null
+    ) = findFreeTimeSlotsUseCase(
+        startDate = startDate,
+        endDate = endDate,
+        minDurationMinutes = minDurationMinutes,
+        excludeEventId = excludeEventId
+    )
+
+    /**
+     * Suggest optimal time slots based on task duration
+     */
+    suspend fun suggestTimeSlots(
+        requiredDurationMinutes: Long,
+        startSearchFrom: LocalDateTime = LocalDateTime.now(),
+        maxSuggestions: Int = 5,
+        excludeEventId: Long? = null
+    ) = findFreeTimeSlotsUseCase.suggestTimeSlots(
+        requiredDurationMinutes = requiredDurationMinutes,
+        startSearchFrom = startSearchFrom,
+        maxSuggestions = maxSuggestions,
+        excludeEventId = excludeEventId
+    )
 }
 
 data class TodayUiState(

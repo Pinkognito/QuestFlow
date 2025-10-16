@@ -6,11 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +19,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import com.example.questflow.presentation.viewmodels.TodayViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,6 +95,24 @@ fun AddTaskDialog(
     val defaultEndDateTime = inheritFromCalendarLink?.endsAt ?: currentDateTime.plusHours(1)
     var endDateTime by remember {
         mutableStateOf(defaultEndDateTime)
+    }
+
+    // Smart scheduling state
+    val coroutineScope = rememberCoroutineScope()
+    var showTimeSlotDialog by remember { mutableStateOf(false) }
+    var scheduleConflicts by remember { mutableStateOf<List<com.example.questflow.data.calendar.CalendarEvent>>(emptyList()) }
+    var dailyFreeTime by remember { mutableStateOf<List<com.example.questflow.domain.usecase.FindFreeTimeSlotsUseCase.DailyFreeTime>>(emptyList()) }
+    var timeSlotSuggestions by remember { mutableStateOf<List<com.example.questflow.domain.usecase.FindFreeTimeSlotsUseCase.FreeSlot>>(emptyList()) }
+
+    // Check for conflicts whenever date/time changes
+    LaunchedEffect(startDateTime, endDateTime) {
+        if (hasCalendarPermission) {
+            scheduleConflicts = viewModel.checkScheduleConflicts(
+                startTime = startDateTime,
+                endTime = endDateTime,
+                excludeEventId = null
+            )
+        }
     }
 
     AlertDialog(
@@ -454,6 +469,90 @@ fun AddTaskDialog(
                         )
                     }
 
+                    // Conflict warning and smart scheduling
+                    if (hasCalendarPermission && scheduleConflicts.isNotEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "⚠️ Zeitkonflikt",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                            Text(
+                                                text = if (scheduleConflicts.size == 1) {
+                                                    "Zur gewählten Zeit ist bereits 1 Termin eingetragen"
+                                                } else {
+                                                    "Zur gewählten Zeit sind bereits ${scheduleConflicts.size} Termine eingetragen"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        }
+                                    }
+
+                                    // Smart scheduling button
+                                    OutlinedButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                val durationMinutes = java.time.Duration.between(startDateTime, endDateTime).toMinutes()
+
+                                                // Load free time slots
+                                                val startDate = startDateTime.toLocalDate()
+                                                val endDate = startDate.plusDays(30)
+                                                dailyFreeTime = viewModel.findFreeTimeSlots(
+                                                    startDate = startDate,
+                                                    endDate = endDate,
+                                                    minDurationMinutes = durationMinutes
+                                                )
+
+                                                // Get suggestions
+                                                timeSlotSuggestions = viewModel.suggestTimeSlots(
+                                                    requiredDurationMinutes = durationMinutes,
+                                                    startSearchFrom = startDateTime,
+                                                    maxSuggestions = 5
+                                                )
+
+                                                showTimeSlotDialog = true
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DateRange,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Freie Zeiten finden")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
                     }
@@ -698,6 +797,23 @@ fun AddTaskDialog(
             allowNone = true,
             noneLabel = "Kein (Haupt-Task)",
             searchPlaceholder = "Task suchen..."
+        )
+    }
+
+    // Time Slot Suggestion Dialog
+    if (showTimeSlotDialog) {
+        TimeSlotSuggestionDialog(
+            currentStartTime = startDateTime,
+            currentEndTime = endDateTime,
+            dailyFreeTime = dailyFreeTime,
+            suggestions = timeSlotSuggestions,
+            hasConflict = scheduleConflicts.isNotEmpty(),
+            conflictCount = scheduleConflicts.size,
+            onDismiss = { showTimeSlotDialog = false },
+            onTimeSlotSelected = { newStart, newEnd ->
+                startDateTime = newStart
+                endDateTime = newEnd
+            }
         )
     }
 }
