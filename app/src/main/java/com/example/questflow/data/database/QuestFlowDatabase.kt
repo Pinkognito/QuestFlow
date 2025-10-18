@@ -49,9 +49,11 @@ import com.example.questflow.data.database.entity.*
         // Task Filter Presets
         TaskFilterPresetEntity::class,
         // Working Hours Settings
-        WorkingHoursSettingsEntity::class
+        WorkingHoursSettingsEntity::class,
+        // Task History System
+        TaskHistoryEntity::class
     ],
-    version = 45,
+    version = 46,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -99,6 +101,8 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     // Task Filter Presets DAO
     abstract fun taskFilterPresetDao(): TaskFilterPresetDao
 
+    // Task History DAO
+    abstract fun taskHistoryDao(): TaskHistoryDao
     // Working Hours Settings DAO
     abstract fun workingHoursSettingsDao(): WorkingHoursSettingsDao
 

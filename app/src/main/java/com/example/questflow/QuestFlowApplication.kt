@@ -20,6 +20,8 @@ class QuestFlowApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var debugDataInitializer: DebugDataInitializer
+    @Inject
+    lateinit var taskHistoryDao: com.example.questflow.data.database.dao.TaskHistoryDao
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -58,6 +60,17 @@ class QuestFlowApplication : Application(), Configuration.Provider {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("QuestFlowApp", "❌ Exception in debug data initialization block", e)
+            }
+        }
+        applicationScope.launch {
+            try {
+                val cutoffDate = java.time.LocalDateTime.now().minusDays(90)
+                val deletedCount = taskHistoryDao.deleteOlderThan(cutoffDate)
+                if (deletedCount > 0) {
+                    android.util.Log.d("QuestFlowApp", "🗑️ Task History cleanup: Deleted $deletedCount old entries")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("QuestFlowApp", "❌ Failed to clean up task history", e)
             }
         }
     }

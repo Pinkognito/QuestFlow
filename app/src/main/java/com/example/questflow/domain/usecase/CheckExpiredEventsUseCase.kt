@@ -2,6 +2,8 @@ package com.example.questflow.domain.usecase
 
 import com.example.questflow.data.calendar.CalendarManager
 import com.example.questflow.data.preferences.SyncPreferences
+import com.example.questflow.data.database.dao.TaskHistoryDao
+import com.example.questflow.data.database.entity.TaskHistoryEntity
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.TaskRepository
 import java.time.LocalDateTime
@@ -15,6 +17,7 @@ class CheckExpiredEventsUseCase @Inject constructor(
     private val taskRepository: TaskRepository,
     private val calendarManager: CalendarManager,
     private val syncPreferences: SyncPreferences,
+    private val taskHistoryDao: TaskHistoryDao,  // Task History System
     private val findFreeTimeSlotsUseCase: FindFreeTimeSlotsUseCase  // FIX P1-002: For smart rescheduling
 ) {
     data class CheckResult(
@@ -60,6 +63,13 @@ class CheckExpiredEventsUseCase @Inject constructor(
                     expiredLink.copy(status = "EXPIRED")
                 )
                 Log.d("CheckExpiredEvents", "Marked as expired: ${expiredLink.title}")
+                taskHistoryDao.insert(
+                    TaskHistoryEntity(
+                        taskId = expiredLink.taskId ?: 0,
+                        eventType = "EXPIRED",
+                        timestamp = now
+                    )
+                )
 
                 // Delete from calendar if configured
                 if (expiredLink.deleteOnExpiry && calendarManager.hasCalendarPermission()) {
@@ -205,6 +215,15 @@ class CheckExpiredEventsUseCase @Inject constructor(
                 rewarded = false
             )
             calendarLinkRepository.updateLink(updatedLink)
+            // Record RECURRING_CREATED event in history
+            taskHistoryDao.insert(
+                TaskHistoryEntity(
+                    taskId = task.id,
+                    eventType = "RECURRING_CREATED",
+                    timestamp = LocalDateTime.now(),
+                    newDueDate = nextStartTime
+                )
+            )
 
             // Update Google Calendar event if exists
             if (calendarManager.hasCalendarPermission() && expiredLink.calendarEventId > 0) {

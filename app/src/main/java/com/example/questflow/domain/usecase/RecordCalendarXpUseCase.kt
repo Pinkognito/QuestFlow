@@ -7,6 +7,9 @@ import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.domain.usecase.category.GrantCategoryXpUseCase
 import com.example.questflow.data.calendar.CalendarManager
+import com.example.questflow.data.database.dao.TaskHistoryDao
+import com.example.questflow.data.database.entity.TaskHistoryEntity
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 class RecordCalendarXpUseCase @Inject constructor(
@@ -16,6 +19,7 @@ class RecordCalendarXpUseCase @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val grantXpUseCase: GrantXpUseCase,
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
+    private val taskHistoryDao: TaskHistoryDao,  // Task History System
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
     private val calendarManager: CalendarManager,
     private val completeTaskUseCase: CompleteTaskUseCase
@@ -44,6 +48,13 @@ class RecordCalendarXpUseCase @Inject constructor(
         // This enables users to still get XP from expired events
 
         // Mark as rewarded and update status to CLAIMED
+        taskHistoryDao.insert(
+            TaskHistoryEntity(
+                taskId = link.taskId ?: 0,
+                eventType = "CLAIMED",
+                timestamp = LocalDateTime.now()
+            )
+        )
         android.util.Log.d("QuestFlow_XpClaim", "Marking link as CLAIMED (rewarded=true)")
         calendarLinkRepository.updateLink(
             link.copy(rewarded = true, status = "CLAIMED")

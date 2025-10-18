@@ -88,6 +88,7 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
                 excludeEventId == null || event.id != excludeEventId
             }
             .sortedBy { it.startTime }
+        android.util.Log.d("FindFreeSlot_Invoke", "Found ${allEvents.size} calendar events (after exclusion)")
 
         val dailyResults = mutableListOf<DailyFreeTime>()
 
@@ -104,6 +105,7 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
                 (event.startTime.toLocalDate().isBefore(currentDate) &&
                  event.endTime.toLocalDate().isAfter(currentDate))
             }.sortedBy { it.startTime }
+            android.util.Log.d("FindFreeSlot_Invoke", "Processing day: $currentDate (${dayStart.toLocalTime()} - ${dayEnd.toLocalTime()}), ${dayEvents.size} events")
 
             // Find free slots
             val freeSlots = mutableListOf<FreeSlot>()
@@ -111,9 +113,10 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
 
             for (event in dayEvents) {
                 val eventStart = maxOf(event.startTime, dayStart)
-                val eventEnd = minOf(event.endTime, dayEnd)
 
                 // Check if there's free time before this event
+                val eventEnd = minOf(event.endTime, dayEnd)
+                android.util.Log.d("FindFreeSlot_Invoke", "  Event: $eventStart - $eventEnd")
                 if (checkTime < eventStart) {
                     val gapMinutes = java.time.Duration.between(checkTime, eventStart).toMinutes()
                     if (gapMinutes >= minDurationMinutes) {
@@ -179,15 +182,23 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         workingHoursEnd: LocalTime? = null,
         excludeEventId: Long? = null
     ): FreeSlot? {
+        android.util.Log.d("FindFreeSlot", "═════════════════════════════════════════")
+        android.util.Log.d("FindFreeSlot", "=== FIND FREE SLOT DEBUG ===")
+        android.util.Log.d("FindFreeSlot", "Required duration: ${requiredDurationMinutes}min")
+        android.util.Log.d("FindFreeSlot", "Start search from: $startSearchFrom")
+        android.util.Log.d("FindFreeSlot", "Max days to search: $maxDaysToSearch")
+        android.util.Log.d("FindFreeSlot", "Exclude event ID: $excludeEventId")
         // Load working hours from database if not explicitly provided
         val (effectiveStart, effectiveEnd) = if (workingHoursStart != null && workingHoursEnd != null) {
             Pair(workingHoursStart, workingHoursEnd)
         } else {
             getWorkingHours()
         }
+        android.util.Log.d("FindFreeSlot", "Working hours: $effectiveStart - $effectiveEnd")
         val startDate = startSearchFrom.toLocalDate()
         val endDate = startDate.plusDays(maxDaysToSearch.toLong())
 
+        android.util.Log.d("FindFreeSlot", "Search date range: $startDate to $endDate")
         val dailyFreeTime = invoke(
             startDate = startDate,
             endDate = endDate,
@@ -197,20 +208,49 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             excludeEventId = excludeEventId
         )
 
+        android.util.Log.d("FindFreeSlot", "Found ${dailyFreeTime.size} days with potential free time")
         // Find first slot that fits
+        var dayIndex = 0
         for (day in dailyFreeTime) {
+            android.util.Log.d("FindFreeSlot", "Day $dayIndex: ${day.date}, ${day.freeSlots.size} free slots")
+
+            var slotIndex = 0
             for (slot in day.freeSlots) {
-                // For the current day, skip slots that start before startSearchFrom
-                if (day.date == startDate && slot.startTime < startSearchFrom) {
-                    continue
+                // For the current day, adjust slot to start at startSearchFrom if needed
+                val adjustedSlot = if (day.date == startDate && slot.startTime < startSearchFrom) {
+                    // Slot starts before our search time
+                    if (slot.endTime <= startSearchFrom) {
+                        // Entire slot is before search time - skip it
+                        android.util.Log.d("FindFreeSlot", "  Slot $slotIndex: ${slot.startTime} - ${slot.endTime} (${slot.durationMinutes}min) - SKIPPED (entirely before search start)")
+                        slotIndex++
+                        continue
+                    } else {
+                        // Slot overlaps with search time - adjust to start at startSearchFrom
+                        val adjustedDuration = java.time.Duration.between(startSearchFrom, slot.endTime).toMinutes()
+                        android.util.Log.d("FindFreeSlot", "  Slot $slotIndex: ${slot.startTime} - ${slot.endTime} ADJUSTED to $startSearchFrom - ${slot.endTime} (${adjustedDuration}min)")
+                        FreeSlot(
+                            startTime = startSearchFrom,
+                            endTime = slot.endTime,
+                            durationMinutes = adjustedDuration
+                        )
+                    }
+                } else {
+                    android.util.Log.d("FindFreeSlot", "  Slot $slotIndex: ${slot.startTime} - ${slot.endTime} (${slot.durationMinutes}min)")
+                    slot
                 }
 
-                if (slot.durationMinutes >= requiredDurationMinutes) {
-                    return slot
+                if (adjustedSlot.durationMinutes >= requiredDurationMinutes) {
+                    android.util.Log.d("FindFreeSlot", "✅ FOUND SUITABLE SLOT: ${adjustedSlot.startTime} - ${adjustedSlot.endTime}")
+                    android.util.Log.d("FindFreeSlot", "═════════════════════════════════════════")
+                    return adjustedSlot
                 }
+                slotIndex++
             }
+            dayIndex++
         }
 
+        android.util.Log.d("FindFreeSlot", "❌ NO SUITABLE SLOT FOUND")
+        android.util.Log.d("FindFreeSlot", "═════════════════════════════════════════")
         return null
     }
 
