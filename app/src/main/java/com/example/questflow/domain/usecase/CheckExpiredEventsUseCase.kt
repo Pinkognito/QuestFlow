@@ -14,7 +14,8 @@ class CheckExpiredEventsUseCase @Inject constructor(
     private val calendarLinkRepository: CalendarLinkRepository,
     private val taskRepository: TaskRepository,
     private val calendarManager: CalendarManager,
-    private val syncPreferences: SyncPreferences
+    private val syncPreferences: SyncPreferences,
+    private val findFreeTimeSlotsUseCase: FindFreeTimeSlotsUseCase  // FIX P1-002: For smart rescheduling
 ) {
     data class CheckResult(
         val expiredCount: Int = 0,
@@ -71,29 +72,63 @@ class CheckExpiredEventsUseCase @Inject constructor(
                     }
                 }
 
-                // Check if this is a recurring event
+                // FIX P1-002: Check if this is a recurring event
+                Log.d("QuestFlow_Recurring", "=== EXPIRED LINK CHECK ===")
+                Log.d("QuestFlow_Recurring", "Link: ${expiredLink.title}")
+                Log.d("QuestFlow_Recurring", "Link ID: ${expiredLink.id}")
+                Log.d("QuestFlow_Recurring", "taskId: ${expiredLink.taskId}")
+                Log.d("QuestFlow_Recurring", "recurringTaskId: ${expiredLink.recurringTaskId}")
+                Log.d("QuestFlow_Recurring", "isRecurring: ${expiredLink.isRecurring}")
+
                 expiredLink.recurringTaskId?.let { taskId ->
+                    Log.d("QuestFlow_Recurring", "Found recurringTaskId: $taskId - fetching task...")
                     val task = taskRepository.getTaskById(taskId)
-                    task?.let { taskModel ->
-                        when (taskModel.triggerMode) {
-                            "AFTER_EXPIRY" -> {
-                                // Create new instance after expiry
-                                if (handleRecurringTask(taskModel, now)) {
-                                    recurringCreated++
-                                }
-                            }
-                            "FIXED_INTERVAL" -> {
-                                // Create next instance at fixed time
-                                if (taskModel.nextDueDate != null && taskModel.nextDueDate <= now) {
-                                    if (handleRecurringTask(taskModel, taskModel.nextDueDate)) {
-                                        recurringCreated++
-                                    }
-                                }
-                            }
-                            else -> {
-                                // Do nothing for AFTER_COMPLETION or null
+
+                    if (task == null) {
+                        Log.w("QuestFlow_Recurring", "Task with ID $taskId not found!")
+                        return@let
+                    }
+
+                    Log.d("QuestFlow_Recurring", "Task found: ${task.title}")
+                    Log.d("QuestFlow_Recurring", "Task.isRecurring: ${task.isRecurring}")
+                    Log.d("QuestFlow_Recurring", "Task.triggerMode: ${task.triggerMode}")
+                    Log.d("QuestFlow_Recurring", "Task.recurringType: ${task.recurringType}")
+                    Log.d("QuestFlow_Recurring", "Task.recurringInterval: ${task.recurringInterval}")
+
+                    when (task.triggerMode) {
+                        "AFTER_EXPIRY" -> {
+                            Log.d("QuestFlow_Recurring", "Trigger mode: AFTER_EXPIRY - updating task times")
+                            if (handleRecurringTask(task, now, expiredLink)) {
+                                recurringCreated++
+                                Log.d("QuestFlow_Recurring", "✅ Task times updated successfully")
+                            } else {
+                                Log.w("QuestFlow_Recurring", "❌ Failed to update task times")
                             }
                         }
+                        "FIXED_INTERVAL" -> {
+                            Log.d("QuestFlow_Recurring", "Trigger mode: FIXED_INTERVAL")
+                            if (task.nextDueDate != null && task.nextDueDate <= now) {
+                                Log.d("QuestFlow_Recurring", "nextDueDate (${ task.nextDueDate}) <= now - updating times")
+                                if (handleRecurringTask(task, task.nextDueDate, expiredLink)) {
+                                    recurringCreated++
+                                    Log.d("QuestFlow_Recurring", "✅ Task times updated successfully")
+                                } else {
+                                    Log.w("QuestFlow_Recurring", "❌ Failed to update task times")
+                                }
+                            } else {
+                                Log.d("QuestFlow_Recurring", "nextDueDate not ready yet (nextDueDate: ${task.nextDueDate})")
+                            }
+                        }
+                        else -> {
+                            Log.d("QuestFlow_Recurring", "Trigger mode: ${task.triggerMode} - skipping (not AFTER_EXPIRY or FIXED_INTERVAL)")
+                        }
+                    }
+                } ?: run {
+                    if (expiredLink.isRecurring) {
+                        Log.w("QuestFlow_Recurring", "⚠️ Link marked as recurring but recurringTaskId is NULL!")
+                        Log.w("QuestFlow_Recurring", "   This task was likely created BEFORE the fix was deployed")
+                    } else {
+                        Log.d("QuestFlow_Recurring", "Link is not recurring - skipping")
                     }
                 }
             }
@@ -109,9 +144,14 @@ class CheckExpiredEventsUseCase @Inject constructor(
         return CheckResult(expiredCount, deletedCount, recurringCreated)
     }
 
-    private suspend fun handleRecurringTask(task: com.example.questflow.domain.model.Task, baseTime: LocalDateTime): Boolean {
-        // Calculate next due date based on recurring settings
-        val nextDueDate = when (task.recurringType) {
+    private suspend fun handleRecurringTask(
+        task: com.example.questflow.domain.model.Task,
+        baseTime: LocalDateTime,
+        expiredLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity
+    ): Boolean {
+        val taskDurationMinutes = 60L
+
+        val calculatedNextStart = when (task.recurringType) {
             "DAILY" -> baseTime.plusDays(task.recurringInterval?.toLong() ?: 1)
             "WEEKLY" -> baseTime.plusWeeks(1)
             "MONTHLY" -> baseTime.plusMonths(1)
@@ -122,18 +162,67 @@ class CheckExpiredEventsUseCase @Inject constructor(
             else -> null
         }
 
-        nextDueDate?.let { nextDate ->
-            // Create new task instance
-            val newTask = task.copy(
-                id = 0,
-                dueDate = nextDate,
-                nextDueDate = nextDate,
-                isCompleted = false,
-                parentTaskId = task.id,
-                isEditable = true
+        calculatedNextStart?.let { initialNextStart ->
+            val nextStartTime = try {
+                Log.d("QuestFlow_Recurring", "Searching for free slot from $initialNextStart (duration: ${taskDurationMinutes}min)")
+
+                val freeSlot = findFreeTimeSlotsUseCase.findNextAvailableSlot(
+                    requiredDurationMinutes = taskDurationMinutes,
+                    startSearchFrom = initialNextStart,
+                    maxDaysToSearch = 7,
+                    excludeEventId = expiredLink.calendarEventId
+                )
+
+                if (freeSlot != null) {
+                    Log.d("QuestFlow_Recurring", "Found free slot: ${freeSlot.startTime} - ${freeSlot.endTime}")
+                    freeSlot.startTime
+                } else {
+                    Log.w("QuestFlow_Recurring", "No free slot found, using calculated time: $initialNextStart")
+                    initialNextStart
+                }
+            } catch (e: Exception) {
+                Log.e("QuestFlow_Recurring", "Error finding free slot: ${e.message}", e)
+                initialNextStart
+            }
+
+            val nextEndTime = nextStartTime.plusMinutes(taskDurationMinutes)
+
+            Log.d("QuestFlow_Recurring", "Updating task ID=${task.id} times: $nextStartTime - $nextEndTime")
+
+            // Update Task with new dueDate
+            val updatedTask = task.copy(
+                dueDate = nextStartTime,
+                isCompleted = false
             )
-            taskRepository.insertTask(newTask)
-            Log.d("CheckExpiredEvents", "Created recurring task: ${task.title} due at $nextDate")
+            taskRepository.updateTask(updatedTask)
+
+            // Update CalendarLink with new times and status PENDING
+            val updatedLink = expiredLink.copy(
+                startsAt = nextStartTime,
+                endsAt = nextEndTime,
+                status = "PENDING",
+                expiredAt = null,
+                rewarded = false
+            )
+            calendarLinkRepository.updateLink(updatedLink)
+
+            // Update Google Calendar event if exists
+            if (calendarManager.hasCalendarPermission() && expiredLink.calendarEventId > 0) {
+                try {
+                    calendarManager.updateTaskEvent(
+                        eventId = expiredLink.calendarEventId,
+                        taskTitle = expiredLink.title,
+                        taskDescription = "",
+                        startTime = nextStartTime,
+                        endTime = nextEndTime
+                    )
+                    Log.d("QuestFlow_Recurring", "Updated Google Calendar event ID=${expiredLink.calendarEventId}")
+                } catch (e: Exception) {
+                    Log.e("QuestFlow_Recurring", "Failed to update calendar event: ${e.message}")
+                }
+            }
+
+            Log.d("QuestFlow_Recurring", "✅ Updated task ID=${task.id} to new time: $nextStartTime - $nextEndTime")
             return true
         }
         return false

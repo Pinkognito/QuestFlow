@@ -548,7 +548,31 @@ fun TasksScreen(
                     val link = uiState.links.find { it.taskId == task.id }
 
                     val now = java.time.LocalDateTime.now()
-                    val isExpired = task.dueDate?.let { it < now } ?: false
+
+                    // FIX P1-001: Use link.endsAt (if available) instead of task.dueDate for expiry check
+                    // task.dueDate is the START time, not END time!
+                    val isExpired = if (link != null) {
+                        // Use calendar link's end time (correct!)
+                        val expired = link.endsAt < now
+                        android.util.Log.d("QuestFlow_TaskStatus", "=== TASK STATUS CHECK (with link) ===")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Task: ${task.title}")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Link Start: ${link.startsAt}")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Link End: ${link.endsAt}")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Current Time: $now")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Is Expired: $expired (endsAt < now)")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Link Status: ${link.status}")
+                        expired
+                    } else {
+                        // Fallback: Use task.dueDate if no calendar link exists
+                        val expired = task.dueDate?.let { it < now } ?: false
+                        android.util.Log.d("QuestFlow_TaskStatus", "=== TASK STATUS CHECK (no link) ===")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Task: ${task.title}")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Task DueDate: ${task.dueDate}")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Current Time: $now")
+                        android.util.Log.d("QuestFlow_TaskStatus", "Is Expired (fallback): $expired")
+                        expired
+                    }
+
                     val isClaimed = task.isCompleted
 
                     // Check if this task is a parent or subtask
@@ -951,6 +975,12 @@ fun EditCalendarTaskDialog(
     var showParentSelectionDialog by remember { mutableStateOf(false) }
     var showCreateSubTaskDialog by remember { mutableStateOf(false) }
 
+    // Template and Placeholder dialogs for Edit mode
+    var showTaskTitleTemplateDialog by remember { mutableStateOf(false) }
+    var showTaskDescriptionTemplateDialog by remember { mutableStateOf(false) }
+    var showTaskTitlePlaceholderDialog by remember { mutableStateOf(false) }
+    var showTaskDescriptionPlaceholderDialog by remember { mutableStateOf(false) }
+
     // Tag-Related State for Contact Selection
     val tagViewModel: com.example.questflow.presentation.viewmodels.TagViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     var usedContactTags by remember { mutableStateOf<List<com.example.questflow.data.database.entity.MetadataTagEntity>>(emptyList()) }
@@ -1261,16 +1291,55 @@ fun EditCalendarTaskDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Task Title with Template and Placeholder Support
+                    item {
+                        Text("Titel:", style = MaterialTheme.typography.labelMedium)
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { showTaskTitleTemplateDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = textTemplates.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (textTemplates.isEmpty()) "Keine Templates verfügbar" else "Textbaustein auswählen")
+                        }
+                    }
                     item {
                         OutlinedTextField(
                             value = taskTitle,
                             onValueChange = { taskTitle = it },
                             label = { Text("Titel") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { showTaskTitlePlaceholderDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Platzhalter einfügen",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         )
                     }
 
+                    // Task Description with Template and Placeholder Support
+                    item {
+                        Text("Beschreibung:", style = MaterialTheme.typography.labelMedium)
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { showTaskDescriptionTemplateDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = textTemplates.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (textTemplates.isEmpty()) "Keine Templates verfügbar" else "Textbaustein auswählen")
+                        }
+                    }
                     item {
                         OutlinedTextField(
                             value = taskDescription,
@@ -1280,7 +1349,16 @@ fun EditCalendarTaskDialog(
                             },
                             label = { Text("Beschreibung (optional)") },
                             maxLines = 3,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { showTaskDescriptionPlaceholderDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Platzhalter einfügen",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         )
                     }
 
@@ -2308,6 +2386,118 @@ fun EditCalendarTaskDialog(
             }
         }
     )
+
+    // Template Selection Dialogs with IMMEDIATE RESOLUTION
+    if (showTaskTitleTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTaskTitleTemplateDialog = false },
+            title = { Text("Textbaustein für Titel wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                coroutineScope.launch {
+                                    val templateText = template.subject ?: template.content
+                                    // Resolve placeholders IMMEDIATELY
+                                    val resolved = if (templateText.contains("{") && calendarLink.taskId != null && selectedContactIds.isNotEmpty()) {
+                                        viewModel.placeholderResolver.resolve(templateText, calendarLink.taskId!!, selectedContactIds.first())
+                                    } else {
+                                        templateText
+                                    }
+                                    taskTitle = resolved
+                                }
+                                showTaskTitleTemplateDialog = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.subject ?: template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 2)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTaskTitleTemplateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    if (showTaskDescriptionTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTaskDescriptionTemplateDialog = false },
+            title = { Text("Textbaustein für Beschreibung wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                coroutineScope.launch {
+                                    val templateText = template.content
+                                    // Resolve placeholders IMMEDIATELY
+                                    val resolved = if (templateText.contains("{") && calendarLink.taskId != null && selectedContactIds.isNotEmpty()) {
+                                        viewModel.placeholderResolver.resolve(templateText, calendarLink.taskId!!, selectedContactIds.first())
+                                    } else {
+                                        templateText
+                                    }
+                                    taskDescription = resolved
+                                }
+                                showTaskDescriptionTemplateDialog = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 3)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTaskDescriptionTemplateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    // Placeholder Dialogs with IMMEDIATE RESOLUTION
+    if (showTaskTitlePlaceholderDialog) {
+        com.example.questflow.presentation.components.PlaceholderSelectorDialog(
+            onDismiss = { showTaskTitlePlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                coroutineScope.launch {
+                    // Resolve placeholder IMMEDIATELY
+                    val resolved = if (calendarLink.taskId != null && selectedContactIds.isNotEmpty()) {
+                        viewModel.placeholderResolver.resolve(placeholder, calendarLink.taskId!!, selectedContactIds.first())
+                    } else {
+                        placeholder
+                    }
+                    taskTitle = taskTitle + resolved
+                }
+                showTaskTitlePlaceholderDialog = false
+            }
+        )
+    }
+
+    if (showTaskDescriptionPlaceholderDialog) {
+        com.example.questflow.presentation.components.PlaceholderSelectorDialog(
+            onDismiss = { showTaskDescriptionPlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                coroutineScope.launch {
+                    // Resolve placeholder IMMEDIATELY
+                    val resolved = if (calendarLink.taskId != null && selectedContactIds.isNotEmpty()) {
+                        viewModel.placeholderResolver.resolve(placeholder, calendarLink.taskId!!, selectedContactIds.first())
+                    } else {
+                        placeholder
+                    }
+                    taskDescription = taskDescription + resolved
+                }
+                showTaskDescriptionPlaceholderDialog = false
+            }
+        )
+    }
 
     // Show recurring configuration dialog
     if (showRecurringDialog) {

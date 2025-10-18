@@ -21,7 +21,8 @@ data class CalendarEventLinkEntity(
     val status: String = "PENDING", // PENDING, CLAIMED, EXPIRED
     val isRecurring: Boolean = false,
     val recurringTaskId: Long? = null,
-    val deleteOnExpiry: Boolean = false // Delete calendar event when it expires
+    val deleteOnExpiry: Boolean = false, // Delete calendar event when it expires
+    val expiredAt: LocalDateTime? = null // FIX P1-002: Timestamp when task was marked as expired (for efficient recurring detection)
 )
 
 enum class EventStatus {

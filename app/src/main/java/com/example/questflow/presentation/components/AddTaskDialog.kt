@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.TextFieldValue
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import kotlinx.coroutines.launch
 
@@ -32,8 +33,8 @@ fun AddTaskDialog(
     inheritFromTask: com.example.questflow.domain.model.Task? = null,  // Inherit category from parent
     inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null  // Inherit time from parent
 ) {
-    var taskTitle by remember { mutableStateOf("") }
-    var taskDescription by remember { mutableStateOf("") }
+    var taskTitleField by remember { mutableStateOf(TextFieldValue("")) }
+    var taskDescriptionField by remember { mutableStateOf(TextFieldValue("")) }
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
     var addToCalendar by remember { mutableStateOf(true) } // Default to true
     var deleteOnClaim by remember { mutableStateOf(isCalendarMode) } // Default true for calendar mode
@@ -46,19 +47,27 @@ fun AddTaskDialog(
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val availableTasks by viewModel.uiState.collectAsState()
 
+    // Placeholder dialogs for task fields
+    var showTaskTitlePlaceholderDialog by remember { mutableStateOf(false) }
+    var showTaskDescriptionPlaceholderDialog by remember { mutableStateOf(false) }
+    var showTaskTitleTemplateDialog by remember { mutableStateOf(false) }
+    var showTaskDescriptionTemplateDialog by remember { mutableStateOf(false) }
+
     // Calendar Event Custom Fields
     var calendarEventSectionExpanded by rememberSaveable { mutableStateOf(false) }
-    var calendarEventCustomTitle by remember { mutableStateOf("") }
-    var calendarEventCustomDescription by remember { mutableStateOf("") }
+    var calendarEventCustomTitleField by remember { mutableStateOf(TextFieldValue("")) }
+    var calendarEventCustomDescriptionField by remember { mutableStateOf(TextFieldValue("")) }
     val textTemplates by viewModel.textTemplates.collectAsState(initial = emptyList())
-    var showTitleTemplateDialog by remember { mutableStateOf(false) }
-    var showDescriptionTemplateDialog by remember { mutableStateOf(false) }
+    var showCalendarTitleTemplateDialog by remember { mutableStateOf(false) }
+    var showCalendarDescriptionTemplateDialog by remember { mutableStateOf(false) }
+    var showCalendarTitlePlaceholderDialog by remember { mutableStateOf(false) }
+    var showCalendarDescriptionPlaceholderDialog by remember { mutableStateOf(false) }
 
     // Load default CALENDAR template on first composition
     LaunchedEffect(Unit) {
         viewModel.getDefaultCalendarTemplate()?.let { defaultTemplate ->
-            calendarEventCustomTitle = defaultTemplate.subject ?: defaultTemplate.content
-            calendarEventCustomDescription = defaultTemplate.content
+            calendarEventCustomTitleField = TextFieldValue(defaultTemplate.subject ?: defaultTemplate.content)
+            calendarEventCustomDescriptionField = TextFieldValue(defaultTemplate.content)
         }
     }
 
@@ -145,23 +154,85 @@ fun AddTaskDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Task Title with Template and Placeholder Support
+                    item {
+                        Text("Titel:", style = MaterialTheme.typography.labelMedium)
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { showTaskTitleTemplateDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = textTemplates.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Default.List,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                if (textTemplates.isEmpty()) "Keine Templates verfügbar"
+                                else "Textbaustein auswählen"
+                            )
+                        }
+                    }
                     item {
                         OutlinedTextField(
-                            value = taskTitle,
-                            onValueChange = { taskTitle = it },
+                            value = taskTitleField,
+                            onValueChange = { taskTitleField = it },
                             label = { Text("Titel") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { showTaskTitlePlaceholderDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Platzhalter einfügen",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         )
                     }
 
+                    // Task Description with Template and Placeholder Support
+                    item {
+                        Text("Beschreibung:", style = MaterialTheme.typography.labelMedium)
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { showTaskDescriptionTemplateDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = textTemplates.isNotEmpty()
+                        ) {
+                            Icon(
+                                Icons.Default.List,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                if (textTemplates.isEmpty()) "Keine Templates verfügbar"
+                                else "Textbaustein auswählen"
+                            )
+                        }
+                    }
                     item {
                         OutlinedTextField(
-                            value = taskDescription,
-                            onValueChange = { taskDescription = it },
+                            value = taskDescriptionField,
+                            onValueChange = { taskDescriptionField = it },
                             label = { Text("Beschreibung (optional)") },
                             maxLines = 3,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { showTaskDescriptionPlaceholderDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Platzhalter einfügen",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         )
                     }
 
@@ -673,8 +744,7 @@ fun AddTaskDialog(
                             }
 
                             // Recurring configuration button
-                            if (isRecurring) {
-                                Spacer(modifier = Modifier.height(8.dp))
+                            // Recurring configuration button (FIX P1-002: Always show, not just when isRecurring=true)
                                 OutlinedButton(
                                     onClick = { showRecurringDialog = true },
                                     modifier = Modifier.fillMaxWidth()
@@ -687,7 +757,6 @@ fun AddTaskDialog(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(getRecurringButtonText(recurringConfig))
                                 }
-                            }
 
                             // Calendar Event Configuration Section (Expandable)
                             if (addToCalendar) {
@@ -760,7 +829,7 @@ fun AddTaskDialog(
 
                                                 // Template Dropdown Button for Title
                                                 OutlinedButton(
-                                                    onClick = { showTitleTemplateDialog = true },
+                                                    onClick = { showCalendarTitleTemplateDialog = true },
                                                     modifier = Modifier.fillMaxWidth(),
                                                     enabled = textTemplates.isNotEmpty()
                                                 ) {
@@ -778,12 +847,21 @@ fun AddTaskDialog(
 
                                                 // Title TextField
                                                 OutlinedTextField(
-                                                    value = calendarEventCustomTitle,
-                                                    onValueChange = { calendarEventCustomTitle = it },
+                                                    value = calendarEventCustomTitleField,
+                                                    onValueChange = { calendarEventCustomTitleField = it },
                                                     label = { Text("Event-Titel (optional)") },
                                                     placeholder = { Text("z.B. Meeting mit {kontakt.name}") },
                                                     maxLines = 2,
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    trailingIcon = {
+                                                        IconButton(onClick = { showCalendarTitlePlaceholderDialog = true }) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Add,
+                                                                contentDescription = "Platzhalter einfügen",
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
                                                 )
 
                                                 Spacer(modifier = Modifier.height(8.dp))
@@ -798,7 +876,7 @@ fun AddTaskDialog(
 
                                                 // Template Dropdown Button for Description
                                                 OutlinedButton(
-                                                    onClick = { showDescriptionTemplateDialog = true },
+                                                    onClick = { showCalendarDescriptionTemplateDialog = true },
                                                     modifier = Modifier.fillMaxWidth(),
                                                     enabled = textTemplates.isNotEmpty()
                                                 ) {
@@ -816,12 +894,21 @@ fun AddTaskDialog(
 
                                                 // Description TextField
                                                 OutlinedTextField(
-                                                    value = calendarEventCustomDescription,
-                                                    onValueChange = { calendarEventCustomDescription = it },
+                                                    value = calendarEventCustomDescriptionField,
+                                                    onValueChange = { calendarEventCustomDescriptionField = it },
                                                     label = { Text("Event-Beschreibung (optional)") },
                                                     placeholder = { Text("z.B. Aufgabe: {task.title}\nKontakt: {kontakt.name}") },
                                                     maxLines = 4,
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    trailingIcon = {
+                                                        IconButton(onClick = { showCalendarDescriptionPlaceholderDialog = true }) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Add,
+                                                                contentDescription = "Platzhalter einfügen",
+                                                                tint = MaterialTheme.colorScheme.primary
+                                                            )
+                                                        }
+                                                    }
                                                 )
 
                                                 // Info Card
@@ -875,12 +962,13 @@ fun AddTaskDialog(
             TextButton(
                 onClick = {
                     // Auto-generate title if empty: yyMMddHHmmss
-                    val finalTitle = if (taskTitle.isBlank()) {
+                    val taskTitleText = taskTitleField.text
+                    val finalTitle = if (taskTitleText.isBlank()) {
                         val now = java.time.LocalDateTime.now()
                         val formatter = java.time.format.DateTimeFormatter.ofPattern("yyMMddHHmmss")
                         now.format(formatter)
                     } else {
-                        taskTitle
+                        taskTitleText
                     }
 
                     // Debug log
@@ -892,7 +980,7 @@ fun AddTaskDialog(
 
                     viewModel.createTaskWithCalendar(
                         title = finalTitle,
-                        description = taskDescription,
+                        description = taskDescriptionField.text,
                         xpPercentage = selectedPercentage,
                         startDateTime = startDateTime,
                         endDateTime = endDateTime,
@@ -905,8 +993,8 @@ fun AddTaskDialog(
                         parentTaskId = selectedParentTask?.id,
                         autoCompleteParent = autoCompleteParent,
                         contactIds = selectedContactIds,
-                        calendarEventCustomTitle = calendarEventCustomTitle.ifBlank { null },
-                        calendarEventCustomDescription = calendarEventCustomDescription.ifBlank { null }
+                        calendarEventCustomTitle = calendarEventCustomTitleField.text.ifBlank { null },
+                        calendarEventCustomDescription = calendarEventCustomDescriptionField.text.ifBlank { null }
                     )
                     onDismiss()
                 }
@@ -928,6 +1016,7 @@ fun AddTaskDialog(
             onDismiss = { showRecurringDialog = false },
             onConfirm = { config ->
                 recurringConfig = config
+                isRecurring = true  // FIX P1-002: Auto-activate isRecurring when config is saved
                 showRecurringDialog = false
             }
         )
@@ -1000,11 +1089,11 @@ fun AddTaskDialog(
         )
     }
 
-    // Template Selection Dialog for Title
-    if (showTitleTemplateDialog) {
+    // Template Selection Dialogs for Task Title
+    if (showTaskTitleTemplateDialog) {
         AlertDialog(
-            onDismissRequest = { showTitleTemplateDialog = false },
-            title = { Text("Textbaustein für Betreff wählen") },
+            onDismissRequest = { showTaskTitleTemplateDialog = false },
+            title = { Text("Textbaustein für Titel wählen") },
             text = {
                 LazyColumn {
                     items(textTemplates.size) { index ->
@@ -1014,97 +1103,155 @@ fun AddTaskDialog(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clickable {
-                                    // Use subject if available, otherwise use content
-                                    calendarEventCustomTitle = template.subject ?: template.content
-                                    showTitleTemplateDialog = false
+                                    taskTitleField = TextFieldValue(template.subject ?: template.content)
+                                    showTaskTitleTemplateDialog = false
                                 },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = template.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                template.description?.let { desc ->
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                Text(
-                                    text = template.subject ?: template.content,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(top = 8.dp),
-                                    maxLines = 2
-                                )
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.subject ?: template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 2)
                             }
                         }
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showTitleTemplateDialog = false }) {
-                    Text("Abbrechen")
-                }
-            }
+            confirmButton = { TextButton(onClick = { showTaskTitleTemplateDialog = false }) { Text("Abbrechen") } }
         )
     }
 
-    // Template Selection Dialog for Description
-    if (showDescriptionTemplateDialog) {
+    if (showTaskDescriptionTemplateDialog) {
         AlertDialog(
-            onDismissRequest = { showDescriptionTemplateDialog = false },
+            onDismissRequest = { showTaskDescriptionTemplateDialog = false },
             title = { Text("Textbaustein für Beschreibung wählen") },
             text = {
                 LazyColumn {
                     items(textTemplates.size) { index ->
                         val template = textTemplates[index]
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable {
-                                    calendarEventCustomDescription = template.content
-                                    showDescriptionTemplateDialog = false
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                taskDescriptionField = TextFieldValue(template.content)
+                                showTaskDescriptionTemplateDialog = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = template.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                template.description?.let { desc ->
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
-                                }
-                                Text(
-                                    text = template.content,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(top = 8.dp),
-                                    maxLines = 3
-                                )
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 3)
                             }
                         }
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showDescriptionTemplateDialog = false }) {
-                    Text("Abbrechen")
+            confirmButton = { TextButton(onClick = { showTaskDescriptionTemplateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    if (showCalendarTitleTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showCalendarTitleTemplateDialog = false },
+            title = { Text("Textbaustein für Calendar-Titel wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                calendarEventCustomTitleField = TextFieldValue(template.subject ?: template.content)
+                                showCalendarTitleTemplateDialog = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.subject ?: template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 2)
+                            }
+                        }
+                    }
                 }
+            },
+            confirmButton = { TextButton(onClick = { showCalendarTitleTemplateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    if (showCalendarDescriptionTemplateDialog) {
+        AlertDialog(
+            onDismissRequest = { showCalendarDescriptionTemplateDialog = false },
+            title = { Text("Textbaustein für Calendar-Beschreibung wählen") },
+            text = {
+                LazyColumn {
+                    items(textTemplates.size) { index ->
+                        val template = textTemplates[index]
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                calendarEventCustomDescriptionField = TextFieldValue(template.content)
+                                showCalendarDescriptionTemplateDialog = false
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(text = template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                template.description?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp)) }
+                                Text(text = template.content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp), maxLines = 3)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showCalendarDescriptionTemplateDialog = false }) { Text("Abbrechen") } }
+        )
+    }
+
+    // Placeholder dialogs
+    if (showTaskTitlePlaceholderDialog) {
+        PlaceholderSelectorDialog(
+            onDismiss = { showTaskTitlePlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                val currentText = taskTitleField.text
+                val selection = taskTitleField.selection
+                val newText = currentText.substring(0, selection.start) + placeholder + currentText.substring(selection.end)
+                taskTitleField = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(selection.start + placeholder.length))
+            }
+        )
+    }
+
+    if (showTaskDescriptionPlaceholderDialog) {
+        PlaceholderSelectorDialog(
+            onDismiss = { showTaskDescriptionPlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                val currentText = taskDescriptionField.text
+                val selection = taskDescriptionField.selection
+                val newText = currentText.substring(0, selection.start) + placeholder + currentText.substring(selection.end)
+                taskDescriptionField = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(selection.start + placeholder.length))
+            }
+        )
+    }
+
+    if (showCalendarTitlePlaceholderDialog) {
+        PlaceholderSelectorDialog(
+            onDismiss = { showCalendarTitlePlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                val currentText = calendarEventCustomTitleField.text
+                val selection = calendarEventCustomTitleField.selection
+                val newText = currentText.substring(0, selection.start) + placeholder + currentText.substring(selection.end)
+                calendarEventCustomTitleField = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(selection.start + placeholder.length))
+            }
+        )
+    }
+
+    if (showCalendarDescriptionPlaceholderDialog) {
+        PlaceholderSelectorDialog(
+            onDismiss = { showCalendarDescriptionPlaceholderDialog = false },
+            onPlaceholderSelected = { placeholder ->
+                val currentText = calendarEventCustomDescriptionField.text
+                val selection = calendarEventCustomDescriptionField.selection
+                val newText = currentText.substring(0, selection.start) + placeholder + currentText.substring(selection.end)
+                calendarEventCustomDescriptionField = TextFieldValue(text = newText, selection = androidx.compose.ui.text.TextRange(selection.start + placeholder.length))
             }
         )
     }

@@ -1,6 +1,7 @@
 package com.example.questflow.domain.usecase
 
 import com.example.questflow.data.calendar.CalendarManager
+import com.example.questflow.data.database.dao.WorkingHoursSettingsDao
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -11,7 +12,8 @@ import kotlin.math.min
  * Use case to find free time slots in the calendar
  */
 class FindFreeTimeSlotsUseCase @Inject constructor(
-    private val calendarManager: CalendarManager
+    private val calendarManager: CalendarManager,
+    private val workingHoursSettingsDao: WorkingHoursSettingsDao
 ) {
     /**
      * Represents a free time slot
@@ -39,13 +41,29 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
     }
 
     /**
+     * Load working hours from database, fallback to defaults if disabled or not found
+     */
+    private suspend fun getWorkingHours(): Pair<LocalTime, LocalTime> {
+        val settings = workingHoursSettingsDao.getWorkingHoursSettingsOnce()
+        return if (settings != null && settings.enabled) {
+            Pair(
+                LocalTime.of(settings.startHour, settings.startMinute),
+                LocalTime.of(settings.endHour, settings.endMinute)
+            )
+        } else {
+            // Fallback: 0:00 - 23:59 (full day) if disabled
+            Pair(LocalTime.MIN, LocalTime.MAX)
+        }
+    }
+
+    /**
      * Find all free time slots in a date range
      *
      * @param startDate Start date to search
      * @param endDate End date to search
      * @param minDurationMinutes Minimum duration for a slot to be considered (default 30 min)
-     * @param workingHoursStart Start of working hours (default 8:00)
-     * @param workingHoursEnd End of working hours (default 22:00)
+     * @param workingHoursStart Start of working hours (null = use database settings)
+     * @param workingHoursEnd End of working hours (null = use database settings)
      * @param excludeEventId Optional event ID to exclude from busy calculation
      * @return List of daily free time statistics
      */
@@ -53,10 +71,16 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         startDate: LocalDate,
         endDate: LocalDate,
         minDurationMinutes: Long = 30,
-        workingHoursStart: LocalTime = LocalTime.of(8, 0),
-        workingHoursEnd: LocalTime = LocalTime.of(22, 0),
+        workingHoursStart: LocalTime? = null,
+        workingHoursEnd: LocalTime? = null,
         excludeEventId: Long? = null
     ): List<DailyFreeTime> {
+        // Load working hours from database if not explicitly provided
+        val (effectiveStart, effectiveEnd) = if (workingHoursStart != null && workingHoursEnd != null) {
+            Pair(workingHoursStart, workingHoursEnd)
+        } else {
+            getWorkingHours()
+        }
         // Get all calendar events in the range
         val allEvents = calendarManager.getAllCalendarEvents(startDate, endDate)
             .filter { event ->
@@ -70,8 +94,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         // Process each day
         var currentDate = startDate
         while (!currentDate.isAfter(endDate)) {
-            val dayStart = LocalDateTime.of(currentDate, workingHoursStart)
-            val dayEnd = LocalDateTime.of(currentDate, workingHoursEnd)
+            val dayStart = LocalDateTime.of(currentDate, effectiveStart)
+            val dayEnd = LocalDateTime.of(currentDate, effectiveEnd)
 
             // Get events for this day
             val dayEvents = allEvents.filter { event ->
@@ -143,16 +167,24 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
      * @param requiredDurationMinutes Duration needed for the task
      * @param startSearchFrom Start searching from this date/time
      * @param maxDaysToSearch Maximum days to search ahead (default 30)
+     * @param workingHoursStart Start of working hours (null = use database settings)
+     * @param workingHoursEnd End of working hours (null = use database settings)
      * @return First available free slot, or null if none found
      */
     suspend fun findNextAvailableSlot(
         requiredDurationMinutes: Long,
         startSearchFrom: LocalDateTime = LocalDateTime.now(),
         maxDaysToSearch: Int = 30,
-        workingHoursStart: LocalTime = LocalTime.of(8, 0),
-        workingHoursEnd: LocalTime = LocalTime.of(22, 0),
+        workingHoursStart: LocalTime? = null,
+        workingHoursEnd: LocalTime? = null,
         excludeEventId: Long? = null
     ): FreeSlot? {
+        // Load working hours from database if not explicitly provided
+        val (effectiveStart, effectiveEnd) = if (workingHoursStart != null && workingHoursEnd != null) {
+            Pair(workingHoursStart, workingHoursEnd)
+        } else {
+            getWorkingHours()
+        }
         val startDate = startSearchFrom.toLocalDate()
         val endDate = startDate.plusDays(maxDaysToSearch.toLong())
 
@@ -160,8 +192,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             startDate = startDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
-            workingHoursStart = workingHoursStart,
-            workingHoursEnd = workingHoursEnd,
+            workingHoursStart = effectiveStart,
+            workingHoursEnd = effectiveEnd,
             excludeEventId = excludeEventId
         )
 
@@ -191,10 +223,17 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         startSearchFrom: LocalDateTime = LocalDateTime.now(),
         maxSuggestions: Int = 5,
         maxDaysToSearch: Int = 30,
-        workingHoursStart: LocalTime = LocalTime.of(8, 0),
-        workingHoursEnd: LocalTime = LocalTime.of(22, 0),
+        workingHoursStart: LocalTime? = null,
+        workingHoursEnd: LocalTime? = null,
         excludeEventId: Long? = null
     ): List<FreeSlot> {
+        // Load working hours from database if not explicitly provided
+        val (effectiveStart, effectiveEnd) = if (workingHoursStart != null && workingHoursEnd != null) {
+            Pair(workingHoursStart, workingHoursEnd)
+        } else {
+            getWorkingHours()
+        }
+
         val startDate = startSearchFrom.toLocalDate()
         val endDate = startDate.plusDays(maxDaysToSearch.toLong())
 
@@ -202,8 +241,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             startDate = startDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
-            workingHoursStart = workingHoursStart,
-            workingHoursEnd = workingHoursEnd,
+            workingHoursStart = effectiveStart,
+            workingHoursEnd = effectiveEnd,
             excludeEventId = excludeEventId
         )
 

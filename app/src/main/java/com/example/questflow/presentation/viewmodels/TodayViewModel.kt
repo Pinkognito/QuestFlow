@@ -295,6 +295,50 @@ class TodayViewModel @Inject constructor(
 
             val taskId = taskRepository.insertTask(task)
 
+            // STEP 1.5: Resolve placeholders in title and description using the first contact (if any)
+            val contactId = contactIds.firstOrNull()
+            val resolvedTitle = if (title.contains("{")) {
+                placeholderResolver.resolve(title, taskId, contactId)
+            } else {
+                title
+            }
+            val resolvedDescription = if (description.contains("{")) {
+                placeholderResolver.resolve(description, taskId, contactId)
+            } else {
+                description
+            }
+
+            // Resolve placeholders in calendar event custom fields
+            val resolvedCalendarTitle = if (calendarEventCustomTitle != null && calendarEventCustomTitle.contains("{")) {
+                placeholderResolver.resolve(calendarEventCustomTitle, taskId, contactId)
+            } else {
+                calendarEventCustomTitle
+            }
+            val resolvedCalendarDescription = if (calendarEventCustomDescription != null && calendarEventCustomDescription.contains("{")) {
+                placeholderResolver.resolve(calendarEventCustomDescription, taskId, contactId)
+            } else {
+                calendarEventCustomDescription
+            }
+
+            // Update task with resolved values if placeholders were found
+            if (resolvedTitle != title || resolvedDescription != description ||
+                resolvedCalendarTitle != calendarEventCustomTitle ||
+                resolvedCalendarDescription != calendarEventCustomDescription) {
+                android.util.Log.d("TodayViewModel", "Resolved placeholders:")
+                android.util.Log.d("TodayViewModel", "  Title: '$title' -> '$resolvedTitle'")
+                android.util.Log.d("TodayViewModel", "  Description: '$description' -> '$resolvedDescription'")
+                android.util.Log.d("TodayViewModel", "  Calendar Title: '$calendarEventCustomTitle' -> '$resolvedCalendarTitle'")
+                android.util.Log.d("TodayViewModel", "  Calendar Description: '$calendarEventCustomDescription' -> '$resolvedCalendarDescription'")
+
+                taskRepository.updateTask(task.copy(
+                    id = taskId,
+                    title = resolvedTitle,
+                    description = resolvedDescription,
+                    calendarEventCustomTitle = resolvedCalendarTitle,
+                    calendarEventCustomDescription = resolvedCalendarDescription
+                ))
+            }
+
             // STEP 2: Create calendar event WITH taskId for deep linking
             var calendarEventId: Long? = null
             if (addToCalendar && calendarManager.hasCalendarPermission()) {
@@ -313,15 +357,15 @@ class TodayViewModel @Inject constructor(
                     android.util.Log.d("TodayViewModel", "Creating calendar event WITH taskId for deep linking")
                     calendarEventId = calendarManager.createTaskEvent(
                         taskTitle = eventTitle,
-                        taskDescription = description,
+                        taskDescription = resolvedDescription,
                         startTime = startDateTime,
                         endTime = endDateTime,
                         xpReward = xpReward,
                         xpPercentage = xpPercentage,
                         categoryColor = category?.color,
                         taskId = taskId, // Deep link!
-                        customTitle = calendarEventCustomTitle,
-                        customDescription = calendarEventCustomDescription
+                        customTitle = resolvedCalendarTitle,
+                        customDescription = resolvedCalendarDescription
                     )
                 }
             }
@@ -337,7 +381,7 @@ class TodayViewModel @Inject constructor(
 
                 val linkId = createCalendarLinkUseCase(
                     calendarEventId = calendarEventId,
-                    title = title,
+                    title = resolvedTitle,
                     startsAt = startDateTime,
                     endsAt = endDateTime,
                     xp = xpReward,
@@ -346,7 +390,8 @@ class TodayViewModel @Inject constructor(
                     deleteOnClaim = deleteOnClaim,
                     deleteOnExpiry = deleteOnExpiry,
                     taskId = taskId,
-                    isRecurring = isRecurring
+                    isRecurring = isRecurring,
+                    recurringTaskId = if (isRecurring) taskId else null  // FIX P1-002: Link to recurring task
                 )
 
                 // If task is already expired, immediately update the link status
@@ -360,7 +405,7 @@ class TodayViewModel @Inject constructor(
 
                 val linkId = createCalendarLinkUseCase(
                     calendarEventId = System.currentTimeMillis(), // Fake ID
-                    title = title,
+                    title = resolvedTitle,
                     startsAt = startDateTime,
                     endsAt = endDateTime,
                     xp = xpReward,
@@ -369,7 +414,8 @@ class TodayViewModel @Inject constructor(
                     deleteOnClaim = deleteOnClaim,
                     deleteOnExpiry = deleteOnExpiry,
                     taskId = taskId,
-                    isRecurring = isRecurring
+                    isRecurring = isRecurring,
+                    recurringTaskId = if (isRecurring) taskId else null  // FIX P1-002: Link to recurring task
                 )
 
                 // Mark as expired immediately
@@ -380,8 +426,8 @@ class TodayViewModel @Inject constructor(
             if (addToCalendar && !isExpired) {
                 scheduleTaskNotification(
                     taskId = taskId,
-                    title = title,
-                    description = description,
+                    title = resolvedTitle,
+                    description = resolvedDescription,
                     xpReward = xpReward,
                     startDateTime = startDateTime
                 )

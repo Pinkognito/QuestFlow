@@ -4,6 +4,7 @@ import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.database.TaskDao
 import com.example.questflow.data.database.dao.MetadataContactDao
 import com.example.questflow.data.database.dao.MetadataLocationDao
+import com.example.questflow.data.database.dao.CategoryDao
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.MetadataLocationEntity
 import java.time.LocalDateTime
@@ -25,7 +26,8 @@ import javax.inject.Singleton
 class PlaceholderResolver @Inject constructor(
     private val contactDao: MetadataContactDao,
     private val locationDao: MetadataLocationDao,
-    private val taskDao: TaskDao
+    private val taskDao: TaskDao,
+    private val categoryDao: CategoryDao
 ) {
     companion object {
         private val PLACEHOLDER_REGEX = Regex("""\{([^}]+)\}""")
@@ -103,6 +105,7 @@ class PlaceholderResolver @Inject constructor(
             "standort" -> resolveLocationField(locations.firstOrNull(), field)
             "datum" -> resolveDateField(field)
             "zeit" -> resolveTimeField(field)
+            "benutzer", "user" -> resolveUserField(field)
             else -> "{$placeholder}" // Unknown entity
         }
     }
@@ -112,21 +115,39 @@ class PlaceholderResolver @Inject constructor(
 
         return when (field) {
             "name" -> contact.displayName
-            "firma", "organization" -> contact.organization ?: ""
+            "vorname", "givenname" -> contact.givenName ?: ""
+            "nachname", "familyname" -> contact.familyName ?: ""
+            "firma", "organization", "organisation" -> contact.organization ?: ""
+            "position", "jobtitle" -> contact.jobTitle ?: ""
             "telefon", "phone" -> contact.primaryPhone ?: ""
             "email" -> contact.primaryEmail ?: ""
             "notizen", "notes" -> contact.note ?: ""
+            "emoji" -> contact.iconEmoji ?: ""
             else -> "{kontakt.$field}"
         }
     }
 
-    private fun resolveTaskField(task: TaskEntity?, field: String): String {
+    private suspend fun resolveTaskField(task: TaskEntity?, field: String): String {
         if (task == null) return ""
 
         return when (field) {
             "title", "titel" -> task.title
             "description", "beschreibung" -> task.description ?: ""
-            "fällig", "due" -> task.dueDate?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) ?: ""
+            "fällig", "faellig", "due" -> task.dueDate?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) ?: ""
+            "priorität", "prioritaet", "priority" -> {
+                when (task.priority) {
+                    "URGENT" -> "Dringend"
+                    "HIGH" -> "Hoch"
+                    "MEDIUM" -> "Mittel"
+                    "LOW" -> "Niedrig"
+                    else -> task.priority
+                }
+            }
+            "kategorie", "category" -> {
+                task.categoryId?.let { categoryId ->
+                    categoryDao.getCategoryById(categoryId)?.name
+                } ?: ""
+            }
             else -> "{task.$field}"
         }
     }
@@ -158,6 +179,15 @@ class PlaceholderResolver @Inject constructor(
         return when (field) {
             "heute", "today" -> now.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
             "morgen", "tomorrow" -> now.plusDays(1).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+            "gestern", "yesterday" -> now.minusDays(1).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+            "wochentag", "weekday" -> {
+                val formatter = DateTimeFormatter.ofPattern("EEEE", java.util.Locale.GERMAN)
+                now.format(formatter)
+            }
+            "kw", "week" -> {
+                val formatter = DateTimeFormatter.ofPattern("w")
+                now.format(formatter)
+            }
             "zeit" -> now.format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
             else -> now.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
         }
@@ -168,6 +198,16 @@ class PlaceholderResolver @Inject constructor(
         return when (field) {
             "jetzt", "now" -> now.format(DateTimeFormatter.ofPattern("HH:mm"))
             else -> now.format(DateTimeFormatter.ofPattern("HH:mm"))
+        }
+    }
+
+    private fun resolveUserField(field: String): String {
+        // TODO: Diese Werte sollten aus den App-Einstellungen kommen
+        return when (field) {
+            "name" -> "{benutzer.name}" // Placeholder bis Einstellungen implementiert sind
+            "email" -> "{benutzer.email}"
+            "signatur", "signature" -> "{benutzer.signatur}"
+            else -> "{benutzer.$field}"
         }
     }
 

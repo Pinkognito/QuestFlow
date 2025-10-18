@@ -8,6 +8,7 @@ import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.domain.model.Priority
 import com.example.questflow.presentation.components.RecurringConfig
 import com.example.questflow.presentation.components.RecurringMode
+import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,7 +30,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
     private val calendarManager: CalendarManager,
     private val categoryRepository: CategoryRepository,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
-    private val notificationScheduler: com.example.questflow.domain.notification.TaskNotificationScheduler
+    private val notificationScheduler: com.example.questflow.domain.notification.TaskNotificationScheduler,
+    private val placeholderResolver: com.example.questflow.domain.placeholder.PlaceholderResolver,
+    private val taskContactLinkDao: com.example.questflow.data.database.dao.TaskContactLinkDao
 ) {
     data class UpdateParams(
         val taskId: Long?,
@@ -73,6 +76,49 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
         val existingTask = params.taskId?.let { taskRepository.getTaskById(it) }
 
+        // 1.5. Resolve placeholders in title, description, and calendar fields
+        val contactId: Long? = if (params.taskId != null) {
+            try {
+                val contacts = taskContactLinkDao.getContactsByTaskId(params.taskId).first()
+                contacts.firstOrNull()?.id
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Could not get contacts for taskId ${params.taskId}", e)
+                null
+            }
+        } else {
+            null
+        }
+
+        val resolvedTitle = if (params.title.contains("{") && params.taskId != null && contactId != null) {
+            placeholderResolver.resolve(params.title, params.taskId, contactId)
+        } else {
+            params.title
+        }
+
+        val resolvedDescription = if (params.description.contains("{") && params.taskId != null && contactId != null) {
+            placeholderResolver.resolve(params.description, params.taskId, contactId)
+        } else {
+            params.description
+        }
+
+        val resolvedCalendarTitle = if (params.calendarEventCustomTitle != null && params.calendarEventCustomTitle.contains("{") && params.taskId != null && contactId != null) {
+            placeholderResolver.resolve(params.calendarEventCustomTitle, params.taskId, contactId)
+        } else {
+            params.calendarEventCustomTitle
+        }
+
+        val resolvedCalendarDescription = if (params.calendarEventCustomDescription != null && params.calendarEventCustomDescription.contains("{") && params.taskId != null && contactId != null) {
+            placeholderResolver.resolve(params.calendarEventCustomDescription, params.taskId, contactId)
+        } else {
+            params.calendarEventCustomDescription
+        }
+
+        android.util.Log.d(TAG, "Resolved placeholders in UPDATE (contactId=$contactId):")
+        android.util.Log.d(TAG, "  Title: '${params.title}' -> '$resolvedTitle'")
+        android.util.Log.d(TAG, "  Description: '${params.description}' -> '$resolvedDescription'")
+        android.util.Log.d(TAG, "  Calendar Title: '${params.calendarEventCustomTitle}' -> '$resolvedCalendarTitle'")
+        android.util.Log.d(TAG, "  Calendar Description: '${params.calendarEventCustomDescription}' -> '$resolvedCalendarDescription'")
+
         // 2. Berechne XP und Priority
         val currentLevel = params.categoryId?.let {
             categoryRepository.getCategoryById(it)?.currentLevel
@@ -101,16 +147,16 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         val newCalendarEventId = executeCalendarOperation(
             operation = calendarOp,
             eventId = existingLink.calendarEventId,
-            title = params.title,
-            description = params.description,
+            title = resolvedTitle,
+            description = resolvedDescription,
             startDateTime = params.startDateTime,
             endDateTime = params.endDateTime,
             xpReward = xpReward,
             xpPercentage = params.xpPercentage,
             categoryId = params.categoryId,
             taskId = params.taskId,
-            customTitle = params.calendarEventCustomTitle,
-            customDescription = params.calendarEventCustomDescription
+            customTitle = resolvedCalendarTitle,
+            customDescription = resolvedCalendarDescription
         )
 
         // 5. Update Task in DB (falls vorhanden)
@@ -147,11 +193,11 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             }
 
             android.util.Log.d(TAG, "Updating task - recurringType=$recurringType, recurringInterval=$recurringInterval, recurringDays=$recurringDays, specificTime=$specificTime, triggerMode=${params.recurringConfig?.triggerMode?.name}")
-            android.util.Log.d(TAG, "🔍 Updating task description: '${params.description}' (was: '${task.description}')")
+            android.util.Log.d(TAG, "🔍 Updating task description: '${params.description}' -> '$resolvedDescription' (was: '${task.description}')")
 
             val updatedTask = task.copy(
-                title = params.title,
-                description = params.description,
+                title = resolvedTitle,
+                description = resolvedDescription,
                 xpPercentage = params.xpPercentage,
                 xpReward = xpReward,
                 dueDate = params.startDateTime,
@@ -167,8 +213,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 calendarEventId = newCalendarEventId ?: task.calendarEventId,
                 parentTaskId = params.parentTaskId,
                 autoCompleteParent = params.autoCompleteParent,
-                calendarEventCustomTitle = params.calendarEventCustomTitle,
-                calendarEventCustomDescription = params.calendarEventCustomDescription
+                calendarEventCustomTitle = resolvedCalendarTitle,
+                calendarEventCustomDescription = resolvedCalendarDescription
             )
             android.util.Log.d("DescriptionFlow-UseCase", "📝 CALLING repository.updateTask() with description='${updatedTask.description}'")
 
@@ -190,7 +236,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
         }
 
         val updatedLink = existingLink.copy(
-            title = params.title,
+            title = resolvedTitle,
             startsAt = params.startDateTime,
             endsAt = params.endDateTime,
             xpPercentage = params.xpPercentage,
@@ -198,6 +244,7 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
             deleteOnClaim = params.deleteOnClaim,
             deleteOnExpiry = params.deleteOnExpiry,
             isRecurring = params.isRecurring,
+            recurringTaskId = if (params.isRecurring && params.taskId != null) params.taskId else existingLink.recurringTaskId,
             status = newStatus,
             rewarded = if (params.shouldReactivate) false else existingLink.rewarded,
             calendarEventId = finalCalendarEventId
@@ -211,8 +258,8 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 android.util.Log.d(TAG, "Rescheduling notification for task $taskId at ${params.startDateTime}")
                 notificationScheduler.rescheduleNotification(
                     taskId = taskId,
-                    title = params.title,
-                    description = params.description,
+                    title = resolvedTitle,
+                    description = resolvedDescription,
                     xpReward = xpReward,
                     notificationTime = params.startDateTime
                 )

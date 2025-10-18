@@ -106,7 +106,20 @@ class ApplyAdvancedTaskFilterUseCase @Inject constructor() {
         val filtered = links.filter { link ->
             val now = LocalDateTime.now()
             val isCompleted = link.status == "CLAIMED" || link.rewarded
-            val isExpired = link.startsAt.isBefore(now) && !isCompleted
+
+            // FIX P1-001: Use link.endsAt instead of link.startsAt for expiry check
+            // A task is only expired when its END time has passed, not its START time!
+            val isExpired = link.endsAt.isBefore(now) && !isCompleted
+
+            android.util.Log.d("QuestFlow_StatusFilter", "=== STATUS FILTER CHECK ===")
+            android.util.Log.d("QuestFlow_StatusFilter", "Link: ${link.title}")
+            android.util.Log.d("QuestFlow_StatusFilter", "Starts At: ${link.startsAt}")
+            android.util.Log.d("QuestFlow_StatusFilter", "Ends At: ${link.endsAt}")
+            android.util.Log.d("QuestFlow_StatusFilter", "Current Time: $now")
+            android.util.Log.d("QuestFlow_StatusFilter", "Is Completed: $isCompleted")
+            android.util.Log.d("QuestFlow_StatusFilter", "Is Expired: $isExpired (endsAt < now AND not completed)")
+            android.util.Log.d("QuestFlow_StatusFilter", "Link Status: ${link.status}")
+
             val isClaimed = link.status == "CLAIMED"
             val isUnclaimed = link.status != "CLAIMED"
             val isOpen = !isCompleted
@@ -331,6 +344,7 @@ class ApplyAdvancedTaskFilterUseCase @Inject constructor() {
         categoryMap: Map<Long, CategoryEntity>
     ): Comparator<CalendarEventLinkEntity> {
         return when (option) {
+            // Fixed: ↑ = frühere Termine zuerst (ASC), ↓ = spätere Termine zuerst (DESC)
             SortOption.DEFAULT, SortOption.DUE_DATE_ASC -> compareBy { it.startsAt }
             SortOption.DUE_DATE_DESC -> compareByDescending { it.startsAt }
             SortOption.CREATED_DATE_ASC, SortOption.CREATED_DATE_DESC -> compareBy { it.id } // Fallback to ID

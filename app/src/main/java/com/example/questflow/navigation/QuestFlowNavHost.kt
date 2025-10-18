@@ -20,6 +20,7 @@ import com.example.questflow.presentation.screens.library.LibraryDetailScreen
 import com.example.questflow.presentation.screens.library.ContactDetailScreen
 import com.example.questflow.presentation.screens.library.TextTemplateLibraryScreen
 import com.example.questflow.presentation.screens.timeline.TimelineScreen
+import com.example.questflow.presentation.screens.settings.SettingsScreen
 
 @Composable
 fun QuestFlowNavHost(
@@ -171,6 +172,12 @@ fun QuestFlowNavHost(
                 contactId = contactId,
                 appViewModel = appViewModel,
                 navController = navController
+            )
+        }
+
+        composable("settings") {
+            SettingsScreen(
+                onNavigateBack = { navController.navigateUp() }
             )
         }
     }

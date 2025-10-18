@@ -134,6 +134,13 @@ fun LibraryScreen(
             icon = Icons.Default.Settings,
             route = "library_files",
             count = files.size
+        ),
+        LibraryCategory(
+            title = "Einstellungen",
+            description = "System & Backup",
+            icon = Icons.Default.Settings,
+            route = "settings",
+            count = null
         )
     )
 
