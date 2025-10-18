@@ -78,7 +78,12 @@ fun AnimatedXpLevelBadge(
     }
 
     val currentLevelXp = if (isCategory) {
-        (actualLevel * actualLevel * 100).toLong()
+        // Category XP: Level 1 starts at 0, Level 2 at 100, Level 3 at 400, etc.
+        // Formula: (level-1)² × 100
+        // Level 1: (1-1)² × 100 = 0
+        // Level 2: (2-1)² × 100 = 100
+        // Level 3: (3-1)² × 100 = 400
+        ((actualLevel - 1) * (actualLevel - 1) * 100).toLong()
     } else {
         LevelCurve.requiredXp(actualLevel)
     }
@@ -99,10 +104,16 @@ fun AnimatedXpLevelBadge(
 
     // Debug logging
     if (isCategory) {
-        android.util.Log.d("XpBadge",
-            "Category XP - Level: $actualLevel, TotalXP: $xpForProgress, " +
-            "XP in Level: $xpInCurrentLevel/$xpNeededForLevel, " +
-            "Progress: ${rawProgress * 100}%")
+        android.util.Log.d("QuestFlow_CategoryUI", "=== RENDERING CATEGORY XP ===")
+        android.util.Log.d("QuestFlow_CategoryUI", "Category ID: $categoryId")
+        android.util.Log.d("QuestFlow_CategoryUI", "Actual Level: $actualLevel")
+        android.util.Log.d("QuestFlow_CategoryUI", "Total XP: $xpForProgress")
+        android.util.Log.d("QuestFlow_CategoryUI", "Current Level Base XP: $currentLevelXp (formula: ($actualLevel-1)² × 100)")
+        android.util.Log.d("QuestFlow_CategoryUI", "Next Level XP: $nextLevelXp (formula: ($actualLevel+1)² × 100)")
+        android.util.Log.d("QuestFlow_CategoryUI", "XP in Current Level: $xpInCurrentLevel")
+        android.util.Log.d("QuestFlow_CategoryUI", "XP Needed for Next Level: $xpNeededForLevel")
+        android.util.Log.d("QuestFlow_CategoryUI", "Displaying Range: $xpInCurrentLevel/$xpNeededForLevel XP")
+        android.util.Log.d("QuestFlow_CategoryUI", "Progress: ${rawProgress * 100}%")
     }
 
     // Animate progress bar (skip animation on category switch)
@@ -120,9 +131,9 @@ fun AnimatedXpLevelBadge(
 
     // Debug animated progress
     if (isCategory) {
-        android.util.Log.d("XpBadge",
-            "AnimatedProgress: ${animatedProgress * 100}%, Target: ${rawProgress * 100}%, " +
-            "IsCategorySwitch: $isCategorySwitch")
+        android.util.Log.d("QuestFlow_CategoryUI", "Animated Progress: ${animatedProgress * 100}%")
+        android.util.Log.d("QuestFlow_CategoryUI", "Target Progress: ${rawProgress * 100}%")
+        android.util.Log.d("QuestFlow_CategoryUI", "Is Category Switch: $isCategorySwitch")
     }
 
     // Check for level up during animation

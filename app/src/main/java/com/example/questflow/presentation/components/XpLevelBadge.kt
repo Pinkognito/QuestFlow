@@ -32,7 +32,9 @@ fun XpLevelBadge(
 
     // Calculate XP thresholds for current and next level
     val currentLevelXp = if (isCategory) {
-        (level * level * 100).toLong()
+        // Category XP: Level 1 starts at 0, Level 2 at 100, Level 3 at 400, etc.
+        // Formula: (level-1)² × 100
+        ((level - 1) * (level - 1) * 100).toLong()
     } else {
         LevelCurve.requiredXp(level)
     }

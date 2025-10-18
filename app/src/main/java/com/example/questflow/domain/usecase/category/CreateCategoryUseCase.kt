@@ -21,6 +21,14 @@ class CreateCategoryUseCase @Inject constructor(
             emoji = emoji,
             levelScalingFactor = levelScalingFactor
         )
+
+        android.util.Log.d("QuestFlow_Category", "=== NEW CATEGORY CREATED ===")
+        android.util.Log.d("QuestFlow_Category", "Name: ${category.name}")
+        android.util.Log.d("QuestFlow_Category", "Initial XP: ${category.currentXp}")
+        android.util.Log.d("QuestFlow_Category", "Initial Level: ${category.currentLevel}")
+        android.util.Log.d("QuestFlow_Category", "Total XP: ${category.totalXp}")
+        android.util.Log.d("QuestFlow_Category", "Level Scaling Factor: ${category.levelScalingFactor}")
+
         return categoryRepository.createCategory(category)
     }
 }
