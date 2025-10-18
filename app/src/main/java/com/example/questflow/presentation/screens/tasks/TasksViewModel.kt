@@ -231,7 +231,7 @@ class TasksViewModel @Inject constructor(
 
     fun loadTasks() {
         viewModelScope.launch {
-            taskRepository.getActiveTasks().collect { allTasks ->
+            taskRepository.getAllTasks().collect { allTasks ->
                 val filteredTasks = filterTasks(allTasks)
                 _uiState.value = _uiState.value.copy(tasks = filteredTasks)
             }
@@ -646,7 +646,7 @@ class TasksViewModel @Inject constructor(
         }
     }
 
-    fun getAvailableTasksFlow() = taskRepository.getActiveTasks()
+    fun getAvailableTasksFlow() = taskRepository.getAllTasks()
 
     /**
      * Get calendar link by task ID

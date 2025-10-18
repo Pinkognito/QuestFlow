@@ -21,10 +21,22 @@ class RecordCalendarXpUseCase @Inject constructor(
     private val completeTaskUseCase: CompleteTaskUseCase
 ) {
     suspend operator fun invoke(linkId: Long): RecordCalendarXpResult {
+        android.util.Log.d("QuestFlow_XpClaim", "========================================")
+        android.util.Log.d("QuestFlow_XpClaim", "=== XP CLAIM STARTED ===")
+        android.util.Log.d("QuestFlow_XpClaim", "Link ID: $linkId")
+
         val link = calendarLinkRepository.getLinkById(linkId)
             ?: return RecordCalendarXpResult(success = false, message = "Calendar link not found")
 
+        android.util.Log.d("QuestFlow_XpClaim", "Link found: title='${link.title}', calendarEventId=${link.calendarEventId}")
+        android.util.Log.d("QuestFlow_XpClaim", "Link taskId: ${link.taskId}")
+        android.util.Log.d("QuestFlow_XpClaim", "Link deleteOnClaim: ${link.deleteOnClaim}")
+        android.util.Log.d("QuestFlow_XpClaim", "Link deleteOnExpiry: ${link.deleteOnExpiry}")
+        android.util.Log.d("QuestFlow_XpClaim", "Link rewarded: ${link.rewarded}")
+        android.util.Log.d("QuestFlow_XpClaim", "Link status: ${link.status}")
+
         if (link.rewarded) {
+            android.util.Log.w("QuestFlow_XpClaim", "XP already claimed - aborting")
             return RecordCalendarXpResult(success = false, message = "XP already claimed for this event")
         }
 
@@ -32,18 +44,22 @@ class RecordCalendarXpUseCase @Inject constructor(
         // This enables users to still get XP from expired events
 
         // Mark as rewarded and update status to CLAIMED
+        android.util.Log.d("QuestFlow_XpClaim", "Marking link as CLAIMED (rewarded=true)")
         calendarLinkRepository.updateLink(
             link.copy(rewarded = true, status = "CLAIMED")
         )
 
         // Delete calendar event if deleteOnClaim flag is set
         if (link.deleteOnClaim) {
+            android.util.Log.d("QuestFlow_XpClaim", "deleteOnClaim=true → Deleting CALENDAR EVENT (NOT TASK!)")
             try {
                 calendarManager.deleteEvent(link.calendarEventId)
-                android.util.Log.d("RecordCalendarXp", "Deleted calendar event ${link.calendarEventId} after claiming XP")
+                android.util.Log.d("QuestFlow_XpClaim", "✅ Successfully deleted calendar event ${link.calendarEventId}")
             } catch (e: Exception) {
-                android.util.Log.e("RecordCalendarXp", "Failed to delete calendar event: ${e.message}")
+                android.util.Log.e("QuestFlow_XpClaim", "❌ Failed to delete calendar event: ${e.message}")
             }
+        } else {
+            android.util.Log.d("QuestFlow_XpClaim", "deleteOnClaim=false → Keeping calendar event")
         }
 
         // Determine which level to use for XP calculation
@@ -61,7 +77,7 @@ class RecordCalendarXpUseCase @Inject constructor(
 
         // Debug logging with more details
         val xpNeeded = ((currentLevel + 1) * (currentLevel + 1) * 100) - (currentLevel * currentLevel * 100)
-        android.util.Log.d("RecordCalendarXp", "Level: $currentLevel, XP for next level: $xpNeeded, Percentage: ${link.xpPercentage}%, Calculated XP: $xpAmount")
+        android.util.Log.d("QuestFlow_XpClaim", "Level: $currentLevel, XP for next level: $xpNeeded, Percentage: ${link.xpPercentage}%, Calculated XP: $xpAmount")
 
         // Grant XP to category or general stats
         val (xpResult, categoryXpResult) = if (link.categoryId != null) {
@@ -79,13 +95,27 @@ class RecordCalendarXpUseCase @Inject constructor(
             genResult to null
         }
 
+        android.util.Log.d("QuestFlow_XpClaim", "XP granted: ${xpResult?.xpGranted ?: categoryXpResult?.xpGranted}")
+
         // Also complete any task associated with this calendar event
+        android.util.Log.d("QuestFlow_XpClaim", "Checking for associated task with calendarEventId=${link.calendarEventId}")
         val taskWithCalendarEvent = taskRepository.getTaskByCalendarEventId(link.calendarEventId)
-        taskWithCalendarEvent?.let { task ->
-            if (!task.isCompleted) {
-                completeTaskUseCase(task.id)
+        if (taskWithCalendarEvent != null) {
+            android.util.Log.d("QuestFlow_XpClaim", "Task found: id=${taskWithCalendarEvent.id}, title='${taskWithCalendarEvent.title}'")
+            android.util.Log.d("QuestFlow_XpClaim", "Task completed: ${taskWithCalendarEvent.isCompleted}")
+            if (!taskWithCalendarEvent.isCompleted) {
+                android.util.Log.d("QuestFlow_XpClaim", "Calling completeTaskUseCase for task ${taskWithCalendarEvent.id}")
+                completeTaskUseCase(taskWithCalendarEvent.id)
+                android.util.Log.d("QuestFlow_XpClaim", "completeTaskUseCase completed for task ${taskWithCalendarEvent.id}")
+            } else {
+                android.util.Log.d("QuestFlow_XpClaim", "Task already completed, skipping")
             }
+        } else {
+            android.util.Log.d("QuestFlow_XpClaim", "No task found with calendarEventId=${link.calendarEventId}")
         }
+
+        android.util.Log.d("QuestFlow_XpClaim", "=== XP CLAIM FINISHED ===")
+        android.util.Log.d("QuestFlow_XpClaim", "========================================")
 
         return RecordCalendarXpResult(
             success = true,
