@@ -1205,6 +1205,9 @@ fun EditCalendarTaskDialog(
                 deleteOnExpiry, isRecurring, recurringConfig, selectedParentTask,
                 autoCompleteParent, shouldReactivate, isDataLoaded
             ) {
+                android.util.Log.d("TaskDialog-AutoSave", "🔄 Auto-Save TRIGGERED: isDataLoaded=$isDataLoaded")
+                android.util.Log.d("TaskDialog-AutoSave", "🔄 Current values: startDateTime=$startDateTime, endDateTime=$endDateTime")
+
                 // Don't auto-save until initial data is loaded (prevents race condition)
                 if (!isDataLoaded) {
                     android.util.Log.d("TaskDialog-AutoSave", "⏸️ Auto-Save BLOCKED: isDataLoaded=false")

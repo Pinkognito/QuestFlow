@@ -53,7 +53,7 @@ import com.example.questflow.data.database.entity.*
         // Task History System
         TaskHistoryEntity::class
     ],
-    version = 46,
+    version = 47,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
