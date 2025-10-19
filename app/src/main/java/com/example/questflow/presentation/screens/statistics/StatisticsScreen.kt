@@ -22,7 +22,7 @@ import androidx.navigation.NavController
 import com.example.questflow.data.database.entity.TimeRange
 import com.example.questflow.domain.model.*
 import com.example.questflow.presentation.AppViewModel
-import com.example.questflow.presentation.components.XpLevelBadge
+import com.example.questflow.presentation.components.AnimatedXpLevelBadge
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
 import com.patrykandpatrick.vico.compose.chart.Chart
@@ -57,7 +57,7 @@ fun StatisticsScreen(
                 title = { Text("Statistiken") },
                 actions = {
                     globalStats?.let { stats ->
-                        XpLevelBadge(
+                        AnimatedXpLevelBadge(
                             level = stats.level,
                             xp = stats.xp
                         )

@@ -34,7 +34,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.questflow.data.preferences.TaskFilterSettings
 import com.example.questflow.data.preferences.DateFilterType
 import com.example.questflow.presentation.components.XpBurstAnimation
-import com.example.questflow.presentation.components.XpLevelBadge
 import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.AppViewModel
 import androidx.navigation.NavController
