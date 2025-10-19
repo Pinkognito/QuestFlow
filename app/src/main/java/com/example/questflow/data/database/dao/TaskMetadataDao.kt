@@ -17,9 +17,6 @@ interface TaskMetadataDao {
     @Query("SELECT * FROM task_metadata WHERE id = :id")
     suspend fun getById(id: Long): TaskMetadataEntity?
 
-    @Query("SELECT * FROM task_metadata WHERE taskId = :taskId AND metadataType = :type ORDER BY displayOrder ASC")
-    fun getMetadataByType(taskId: Long, type: MetadataType): Flow<List<TaskMetadataEntity>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(metadata: TaskMetadataEntity): Long
 

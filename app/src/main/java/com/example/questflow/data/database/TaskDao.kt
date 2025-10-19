@@ -34,9 +34,6 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isCompleted = 1 ORDER BY completedAt DESC LIMIT 100")
     suspend fun getRecentCompletedTasks(): List<TaskEntity>
 
-    @Query("SELECT * FROM tasks WHERE isCompleted = 1 ORDER BY completedAt DESC LIMIT 1")
-    suspend fun getLastCompletedTask(): TaskEntity?
-
     // Subtask queries
     @Query("SELECT * FROM tasks WHERE parentTaskId = :parentId ORDER BY createdAt ASC")
     fun getSubtasks(parentId: Long): Flow<List<TaskEntity>>

@@ -77,10 +77,6 @@ interface SkillDao {
     @Query("SELECT sn.* FROM skill_nodes sn INNER JOIN skill_unlocks su ON sn.id = su.nodeId WHERE sn.effectType = :effectType")
     suspend fun getUnlockedNodesByEffectType(effectType: SkillEffectType): List<SkillNodeEntity>
 
-    // Legacy compatibility
-    @Query("SELECT sn.* FROM skill_nodes sn INNER JOIN skill_unlocks su ON sn.id = su.nodeId WHERE sn.type = :type")
-    suspend fun getUnlockedNodesByType(type: SkillType): List<SkillNodeEntity>
-
     // === Investment Queries ===
     @Query("""
         SELECT su.investedPoints
