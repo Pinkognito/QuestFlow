@@ -3,7 +3,6 @@ package com.example.questflow.data.repository
 import com.example.questflow.data.database.dao.SkillDao
 import com.example.questflow.data.database.entity.SkillNodeEntity
 import com.example.questflow.data.database.entity.SkillEdgeEntity
-import com.example.questflow.data.database.entity.SkillType
 import com.example.questflow.data.database.entity.SkillEffectType
 import com.example.questflow.data.database.entity.SkillUnlockEntity
 import kotlinx.coroutines.flow.Flow
@@ -195,23 +194,6 @@ class SkillRepository @Inject constructor(
         return skillDao.getUnlockedNodesByEffectType(effectType).isNotEmpty()
     }
 
-    // === Legacy Compatibility ===
-    @Deprecated("Use calculateTotalEffect(SkillEffectType.XP_MULTIPLIER) instead")
-    suspend fun getActiveXpMultiplier(): Float {
-        // Legacy: Returns multiplier as factor (e.g., 1.15 for +15%)
-        val totalBonus = calculateTotalEffect(SkillEffectType.XP_MULTIPLIER)
-        return 1.0f + (totalBonus / 100f)
-    }
-
-    @Deprecated("Use hasEffectActive instead")
-    suspend fun hasUnlockedPerk(type: SkillType): Boolean {
-        return skillDao.getUnlockedNodesByType(type).isNotEmpty()
-    }
-
-    @Deprecated("Use investSkillPoint instead")
-    suspend fun unlockNode(nodeId: String): Boolean {
-        return investSkillPoint(nodeId).success
-    }
 }
 
 data class InvestmentResult(
