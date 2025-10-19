@@ -10,8 +10,10 @@ import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.TaskContactLinkEntity
+import com.example.questflow.data.database.entity.TaskHistoryEntity
 import com.example.questflow.data.database.dao.MetadataContactDao
 import com.example.questflow.data.database.dao.TaskContactLinkDao
+import com.example.questflow.data.database.dao.TaskHistoryDao
 import com.example.questflow.data.repository.TextTemplateRepository
 import com.example.questflow.data.repository.TaskContactTagRepository
 import com.example.questflow.data.repository.TagUsageRepository
@@ -47,6 +49,7 @@ class TodayViewModel @Inject constructor(
     private val findFreeTimeSlotsUseCase: FindFreeTimeSlotsUseCase,
     private val metadataContactDao: MetadataContactDao,
     private val taskContactLinkDao: TaskContactLinkDao,
+    private val taskHistoryDao: TaskHistoryDao,
     private val textTemplateRepository: TextTemplateRepository,
     private val taskContactTagRepository: TaskContactTagRepository,
     private val tagUsageRepository: TagUsageRepository,
@@ -526,6 +529,13 @@ class TodayViewModel @Inject constructor(
     suspend fun getDefaultCalendarTemplate() = textTemplateRepository.getDefaultByType("CALENDAR")
 
     fun getActionHistory(taskId: Long) = actionHistoryRepository.getHistoryForTask(taskId)
+
+    /**
+     * Get task history for a specific task
+     */
+    fun getTaskHistory(taskId: Long): Flow<List<TaskHistoryEntity>> {
+        return taskHistoryDao.getHistoryForTask(taskId)
+    }
 
     /**
      * Check for scheduling conflicts with existing events

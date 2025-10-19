@@ -17,6 +17,29 @@ interface TaskHistoryDao {
     suspend fun insertAll(entries: List<TaskHistoryEntity>)
 
     /**
+     * Prüfe ob ein identisches Event bereits existiert (innerhalb von 5 Sekunden)
+     */
+    @Query("""
+        SELECT COUNT(*) FROM task_history
+        WHERE taskId = :taskId
+        AND eventType = :eventType
+        AND ABS((julianday(:timestamp) - julianday(timestamp)) * 86400) < 5
+    """)
+    suspend fun countSimilarEvents(taskId: Long, eventType: String, timestamp: LocalDateTime): Int
+
+    /**
+     * Füge Event nur ein, wenn es nicht bereits existiert (verhindert Duplikate)
+     */
+    suspend fun insertIfNotExists(entry: TaskHistoryEntity): Long {
+        val existingCount = countSimilarEvents(entry.taskId, entry.eventType, entry.timestamp)
+        return if (existingCount == 0) {
+            insert(entry)
+        } else {
+            -1L // Bereits vorhanden
+        }
+    }
+
+    /**
      * Hole alle History-Einträge für einen bestimmten Task
      */
     @Query("SELECT * FROM task_history WHERE taskId = :taskId ORDER BY timestamp DESC")

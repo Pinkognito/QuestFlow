@@ -44,6 +44,7 @@ import com.example.questflow.presentation.viewmodels.TodayViewModel
 import com.example.questflow.presentation.components.AddTaskDialog
 import com.example.questflow.presentation.components.RecurringConfig
 import com.example.questflow.presentation.components.AdvancedTaskFilterDialog
+import com.example.questflow.presentation.components.TaskHistorySection
 import com.example.questflow.domain.model.getDisplayText
 import com.example.questflow.domain.model.SortOption
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import android.app.TimePickerDialog
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -1065,6 +1067,15 @@ fun EditCalendarTaskDialog(
         mutableStateOf(initialRecurringConfig)
     }
 
+
+    // Task History - Collect history for the task
+    val taskHistory by remember(calendarLink.taskId) {
+        if (calendarLink.taskId != null) {
+            viewModel.getTaskHistory(calendarLink.taskId!!)
+        } else {
+            flowOf(emptyList())
+        }
+    }.collectAsState(initial = emptyList())
     // Track if initial data has been loaded to prevent premature Auto-Save
     var isDataLoaded by remember(calendarLink.id, isBatchEdit) { mutableStateOf(false) }
 
@@ -2275,6 +2286,16 @@ fun EditCalendarTaskDialog(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    // Task History Section
+                    if (calendarLink.taskId != null && taskHistory.isNotEmpty()) {
+                        item {
+                            TaskHistorySection(
+                                taskHistory = taskHistory,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
                         }
                     }
 

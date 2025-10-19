@@ -307,12 +307,9 @@ class TasksViewModel @Inject constructor(
 
     fun loadCalendarLinks() {
         viewModelScope.launch {
-            // Check for expired events first
-            try {
-                checkExpiredEventsUseCase()
-            } catch (e: Exception) {
-                android.util.Log.e("TasksViewModel", "Failed to check expired events", e)
-            }
+            // NOTE: Expired events are checked by SyncManager (every 60s)
+            // No need to check here to avoid duplicate processing
+
 
             calendarLinkRepository.getAllLinks().collect { allLinks ->
                 // Check if advanced filter is active
