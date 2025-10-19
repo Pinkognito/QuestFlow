@@ -33,6 +33,8 @@ fun AddTaskDialog(
     inheritFromTask: com.example.questflow.domain.model.Task? = null,  // Inherit category from parent
     inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null  // Inherit time from parent
 ) {
+    val uiSettings by viewModel.uiSettings.collectAsState()
+    
     var taskTitleField by remember { mutableStateOf(TextFieldValue("")) }
     var taskDescriptionField by remember { mutableStateOf(TextFieldValue("")) }
     var selectedPercentage by remember { mutableStateOf(60) } // Default to 60%
@@ -1013,6 +1015,10 @@ fun AddTaskDialog(
     if (showRecurringDialog) {
         RecurringConfigDialog(
             initialConfig = recurringConfig,
+            minuteIncrement = uiSettings.recurringTimeMinuteIncrement,
+            onMinuteIncrementChange = { newValue ->
+                viewModel.updateUISettings(uiSettings.copy(recurringTimeMinuteIncrement = newValue))
+            },
             onDismiss = { showRecurringDialog = false },
             onConfirm = { config ->
                 recurringConfig = config

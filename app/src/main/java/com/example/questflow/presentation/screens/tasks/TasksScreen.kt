@@ -2524,6 +2524,10 @@ fun EditCalendarTaskDialog(
     if (showRecurringDialog) {
         com.example.questflow.presentation.components.RecurringConfigDialog(
             initialConfig = recurringConfig,
+            minuteIncrement = uiSettings.recurringTimeMinuteIncrement,
+            onMinuteIncrementChange = { newValue ->
+                tasksViewModel.updateUISettings(uiSettings.copy(recurringTimeMinuteIncrement = newValue))
+            },
             onDismiss = { showRecurringDialog = false },
             onConfirm = { config ->
                 recurringConfig = config
@@ -2820,125 +2824,27 @@ fun CalendarFilterDialog(
                 if (dateFilterType == DateFilterType.CUSTOM_RANGE) {
                     Divider()
 
-                    Text(
-                        "Custom Range Start",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                    com.example.questflow.presentation.components.CompactDateTimeSection(
+                        label = "Custom Range Start",
+                        dateTime = customStartDateTime,
+                        onDateTimeChange = { customStartDateTime = it },
+                        dayIncrement = 1,
+                        minuteIncrement = 15,
+                        onDayIncrementChange = {},
+                        onMinuteIncrementChange = {}
                     )
-
-                    Text(
-                        "${customStartDateTime.dayOfMonth}.${customStartDateTime.monthValue}.${customStartDateTime.year} ${customStartDateTime.hour}:${String.format("%02d", customStartDateTime.minute)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                val picker = DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        customStartDateTime = customStartDateTime
-                                            .withYear(year)
-                                            .withMonth(month + 1)
-                                            .withDayOfMonth(dayOfMonth)
-                                    },
-                                    customStartDateTime.year,
-                                    customStartDateTime.monthValue - 1,
-                                    customStartDateTime.dayOfMonth
-                                )
-                                picker.datePicker.minDate = 0
-                                picker.datePicker.maxDate = Long.MAX_VALUE
-                                picker.show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("📅 Datum")
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                TimePickerDialog(
-                                    context,
-                                    { _, hourOfDay, minute ->
-                                        customStartDateTime = customStartDateTime
-                                            .withHour(hourOfDay)
-                                            .withMinute(minute)
-                                    },
-                                    customStartDateTime.hour,
-                                    customStartDateTime.minute,
-                                    true
-                                ).show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("🕐 Uhrzeit")
-                        }
-                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Text(
-                        "Custom Range End",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                    com.example.questflow.presentation.components.CompactDateTimeSection(
+                        label = "Custom Range End",
+                        dateTime = customEndDateTime,
+                        onDateTimeChange = { customEndDateTime = it },
+                        dayIncrement = 1,
+                        minuteIncrement = 15,
+                        onDayIncrementChange = {},
+                        onMinuteIncrementChange = {}
                     )
-
-                    Text(
-                        "${customEndDateTime.dayOfMonth}.${customEndDateTime.monthValue}.${customEndDateTime.year} ${customEndDateTime.hour}:${String.format("%02d", customEndDateTime.minute)}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                val picker = DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        customEndDateTime = customEndDateTime
-                                            .withYear(year)
-                                            .withMonth(month + 1)
-                                            .withDayOfMonth(dayOfMonth)
-                                    },
-                                    customEndDateTime.year,
-                                    customEndDateTime.monthValue - 1,
-                                    customEndDateTime.dayOfMonth
-                                )
-                                picker.datePicker.minDate = 0
-                                picker.datePicker.maxDate = Long.MAX_VALUE
-                                picker.show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("📅 Datum")
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                TimePickerDialog(
-                                    context,
-                                    { _, hourOfDay, minute ->
-                                        customEndDateTime = customEndDateTime
-                                            .withHour(hourOfDay)
-                                            .withMinute(minute)
-                                    },
-                                    customEndDateTime.hour,
-                                    customEndDateTime.minute,
-                                    true
-                                ).show()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("🕐 Uhrzeit")
-                        }
-                    }
                 }
             }
         },

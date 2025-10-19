@@ -28,6 +28,7 @@ import com.example.questflow.domain.usecase.CreateCalendarLinkUseCase
 import com.example.questflow.domain.usecase.UpdateTaskWithCalendarUseCase
 import com.example.questflow.domain.usecase.DetectScheduleConflictsUseCase
 import com.example.questflow.domain.usecase.FindFreeTimeSlotsUseCase
+import com.example.questflow.data.preferences.UIPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -57,6 +58,7 @@ class TodayViewModel @Inject constructor(
     val actionExecutor: ActionExecutor,
     val placeholderResolver: PlaceholderResolver,
     val multiContactActionManager: com.example.questflow.domain.action.MultiContactActionManager,
+    private val uiPreferences: UIPreferences,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     // NOTE: calendarManager & calendarLinkRepository still needed for:
@@ -79,6 +81,8 @@ class TodayViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    val uiSettings: StateFlow<com.example.questflow.data.preferences.UISettings> = uiPreferences.getSettings()
 
     val contacts = metadataContactDao.getAll()
         .stateIn(
@@ -105,6 +109,10 @@ class TodayViewModel @Inject constructor(
         viewModelScope.launch {
             _hasCalendarPermission.value = calendarManager.hasCalendarPermission()
         }
+    }
+
+    fun updateUISettings(settings: com.example.questflow.data.preferences.UISettings) {
+        uiPreferences.updateSettings(settings)
     }
 
     fun getXpForPercentage(percentage: Int): String {

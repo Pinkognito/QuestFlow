@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -513,4 +514,146 @@ private fun IncrementConfigDialog(
             }
         }
     )
+}
+
+/**
+ * Compact Time-Only Section - Only time row with inline +/- controls
+ * For recurring task configuration (no date needed)
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CompactTimeOnlySection(
+    label: String,
+    time: LocalTime?,
+    onTimeChange: (LocalTime?) -> Unit,
+    minuteIncrement: Int = 15,
+    onMinuteIncrementChange: (Int) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var showTimePicker by remember { mutableStateOf(false) }
+    val currentTime = time ?: LocalTime.of(14, 0)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Time row with +/- controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Time Button
+            OutlinedButton(
+                onClick = { showTimePicker = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    time?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "--:--"
+                )
+            }
+
+            // Time +/- controls (same as CompactTimeAdjustment but for LocalTime)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Minus button
+                FilledTonalIconButton(
+                    onClick = { 
+                        onTimeChange(currentTime.minusMinutes(minuteIncrement.toLong()))
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Text("-", style = MaterialTheme.typography.titleSmall)
+                }
+
+                // Plus button
+                FilledTonalIconButton(
+                    onClick = { 
+                        onTimeChange(currentTime.plusMinutes(minuteIncrement.toLong()))
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Plus", modifier = Modifier.size(16.dp))
+                }
+
+                // Increment config button
+                var showIncrementDialog by remember { mutableStateOf(false) }
+                FilledTonalIconButton(
+                    onClick = { showIncrementDialog = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = "Config", modifier = Modifier.size(14.dp))
+                }
+
+                // Show current increment
+                Text(
+                    "±$minuteIncrement min",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (showIncrementDialog) {
+                    IncrementConfigDialog(
+                        title = "Minuten-Inkrement",
+                        currentValue = minuteIncrement,
+                        suggestions = listOf(1, 5, 10, 15, 30, 60, 120),
+                        onDismiss = { showIncrementDialog = false },
+                        onConfirm = { newValue ->
+                            onMinuteIncrementChange(newValue)
+                            showIncrementDialog = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // Time Picker Dialog (same as in CompactDateTimeSection)
+    if (showTimePicker) {
+        var selectedHour by remember { mutableStateOf(currentTime.hour) }
+        var selectedMinute by remember { mutableStateOf(currentTime.minute) }
+
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Uhrzeit wählen") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    HorizontalWheelTimePicker(
+                        initialHour = currentTime.hour,
+                        initialMinute = currentTime.minute,
+                        onTimeChange = { hour, minute ->
+                            selectedHour = hour
+                            selectedMinute = minute
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onTimeChange(LocalTime.of(selectedHour, selectedMinute))
+                        showTimePicker = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
 }

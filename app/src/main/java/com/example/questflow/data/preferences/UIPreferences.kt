@@ -20,6 +20,7 @@ data class UISettings(
     val startMinuteIncrement: Int = 15,  // Start time adjustment increment in minutes
     val endDayIncrement: Int = 1,  // End date adjustment increment in days
     val endMinuteIncrement: Int = 15,  // End time adjustment increment in minutes
+    val recurringTimeMinuteIncrement: Int = 15,  // Recurring time adjustment increment in minutes
     // Add more UI preferences here as needed
 ) {
     companion object {
@@ -43,6 +44,7 @@ class UIPreferences @Inject constructor(
         private const val KEY_START_MINUTE_INCREMENT = "start_minute_increment"
         private const val KEY_END_DAY_INCREMENT = "end_day_increment"
         private const val KEY_END_MINUTE_INCREMENT = "end_minute_increment"
+        private const val KEY_RECURRING_TIME_MINUTE_INCREMENT = "recurring_time_minute_increment"
 
         // Legacy keys for migration
         private const val KEY_MINUTE_INCREMENT = "minute_increment"
@@ -64,7 +66,8 @@ class UIPreferences @Inject constructor(
             startDayIncrement = prefs.getInt(KEY_START_DAY_INCREMENT, legacyDayIncrement),
             startMinuteIncrement = prefs.getInt(KEY_START_MINUTE_INCREMENT, legacyMinuteIncrement),
             endDayIncrement = prefs.getInt(KEY_END_DAY_INCREMENT, legacyDayIncrement),
-            endMinuteIncrement = prefs.getInt(KEY_END_MINUTE_INCREMENT, legacyMinuteIncrement)
+            endMinuteIncrement = prefs.getInt(KEY_END_MINUTE_INCREMENT, legacyMinuteIncrement),
+            recurringTimeMinuteIncrement = prefs.getInt(KEY_RECURRING_TIME_MINUTE_INCREMENT, 15)
         )
     }
 
@@ -76,6 +79,7 @@ class UIPreferences @Inject constructor(
             .putInt(KEY_START_MINUTE_INCREMENT, settings.startMinuteIncrement)
             .putInt(KEY_END_DAY_INCREMENT, settings.endDayIncrement)
             .putInt(KEY_END_MINUTE_INCREMENT, settings.endMinuteIncrement)
+            .putInt(KEY_RECURRING_TIME_MINUTE_INCREMENT, settings.recurringTimeMinuteIncrement)
             .apply()
 
         _settings.value = settings

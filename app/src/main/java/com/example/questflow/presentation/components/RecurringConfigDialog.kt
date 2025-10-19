@@ -16,10 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.TextStyle
@@ -53,6 +57,8 @@ enum class TriggerMode {
 @Composable
 fun RecurringConfigDialog(
     initialConfig: RecurringConfig = RecurringConfig(),
+    minuteIncrement: Int = 15,
+    onMinuteIncrementChange: (Int) -> Unit = {},
     onDismiss: () -> Unit,
     onConfirm: (RecurringConfig) -> Unit
 ) {
@@ -128,7 +134,9 @@ fun RecurringConfigDialog(
                                 interval = config.dailyInterval,
                                 time = config.specificTime,
                                 onIntervalChange = { config = config.copy(dailyInterval = it) },
-                                onTimeChange = { config = config.copy(specificTime = it) }
+                                onTimeChange = { config = config.copy(specificTime = it) },
+                                minuteIncrement = minuteIncrement,
+                                onMinuteIncrementChange = onMinuteIncrementChange
                             )
                         }
 
@@ -137,7 +145,9 @@ fun RecurringConfigDialog(
                                 selectedDays = config.weeklyDays,
                                 time = config.specificTime,
                                 onDaysChange = { config = config.copy(weeklyDays = it) },
-                                onTimeChange = { config = config.copy(specificTime = it) }
+                                onTimeChange = { config = config.copy(specificTime = it) },
+                                minuteIncrement = minuteIncrement,
+                                onMinuteIncrementChange = onMinuteIncrementChange
                             )
                         }
 
@@ -146,7 +156,9 @@ fun RecurringConfigDialog(
                                 dayOfMonth = config.monthlyDay,
                                 time = config.specificTime,
                                 onDayChange = { config = config.copy(monthlyDay = it) },
-                                onTimeChange = { config = config.copy(specificTime = it) }
+                                onTimeChange = { config = config.copy(specificTime = it) },
+                                minuteIncrement = minuteIncrement,
+                                onMinuteIncrementChange = onMinuteIncrementChange
                             )
                         }
 
@@ -304,12 +316,74 @@ private fun RecurringModeCard(
     }
 }
 
+
+/**
+ * Number input field that clears on focus for easy editing
+ */
+@Composable
+private fun NumberInputField(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    minValue: Int = 1,
+    maxValue: Int = Int.MAX_VALUE
+) {
+    var textValue by remember(value) { mutableStateOf(value.toString()) }
+    var isFirstFocus by remember { mutableStateOf(true) }
+    val focusManager = LocalFocusManager.current
+
+    OutlinedTextField(
+        value = textValue,
+        onValueChange = { text ->
+            if (text.all { it.isDigit() } || text.isEmpty()) {
+                textValue = text
+                text.toIntOrNull()?.let { newValue ->
+                    if (newValue in minValue..maxValue) {
+                        onValueChange(newValue)
+                    }
+                }
+            }
+        },
+        modifier = modifier.onFocusChanged { focusState ->
+            if (focusState.isFocused && isFirstFocus) {
+                // First time getting focus - clear the field
+                isFirstFocus = false
+                textValue = ""
+            } else if (!focusState.isFocused) {
+                // Lost focus - restore value if empty
+                if (textValue.isEmpty()) {
+                    textValue = value.toString()
+                }
+                // Reset for next time
+                isFirstFocus = true
+            }
+        },
+        label = label?.let { { Text(it) } },
+        placeholder = placeholder?.let { { Text(it) } },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                // Clear focus when Done is pressed
+                focusManager.clearFocus()
+            }
+        )
+    )
+}
+
 @Composable
 private fun DailyConfig(
     interval: Int,
     time: LocalTime?,
     onIntervalChange: (Int) -> Unit,
-    onTimeChange: (LocalTime?) -> Unit
+    onTimeChange: (LocalTime?) -> Unit,
+    minuteIncrement: Int,
+    onMinuteIncrementChange: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Intervall", style = MaterialTheme.typography.labelMedium)
@@ -320,25 +394,23 @@ private fun DailyConfig(
         ) {
             Text("Alle")
 
-            OutlinedTextField(
-                value = interval.toString(),
-                onValueChange = {
-                    it.toIntOrNull()?.let { value ->
-                        if (value > 0) onIntervalChange(value)
-                    }
-                },
+            NumberInputField(
+                value = interval,
+                onValueChange = onIntervalChange,
                 modifier = Modifier.width(80.dp),
-                singleLine = true
+                minValue = 1
             )
 
             Text("Tag(e)")
         }
 
         // Time picker
-        TimePickerField(
+        CompactTimeOnlySection(
+            label = "Uhrzeit (optional)",
             time = time,
             onTimeChange = onTimeChange,
-            label = "Uhrzeit (optional)"
+            minuteIncrement = minuteIncrement,
+            onMinuteIncrementChange = onMinuteIncrementChange
         )
     }
 }
@@ -348,7 +420,9 @@ private fun WeeklyConfig(
     selectedDays: Set<DayOfWeek>,
     time: LocalTime?,
     onDaysChange: (Set<DayOfWeek>) -> Unit,
-    onTimeChange: (LocalTime?) -> Unit
+    onTimeChange: (LocalTime?) -> Unit,
+    minuteIncrement: Int,
+    onMinuteIncrementChange: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Wochentage", style = MaterialTheme.typography.labelMedium)
@@ -406,10 +480,12 @@ private fun WeeklyConfig(
         }
 
         // Time picker
-        TimePickerField(
+        CompactTimeOnlySection(
+            label = "Uhrzeit (optional)",
             time = time,
             onTimeChange = onTimeChange,
-            label = "Uhrzeit (optional)"
+            minuteIncrement = minuteIncrement,
+            onMinuteIncrementChange = onMinuteIncrementChange
         )
     }
 }
@@ -440,7 +516,9 @@ private fun MonthlyConfig(
     dayOfMonth: Int,
     time: LocalTime?,
     onDayChange: (Int) -> Unit,
-    onTimeChange: (LocalTime?) -> Unit
+    onTimeChange: (LocalTime?) -> Unit,
+    minuteIncrement: Int,
+    onMinuteIncrementChange: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Tag im Monat", style = MaterialTheme.typography.labelMedium)
@@ -451,25 +529,24 @@ private fun MonthlyConfig(
         ) {
             Text("Am")
 
-            OutlinedTextField(
-                value = dayOfMonth.toString(),
-                onValueChange = {
-                    it.toIntOrNull()?.let { value ->
-                        if (value in 1..31) onDayChange(value)
-                    }
-                },
+            NumberInputField(
+                value = dayOfMonth,
+                onValueChange = onDayChange,
                 modifier = Modifier.width(80.dp),
-                singleLine = true
+                minValue = 1,
+                maxValue = 31
             )
 
             Text("des Monats")
         }
 
         // Time picker
-        TimePickerField(
+        CompactTimeOnlySection(
+            label = "Uhrzeit (optional)",
             time = time,
             onTimeChange = onTimeChange,
-            label = "Uhrzeit (optional)"
+            minuteIncrement = minuteIncrement,
+            onMinuteIncrementChange = onMinuteIncrementChange
         )
     }
 }
@@ -486,13 +563,8 @@ private fun CustomConfig(
     var minutesText by remember(initialTotalMinutes) {
         mutableStateOf(if (initialTotalMinutes > 0) initialTotalMinutes.toString() else "")
     }
-    val focusRequester = remember { FocusRequester() }
-
-    // Auto-focus beim ersten Anzeigen
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
+    var isEditing by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Intervall", style = MaterialTheme.typography.labelMedium)
 
@@ -524,12 +596,31 @@ private fun CustomConfig(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester),
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused && !isEditing) {
+                        // First time getting focus - clear
+                        isEditing = true
+                        minutesText = ""
+                    } else if (!focusState.isFocused) {
+                        // Lost focus - restore if empty
+                        if (minutesText.isEmpty()) {
+                            minutesText = if (initialTotalMinutes > 0) initialTotalMinutes.toString() else ""
+                        }
+                        isEditing = false
+                    }
+                },
             label = { Text("Minuten") },
             placeholder = { Text("z.B. 60, 90, 120...") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    // Clear focus when Done is pressed
+                    focusManager.clearFocus()
+                }
             )
         )
 
@@ -541,83 +632,6 @@ private fun CustomConfig(
                 color = MaterialTheme.colorScheme.primary
             )
         }
-    }
-}
-
-@Composable
-private fun TimePickerField(
-    time: LocalTime?,
-    onTimeChange: (LocalTime?) -> Unit,
-    label: String
-) {
-    var showTimePicker by remember { mutableStateOf(false) }
-
-    OutlinedTextField(
-        value = time?.let {
-            String.format("%02d:%02d", it.hour, it.minute)
-        } ?: "",
-        onValueChange = { },
-        label = { Text(label) },
-        readOnly = true,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { showTimePicker = true },
-        trailingIcon = {
-            IconButton(onClick = { showTimePicker = true }) {
-                Icon(Icons.Default.DateRange, contentDescription = "Zeit wählen")
-            }
-        }
-    )
-
-    // Note: In production, you'd use a proper time picker dialog
-    // For simplicity, we'll use a basic input here
-    if (showTimePicker) {
-        var hourText by remember { mutableStateOf(time?.hour?.toString() ?: "14") }
-        var minuteText by remember { mutableStateOf(time?.minute?.toString() ?: "0") }
-
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            title = { Text("Zeit wählen") },
-            text = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = hourText,
-                        onValueChange = { hourText = it },
-                        label = { Text("Std") },
-                        modifier = Modifier.width(80.dp)
-                    )
-                    Text(":")
-                    OutlinedTextField(
-                        value = minuteText,
-                        onValueChange = { minuteText = it },
-                        label = { Text("Min") },
-                        modifier = Modifier.width(80.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val hour = hourText.toIntOrNull() ?: 0
-                        val minute = minuteText.toIntOrNull() ?: 0
-                        if (hour in 0..23 && minute in 0..59) {
-                            onTimeChange(LocalTime.of(hour, minute))
-                        }
-                        showTimePicker = false
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
-                    Text("Abbrechen")
-                }
-            }
-        )
     }
 }
 
