@@ -78,3 +78,27 @@ lint/tmp/
 
 # Gradle Wrapper
 gradle-wrapper.jar
+
+# ===== Custom Project-Specific Ignores =====
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Backup files
+*.bak
+
+# Temporary Python scripts
+temp_*.py
+
+# Debug and testing logs
+fix_p1-*.txt
+fix_*.txt
+
+# Personal prompts and documentation
+PROMPTS/
+WORKER_CHAT_PROMPTS.md
+USER_TESTING_ANALYSIS_*.md
+
+# Temporary files
+*.tmp
+*.temp
