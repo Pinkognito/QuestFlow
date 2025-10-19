@@ -5,6 +5,7 @@ import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.domain.usecase.category.GrantCategoryXpUseCase
+import com.example.questflow.domain.history.HistoryRecorder
 import java.time.LocalDateTime
 import javax.inject.Inject
 
@@ -16,7 +17,8 @@ class CompleteTaskUseCase @Inject constructor(
     private val grantCategoryXpUseCase: GrantCategoryXpUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
     private val calendarLinkRepository: com.example.questflow.data.repository.CalendarLinkRepository,
-    private val calendarManager: com.example.questflow.data.calendar.CalendarManager
+    private val calendarManager: com.example.questflow.data.calendar.CalendarManager,
+    private val historyRecorder: HistoryRecorder
 ) {
     suspend operator fun invoke(taskId: Long): CompleteTaskResult {
         val task = taskRepository.getTaskById(taskId)
@@ -51,6 +53,9 @@ class CompleteTaskUseCase @Inject constructor(
         android.util.Log.d("CompleteTaskUseCase", "AFTER copy() - parentTaskId: ${updatedTask.parentTaskId}")
 
         taskRepository.updateTask(updatedTask)
+        
+        // Record COMPLETED event in history
+        historyRecorder.recordCompletion(task.id)
 
         // Verify after database update
         val verifyTask = taskRepository.getTaskById(task.id)

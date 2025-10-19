@@ -3,6 +3,7 @@ package com.example.questflow.domain.usecase
 import com.example.questflow.data.calendar.CalendarManager
 import com.example.questflow.data.preferences.SyncPreferences
 import com.example.questflow.data.database.dao.TaskHistoryDao
+import com.example.questflow.domain.history.HistoryRecorder
 import com.example.questflow.data.database.entity.TaskHistoryEntity
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.TaskRepository
@@ -17,7 +18,8 @@ class CheckExpiredEventsUseCase @Inject constructor(
     private val taskRepository: TaskRepository,
     private val calendarManager: CalendarManager,
     private val syncPreferences: SyncPreferences,
-    private val taskHistoryDao: TaskHistoryDao,  // Task History System
+    private val taskHistoryDao: TaskHistoryDao,  // Task History System (legacy)
+    private val historyRecorder: HistoryRecorder,  // NEW: History with preferences
     private val findFreeTimeSlotsUseCase: FindFreeTimeSlotsUseCase  // FIX P1-002: For smart rescheduling
 ) {
     data class CheckResult(
@@ -45,8 +47,12 @@ class CheckExpiredEventsUseCase @Inject constructor(
 
             // Check all pending calendar events
             val links = calendarLinkRepository.getAllLinks().first()
+            Log.d("CheckExpiredEvents", "🔍 Total links in DB: ${links.size}")
 
-            links.filter { link ->
+            val pendingLinks = links.filter { it.status == "PENDING" && !it.rewarded }
+            Log.d("CheckExpiredEvents", "🔍 Pending & not rewarded links: ${pendingLinks.size}")
+
+            val expiredLinks = links.filter { link ->
                 // Check if event ended between last check and now
                 val isInTimeRange = if (lastCheckTime != null) {
                     link.endsAt > lastCheckTime && link.endsAt <= now
@@ -54,22 +60,33 @@ class CheckExpiredEventsUseCase @Inject constructor(
                     link.endsAt <= now
                 }
 
-                link.status == "PENDING" && !link.rewarded && isInTimeRange
-            }.forEach { expiredLink ->
+                val isExpired = link.status == "PENDING" && !link.rewarded && isInTimeRange
+
+                if (link.status == "PENDING" && !link.rewarded && !isInTimeRange) {
+                    Log.d("CheckExpiredEvents", "  Link '${link.title}' (id=${link.id}): endsAt=${link.endsAt}, NOW=$now, isInTimeRange=$isInTimeRange -> NOT EXPIRED YET")
+                }
+
+                isExpired
+            }
+            Log.d("CheckExpiredEvents", "🔍 Found ${expiredLinks.size} expired links")
+
+            expiredLinks.forEach { expiredLink ->
                 expiredCount++
 
                 // Mark as expired
                 calendarLinkRepository.updateLink(
                     expiredLink.copy(status = "EXPIRED")
                 )
-                Log.d("CheckExpiredEvents", "Marked as expired: ${expiredLink.title}")
-                taskHistoryDao.insert(
-                    TaskHistoryEntity(
-                        taskId = expiredLink.taskId ?: 0,
-                        eventType = "EXPIRED",
-                        timestamp = now
-                    )
-                )
+                Log.d("CheckExpiredEvents", "✅ Marked as expired: ${expiredLink.title} (linkId=${expiredLink.id}, taskId=${expiredLink.taskId})")
+
+                // Record EXPIRED event with user preferences check
+                if (expiredLink.taskId != null) {
+                    Log.d("CheckExpiredEvents", "🔍 Calling historyRecorder.recordExpired(taskId=${expiredLink.taskId})")
+                    historyRecorder.recordExpired(expiredLink.taskId)
+                    Log.d("CheckExpiredEvents", "✅ historyRecorder.recordExpired() completed")
+                } else {
+                    Log.w("CheckExpiredEvents", "⚠️ Cannot record EXPIRED: expiredLink.taskId is NULL!")
+                }
 
                 // Delete from calendar if configured
                 if (expiredLink.deleteOnExpiry && calendarManager.hasCalendarPermission()) {
@@ -215,15 +232,8 @@ class CheckExpiredEventsUseCase @Inject constructor(
                 rewarded = false
             )
             calendarLinkRepository.updateLink(updatedLink)
-            // Record RECURRING_CREATED event in history
-            taskHistoryDao.insert(
-                TaskHistoryEntity(
-                    taskId = task.id,
-                    eventType = "RECURRING_CREATED",
-                    timestamp = LocalDateTime.now(),
-                    newDueDate = nextStartTime
-                )
-            )
+            // Record RECURRING_CREATED event with user preferences check
+            historyRecorder.recordRecurringCreated(task.id, nextStartTime)
 
             // Update Google Calendar event if exists
             if (calendarManager.hasCalendarPermission() && expiredLink.calendarEventId > 0) {

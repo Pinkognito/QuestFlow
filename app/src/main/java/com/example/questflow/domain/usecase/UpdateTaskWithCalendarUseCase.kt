@@ -8,6 +8,9 @@ import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.domain.model.Priority
 import com.example.questflow.presentation.components.RecurringConfig
 import com.example.questflow.presentation.components.RecurringMode
+import com.example.questflow.data.database.dao.TaskHistoryDao
+import com.example.questflow.domain.history.HistoryRecorder
+import com.example.questflow.data.database.entity.TaskHistoryEntity
 import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -32,7 +35,9 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
     private val notificationScheduler: com.example.questflow.domain.notification.TaskNotificationScheduler,
     private val placeholderResolver: com.example.questflow.domain.placeholder.PlaceholderResolver,
-    private val taskContactLinkDao: com.example.questflow.data.database.dao.TaskContactLinkDao
+    private val taskContactLinkDao: com.example.questflow.data.database.dao.TaskContactLinkDao,
+    private val taskHistoryDao: TaskHistoryDao,  // Legacy
+    private val historyRecorder: HistoryRecorder
 ) {
     data class UpdateParams(
         val taskId: Long?,
@@ -220,6 +225,77 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
 
             taskRepository.updateTask(updatedTask)
             android.util.Log.d("DescriptionFlow-UseCase", "✅ repository.updateTask() completed for taskId=${task.id}")
+
+            // Record property changes in history
+            android.util.Log.d(TAG, "🔍 About to check property changes: params.taskId=${params.taskId}, task.id=${task.id}")
+            android.util.Log.d(TAG, "🔍 params.startDateTime=${params.startDateTime}, params.endDateTime=${params.endDateTime}")
+            android.util.Log.d(TAG, "🔍 task.dueDate (OLD)=${task.dueDate}")
+            android.util.Log.d(TAG, "🔍 updatedTask.dueDate (NEW)=${updatedTask.dueDate}")
+            android.util.Log.d(TAG, "🔍 Comparing: task.title='${task.title}' vs resolvedTitle='$resolvedTitle'")
+            android.util.Log.d(TAG, "🔍 Comparing: task.dueDate=${task.dueDate} vs params.startDateTime=${params.startDateTime}")
+            android.util.Log.d(TAG, "🔍 Are dates different? ${task.dueDate != params.startDateTime}")
+
+            params.taskId?.let { taskId ->
+                // Track title changes
+                if (task.title != resolvedTitle) {
+                    historyRecorder.recordTitleChange(taskId, task.title, resolvedTitle)
+                    android.util.Log.d(TAG, "📝 History: TITLE_CHANGED for task $taskId ('${task.title}' -> '$resolvedTitle')")
+                }
+
+                // Track description changes (only if both are non-blank)
+                if (task.description != resolvedDescription &&
+                    task.description.isNotBlank() && resolvedDescription.isNotBlank()) {
+                    historyRecorder.recordDescriptionChange(taskId, task.description, resolvedDescription)
+                    android.util.Log.d(TAG, "📝 History: DESCRIPTION_CHANGED for task $taskId")
+                }
+
+                // Track difficulty (XP percentage) changes
+                if (task.xpPercentage != params.xpPercentage) {
+                    historyRecorder.recordDifficultyChange(taskId, task.xpPercentage, params.xpPercentage)
+                    android.util.Log.d(TAG, "📝 History: DIFFICULTY_CHANGED for task $taskId (${task.xpPercentage}% -> ${params.xpPercentage}%)")
+                }
+
+                // Track priority changes
+                if (task.priority != priority) {
+                    historyRecorder.recordPriorityChange(taskId, task.priority?.name, priority?.name)
+                    android.util.Log.d(TAG, "📝 History: PRIORITY_CHANGED for task $taskId ('${task.priority}' -> '$priority')")
+                }
+
+                // Track category changes
+                if (task.categoryId != params.categoryId) {
+                    historyRecorder.recordCategoryChange(taskId, task.categoryId, params.categoryId)
+                    android.util.Log.d(TAG, "📝 History: CATEGORY_CHANGED for task $taskId (${task.categoryId} -> ${params.categoryId})")
+                }
+
+                // Track due date changes (check BOTH start and end time changes)
+                val startTimeChanged = task.dueDate != params.startDateTime
+                val endTimeChanged = existingLink.endsAt != params.endDateTime
+
+                if (startTimeChanged || endTimeChanged) {
+                    // Record as DUE_DATE_CHANGED if EITHER start or end changes
+                    historyRecorder.recordDueDateChange(taskId, task.dueDate, params.startDateTime)
+                    android.util.Log.d(TAG, "📝 History: DUE_DATE_CHANGED for task $taskId")
+                    android.util.Log.d(TAG, "   Start: ${task.dueDate} -> ${params.startDateTime} (changed: $startTimeChanged)")
+                    android.util.Log.d(TAG, "   End:   ${existingLink.endsAt} -> ${params.endDateTime} (changed: $endTimeChanged)")
+
+                    // Check status change: EXPIRED → ACTIVE or ACTIVE → EXPIRED
+                    val now = LocalDateTime.now()
+                    val wasExpired = existingLink.status == "EXPIRED"
+                    val willBeExpired = params.endDateTime <= now
+
+                    android.util.Log.d(TAG, "📝 Status Check: wasExpired=$wasExpired, willBeExpired=$willBeExpired")
+
+                    if (wasExpired && !willBeExpired && !updatedTask.isCompleted) {
+                        // Task was EXPIRED and is now becoming ACTIVE (date moved to future)
+                        historyRecorder.recordUncompletion(taskId)
+                        android.util.Log.d(TAG, "📝 History: UNCOMPLETED for task $taskId (reactivation: date changed from past to future)")
+                    } else if (!wasExpired && willBeExpired && !updatedTask.isCompleted) {
+                        // Task was ACTIVE and is now becoming EXPIRED (date moved to past)
+                        historyRecorder.recordExpired(taskId)
+                        android.util.Log.d(TAG, "📝 History: EXPIRED for task $taskId (manual date change to past)")
+                    }
+                }
+            }
         }
 
         // 6. Update Link in DB
@@ -267,6 +343,38 @@ class UpdateTaskWithCalendarUseCase @Inject constructor(
                 // Cancel notification if task is now in the past
                 android.util.Log.d(TAG, "Cancelling notification for task $taskId (now in past)")
                 notificationScheduler.cancelNotification(taskId)
+            }
+        }
+
+        // 8. Record history events for tracking
+        params.taskId?.let { taskId ->
+            // UNCOMPLETED: Task wurde reaktiviert
+            if (params.shouldReactivate) {
+                historyRecorder.recordUncompletion(taskId)
+                android.util.Log.d(TAG, "📝 History: UNCOMPLETED for task $taskId")
+            }
+
+            // XP_RECLAIMABLE: XP wurde wieder claimbar
+            if (existingLink.rewarded && !updatedLink.rewarded) {
+                historyRecorder.recordXpReclaimable(taskId)
+                android.util.Log.d(TAG, "📝 History: XP_RECLAIMABLE for task $taskId")
+            }
+
+            // PARENT_ASSIGNED/REMOVED: Parent task wurde zugewiesen oder entfernt
+            val oldParentId = existingTask?.parentTaskId
+            val newParentId = params.parentTaskId
+            when {
+                newParentId != null && newParentId != oldParentId -> {
+                    historyRecorder.recordParentAssigned(taskId, newParentId)
+                    android.util.Log.d(TAG, "📝 History: PARENT_ASSIGNED for task $taskId (parent: $newParentId)")
+                }
+                oldParentId != null && newParentId == null -> {
+                    historyRecorder.recordParentRemoved(taskId, oldParentId)
+                    android.util.Log.d(TAG, "📝 History: PARENT_REMOVED for task $taskId (was parent: $oldParentId)")
+                }
+                else -> {
+                    // No parent change
+                }
             }
         }
 
