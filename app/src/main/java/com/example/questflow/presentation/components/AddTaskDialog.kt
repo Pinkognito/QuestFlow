@@ -31,9 +31,17 @@ fun AddTaskDialog(
     isCalendarMode: Boolean = false,  // Add parameter to distinguish context
     preSelectedParentId: Long? = null,  // Pre-select parent task (for sub-task creation)
     inheritFromTask: com.example.questflow.domain.model.Task? = null,  // Inherit category from parent
-    inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null  // Inherit time from parent
+    inheritFromCalendarLink: com.example.questflow.data.database.entity.CalendarEventLinkEntity? = null,  // Inherit time from parent
+    occupancyCalculator: com.example.questflow.domain.usecase.DayOccupancyCalculator? = null  // For month view occupancy
 ) {
     val uiSettings by viewModel.uiSettings.collectAsState()
+
+    // Calendar events for month view occupancy (get 2 months range)
+    val currentMonth = remember { java.time.YearMonth.now() }
+    val monthViewEvents by viewModel.getCalendarEventsInRange(
+        startDate = currentMonth.minusMonths(1).atDay(1),
+        endDate = currentMonth.plusMonths(2).atDay(1)
+    ).collectAsState(initial = emptyList())
     
     var taskTitleField by remember { mutableStateOf(TextFieldValue("")) }
     var taskDescriptionField by remember { mutableStateOf(TextFieldValue("")) }
@@ -545,7 +553,11 @@ fun AddTaskDialog(
                             label = "Start",
                             dateTime = startDateTime,
                             onDateTimeChange = { startDateTime = it },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            events = monthViewEvents,
+                            occupancyCalculator = occupancyCalculator,
+                            currentTaskId = inheritFromTask?.id,
+                            currentCategoryId = taskCategory?.id
                         )
                     }
 
@@ -555,7 +567,11 @@ fun AddTaskDialog(
                             label = "Ende",
                             dateTime = endDateTime,
                             onDateTimeChange = { endDateTime = it },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            events = monthViewEvents,
+                            occupancyCalculator = occupancyCalculator,
+                            currentTaskId = inheritFromTask?.id,
+                            currentCategoryId = taskCategory?.id
                         )
                     }
 

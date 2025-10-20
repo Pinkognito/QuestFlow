@@ -29,4 +29,49 @@ interface CalendarEventLinkDao {
 
     @Query("SELECT * FROM calendar_event_links WHERE calendarEventId = :calendarEventId")
     suspend fun getLinkByCalendarEventId(calendarEventId: Long): CalendarEventLinkEntity?
+
+    /**
+     * Get all calendar event links associated with a task
+     */
+    @Query("SELECT * FROM calendar_event_links WHERE taskId = :taskId")
+    suspend fun getLinksByTaskId(taskId: Long): List<CalendarEventLinkEntity>
+
+    /**
+     * Delete all calendar event links associated with a task
+     */
+    @Query("DELETE FROM calendar_event_links WHERE taskId = :taskId")
+    suspend fun deleteByTaskId(taskId: Long)
+
+    /**
+     * Delete a single calendar event link
+     */
+    @Delete
+    suspend fun delete(link: CalendarEventLinkEntity)
+
+    /**
+     * Get all calendar events in a date range for occupancy visualization
+     * DEFENSIVE: Filters out orphaned events (taskId points to deleted task)
+     * @param startDate ISO format string (e.g., "2025-10-01T00:00:00")
+     * @param endDate ISO format string (e.g., "2025-11-01T00:00:00")
+     */
+    @Query("""
+        SELECT * FROM calendar_event_links
+        WHERE startsAt >= :startDate
+        AND startsAt < :endDate
+        AND (taskId IS NULL OR taskId IN (SELECT id FROM tasks))
+        ORDER BY startsAt ASC
+    """)
+    fun getEventsInRange(startDate: String, endDate: String): Flow<List<CalendarEventLinkEntity>>
+
+    /**
+     * Delete all orphaned calendar event links (taskId points to deleted task)
+     * CLEANUP: One-time operation to remove zombie events
+     * @return Number of deleted links
+     */
+    @Query("""
+        DELETE FROM calendar_event_links
+        WHERE taskId IS NOT NULL
+        AND taskId NOT IN (SELECT id FROM tasks)
+    """)
+    suspend fun deleteOrphanedLinks(): Int
 }

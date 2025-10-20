@@ -68,6 +68,9 @@ fun TasksScreen(
     todayViewModel: TodayViewModel = hiltViewModel(),
     deepLinkTaskId: Long? = null
 ) {
+    // Occupancy calculator for month view date picker
+    val occupancyCalculator = remember { com.example.questflow.domain.usecase.DayOccupancyCalculator() }
+
     val uiState by viewModel.uiState.collectAsState()
     val selectedCategory by appViewModel.selectedCategory.collectAsState()
     val categories by appViewModel.categories.collectAsState()
@@ -739,7 +742,8 @@ fun TasksScreen(
                 // Refresh calendar links after creating
                 viewModel.loadCalendarLinks()
             },
-            isCalendarMode = true  // Enable calendar-specific features
+            isCalendarMode = true,  // Enable calendar-specific features
+            occupancyCalculator = occupancyCalculator
         )
     }
 
@@ -757,7 +761,8 @@ fun TasksScreen(
                 },
                 onNavigateToTask = { newLink ->
                     selectedEditLink = newLink
-                }
+                },
+                occupancyCalculator = occupancyCalculator
             )
         }
     }
@@ -827,7 +832,8 @@ fun TasksScreen(
                 viewModel.loadCalendarLinks()
             },
             onNavigateToTask = { }, // Disabled in batch mode
-            batchEditLinks = selectedTaskLinks.toList() // Pass all selected tasks
+            batchEditLinks = selectedTaskLinks.toList(), // Pass all selected tasks
+            occupancyCalculator = occupancyCalculator
         )
     }
 }
@@ -840,10 +846,24 @@ fun EditCalendarTaskDialog(
     tasksViewModel: TasksViewModel,
     onDismiss: () -> Unit,
     onNavigateToTask: (CalendarEventLinkEntity) -> Unit = {},
-    batchEditLinks: List<CalendarEventLinkEntity>? = null // NULL = single edit, NON-NULL = batch edit
+    batchEditLinks: List<CalendarEventLinkEntity>? = null, // NULL = single edit, NON-NULL = batch edit
+    occupancyCalculator: com.example.questflow.domain.usecase.DayOccupancyCalculator? = null
 ) {
     val availableTasks by tasksViewModel.getAvailableTasksFlow().collectAsState(initial = emptyList())
     val context = LocalContext.current
+
+    // Calendar events for month view occupancy (get 3 months range)
+    val currentMonth = remember { java.time.YearMonth.now() }
+    val monthViewEvents by viewModel.getCalendarEventsInRange(
+        startDate = currentMonth.minusMonths(1).atDay(1),
+        endDate = currentMonth.plusMonths(2).atDay(1)
+    ).collectAsState(initial = emptyList())
+
+    // Tasks for month view occupancy (get 3 months range)
+    val monthViewTasks by viewModel.getTasksInRange(
+        startDate = currentMonth.minusMonths(1).atDay(1),
+        endDate = currentMonth.plusMonths(2).atDay(1)
+    ).collectAsState(initial = emptyList())
 
     // Batch edit mode detection
     val isBatchEdit = batchEditLinks != null && batchEditLinks.size > 1
@@ -1789,7 +1809,13 @@ fun EditCalendarTaskDialog(
                             },
                             onMinuteIncrementChange = { newValue ->
                                 tasksViewModel.updateUISettings(uiSettings.copy(startMinuteIncrement = newValue))
-                            }
+                            },
+                            events = monthViewEvents,
+                            occupancyCalculator = occupancyCalculator,
+                            categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
+                            tasks = monthViewTasks,
+                            currentTaskId = currentTask?.id,
+                            currentCategoryId = taskCategory?.id
                         )
                     }
 
@@ -1816,7 +1842,13 @@ fun EditCalendarTaskDialog(
                             },
                             onMinuteIncrementChange = { newValue ->
                                 tasksViewModel.updateUISettings(uiSettings.copy(endMinuteIncrement = newValue))
-                            }
+                            },
+                            events = monthViewEvents,
+                            occupancyCalculator = occupancyCalculator,
+                            categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
+                            tasks = monthViewTasks,
+                            currentTaskId = currentTask?.id,
+                            currentCategoryId = taskCategory?.id
                         )
                     }
 
@@ -2678,7 +2710,8 @@ fun EditCalendarTaskDialog(
             isCalendarMode = true,
             preSelectedParentId = calendarLink.taskId,  // Pre-select current task as parent
             inheritFromTask = currentTask,  // Inherit category from parent
-            inheritFromCalendarLink = calendarLink  // Inherit time from parent
+            inheritFromCalendarLink = calendarLink,  // Inherit time from parent
+            occupancyCalculator = occupancyCalculator
         )
     }
 }

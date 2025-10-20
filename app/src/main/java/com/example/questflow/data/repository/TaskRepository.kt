@@ -74,6 +74,9 @@ class TaskRepository @Inject constructor(
 
     suspend fun getIncompleteSubtaskCount(parentId: Long): Int =
         taskDao.getIncompleteSubtaskCount(parentId)
+
+    fun getTasksInRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate): Flow<List<TaskEntity>> =
+        taskDao.getTasksInRange(startDate.toString(), endDate.toString())
 }
 
 private fun TaskEntity.toDomainModel() = Task(

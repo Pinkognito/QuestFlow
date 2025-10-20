@@ -86,6 +86,7 @@ class TasksViewModel @Inject constructor(
         loadStats()
         loadFilterPresets()
         loadSavedFilter()
+        cleanupOrphanedCalendarLinks()  // ZOMBIE FIX: Clean up old orphaned links
     }
 
     private fun loadSavedFilter() {
@@ -430,6 +431,23 @@ class TasksViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Clean up orphaned calendar event links (taskId points to deleted task)
+     * ZOMBIE FIX: One-time cleanup operation on app start
+     */
+    private fun cleanupOrphanedCalendarLinks() {
+        viewModelScope.launch {
+            try {
+                val deletedCount = calendarLinkRepository.deleteOrphanedLinks()
+                if (deletedCount > 0) {
+                    android.util.Log.d("ZombieCleanup", "🧹 Deleted $deletedCount orphaned calendar event link(s)")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ZombieCleanup", "❌ Failed to clean up orphaned links", e)
+            }
+        }
+    }
+
     fun refreshCalendarEvents() {
         loadCalendarEvents()
     }
@@ -708,29 +726,79 @@ class TasksViewModel @Inject constructor(
     fun deleteTask(taskId: Long, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
+                android.util.Log.d("TaskDeletion", "╔═══════════════════════════════════════════════════════════")
+                android.util.Log.d("TaskDeletion", "║ DELETE TASK REQUEST")
+                android.util.Log.d("TaskDeletion", "╠═══════════════════════════════════════════════════════════")
+                android.util.Log.d("TaskDeletion", "║ TaskID: $taskId")
+
                 val task = taskRepository.getTaskById(taskId)
                 if (task != null) {
-                    // Delete calendar event if it exists
+                    android.util.Log.d("TaskDeletion", "║ Task found: ${task.title}")
+                    android.util.Log.d("TaskDeletion", "║ CalendarEventId (from Task): ${task.calendarEventId}")
+                    android.util.Log.d("TaskDeletion", "║ DueDate: ${task.dueDate}")
+                    android.util.Log.d("TaskDeletion", "║ IsCompleted: ${task.isCompleted}")
+
+                    // STEP 1: Delete calendar event from TASK (if exists)
                     task.calendarEventId?.let { eventId ->
-                        calendarManager.deleteEvent(eventId)
+                        android.util.Log.d("TaskDeletion", "║")
+                        android.util.Log.d("TaskDeletion", "║ STEP 1: Deleting calendar event from TASK: $eventId")
+                        try {
+                            calendarManager.deleteEvent(eventId)
+                            android.util.Log.d("TaskDeletion", "║ ✅ Task's calendar event deleted")
+                        } catch (e: Exception) {
+                            android.util.Log.e("TaskDeletion", "║ ❌ Failed to delete task's calendar event", e)
+                        }
                     }
 
-                    // Delete task from database (cascade deletes calendar links via FK)
+                    // STEP 2: Find and delete calendar event links (CalendarEventLinkEntity)
+                    android.util.Log.d("TaskDeletion", "║")
+                    android.util.Log.d("TaskDeletion", "║ STEP 2: Searching for CalendarEventLinkEntities with taskId=$taskId")
+                    val links = calendarLinkRepository.getLinksByTaskId(taskId)
+                    android.util.Log.d("TaskDeletion", "║ Found ${links.size} CalendarEventLink(s)")
+
+                    links.forEach { link ->
+                        android.util.Log.d("TaskDeletion", "║   • LinkID: ${link.id}, CalendarEventId: ${link.calendarEventId}, Title: '${link.title}'")
+                        try {
+                            // Delete the Google Calendar event
+                            android.util.Log.d("TaskDeletion", "║     → Deleting Google Calendar event: ${link.calendarEventId}")
+                            calendarManager.deleteEvent(link.calendarEventId)
+                            android.util.Log.d("TaskDeletion", "║     ✅ Google Calendar event deleted")
+                        } catch (e: Exception) {
+                            android.util.Log.e("TaskDeletion", "║     ❌ Failed to delete Google Calendar event", e)
+                        }
+                    }
+
+                    // Delete all CalendarEventLinkEntities for this task
+                    if (links.isNotEmpty()) {
+                        android.util.Log.d("TaskDeletion", "║   → Deleting ${links.size} CalendarEventLink(s) from database")
+                        calendarLinkRepository.deleteByTaskId(taskId)
+                        android.util.Log.d("TaskDeletion", "║   ✅ CalendarEventLinks deleted from database")
+                    }
+
+                    // STEP 3: Delete task from database
+                    android.util.Log.d("TaskDeletion", "║")
+                    android.util.Log.d("TaskDeletion", "║ STEP 3: Deleting task from database")
                     taskRepository.deleteTask(task)
+                    android.util.Log.d("TaskDeletion", "║ ✅ Task deleted from database")
 
-                    android.util.Log.d("TasksViewModel", "Task deleted: $taskId")
-
-                    // Refresh data
+                    // STEP 4: Refresh data
+                    android.util.Log.d("TaskDeletion", "║")
+                    android.util.Log.d("TaskDeletion", "║ STEP 4: Refreshing UI data")
                     loadTasks()
                     loadCalendarLinks()
                     loadCalendarEvents()
 
+                    android.util.Log.d("TaskDeletion", "║ ✅ Data refreshed")
+                    android.util.Log.d("TaskDeletion", "╚═══════════════════════════════════════════════════════════")
+
                     onSuccess?.invoke()
                 } else {
-                    android.util.Log.w("TasksViewModel", "Task not found for deletion: $taskId")
+                    android.util.Log.w("TaskDeletion", "║ ❌ Task NOT FOUND in database!")
+                    android.util.Log.w("TaskDeletion", "╚═══════════════════════════════════════════════════════════")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("TasksViewModel", "Failed to delete task: $taskId", e)
+                android.util.Log.e("TaskDeletion", "║ ❌ EXCEPTION during deletion!", e)
+                android.util.Log.e("TaskDeletion", "╚═══════════════════════════════════════════════════════════")
             }
         }
     }

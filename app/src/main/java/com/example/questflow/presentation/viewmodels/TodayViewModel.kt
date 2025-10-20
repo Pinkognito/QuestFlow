@@ -8,6 +8,7 @@ import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.CategoryRepository
 import com.example.questflow.data.database.entity.CategoryEntity
+import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.database.entity.TaskContactLinkEntity
 import com.example.questflow.data.database.entity.TaskHistoryEntity
@@ -583,6 +584,49 @@ class TodayViewModel @Inject constructor(
         maxSuggestions = maxSuggestions,
         excludeEventId = excludeEventId
     )
+
+    /**
+     * Get calendar events in a date range for month view occupancy visualization
+     * COMBINES app-created events (CalendarEventLinkEntity) with external Google Calendar events
+     */
+    fun getCalendarEventsInRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate) = flow {
+        // 1. Get app-created calendar event links
+        calendarLinkRepository.getEventsInRange(startDate, endDate).collect { appEvents ->
+            // 2. Get external Google Calendar events (using correct method with date range)
+            val googleEvents = if (_hasCalendarPermission.value) {
+                calendarManager.getAllCalendarEvents(startDate, endDate)
+                    .filter { it.isExternal } // Only external events (not QuestFlow calendar)
+            } else {
+                emptyList()
+            }
+
+            // 3. Convert Google events to CalendarEventLinkEntity format (without taskId = external)
+            val googleEventsAsLinks = googleEvents.map { googleEvent ->
+                CalendarEventLinkEntity(
+                    id = -googleEvent.id, // Negative ID to distinguish from app events
+                    calendarEventId = googleEvent.id,
+                    title = googleEvent.title,
+                    startsAt = googleEvent.startTime,
+                    endsAt = googleEvent.endTime,
+                    xp = 0,
+                    xpPercentage = 0,
+                    rewarded = true, // External events are not for XP claiming
+                    taskId = null,  // NULL = external Google Calendar event (RED)
+                    status = "EXTERNAL"
+                )
+            }
+
+            // 4. Combine both lists and sort by start time
+            val combined = (appEvents + googleEventsAsLinks).sortedBy { it.startsAt }
+            emit(combined)
+        }
+    }
+
+    /**
+     * Get tasks with due dates in a date range for month view occupancy visualization
+     */
+    fun getTasksInRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate) =
+        taskRepository.getTasksInRange(startDate, endDate)
 }
 
 data class TodayUiState(

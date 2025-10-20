@@ -30,6 +30,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.example.questflow.data.database.TaskEntity
+import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import com.example.questflow.domain.usecase.DayOccupancyCalculator
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -49,7 +53,13 @@ fun ModernDateTimePicker(
     label: String,
     dateTime: LocalDateTime,
     onDateTimeChange: (LocalDateTime) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    events: List<CalendarEventLinkEntity> = emptyList(),
+    occupancyCalculator: DayOccupancyCalculator? = null,
+    categoryColor: androidx.compose.ui.graphics.Color? = null,
+    tasks: List<TaskEntity> = emptyList(),
+    currentTaskId: Long? = null,
+    currentCategoryId: Long? = null
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -85,16 +95,40 @@ fun ModernDateTimePicker(
         }
     }
 
-    // Date Picker Dialog - Auto-closes on selection
-    if (showDatePicker) {
+    // Date Picker Dialog with Occupancy Visualization
+    if (showDatePicker && occupancyCalculator != null) {
+        AlertDialog(
+            onDismissRequest = { showDatePicker = false },
+            title = { Text("Datum wählen") },
+            text = {
+                MonthViewDatePicker(
+                    selectedDate = dateTime.toLocalDate(),
+                    onDateSelected = { selectedDate ->
+                        onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime()))
+                        showDatePicker = false
+                    },
+                    events = events,
+                    occupancyCalculator = occupancyCalculator,
+                    tasks = tasks,
+                    currentTaskId = currentTaskId,
+                    currentCategoryId = currentCategoryId
+                )
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    } else if (showDatePicker) {
+        // Fallback to standard Material3 DatePicker if no occupancy calculator provided
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = dateTime.toLocalDate().toEpochDay() * 24 * 60 * 60 * 1000
         )
 
-        // Watch for date selection and auto-close
         LaunchedEffect(datePickerState.selectedDateMillis) {
             datePickerState.selectedDateMillis?.let { millis ->
-                // Only process if it's different from initial
                 val selectedDate = LocalDate.ofEpochDay(millis / (24 * 60 * 60 * 1000))
                 if (selectedDate != dateTime.toLocalDate()) {
                     onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime()))

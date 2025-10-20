@@ -3,7 +3,9 @@ package com.example.questflow.data.repository
 import com.example.questflow.data.database.dao.CalendarEventLinkDao
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 class CalendarLinkRepository @Inject constructor(
@@ -99,5 +101,42 @@ class CalendarLinkRepository @Inject constructor(
 
     suspend fun getLinkByCalendarEventId(calendarEventId: Long): CalendarEventLinkEntity? {
         return calendarEventLinkDao.getLinkByCalendarEventId(calendarEventId)
+    }
+
+    /**
+     * Get all calendar events in a date range for occupancy visualization
+     * @param startDate First day of range
+     * @param endDate Last day of range (exclusive)
+     */
+    fun getEventsInRange(startDate: LocalDate, endDate: LocalDate): Flow<List<CalendarEventLinkEntity>> {
+        val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+        val startString = startDate.atStartOfDay().format(formatter)
+        val endString = endDate.atStartOfDay().format(formatter)
+        return calendarEventLinkDao.getEventsInRange(startString, endString)
+    }
+
+    /**
+     * Get all calendar event links associated with a task
+     * ZOMBIE FIX: Needed to clean up CalendarEventLinks when task is deleted
+     */
+    suspend fun getLinksByTaskId(taskId: Long): List<CalendarEventLinkEntity> {
+        return calendarEventLinkDao.getLinksByTaskId(taskId)
+    }
+
+    /**
+     * Delete all calendar event links associated with a task
+     * ZOMBIE FIX: Prevents orphaned CalendarEventLinks in database
+     */
+    suspend fun deleteByTaskId(taskId: Long) {
+        calendarEventLinkDao.deleteByTaskId(taskId)
+    }
+
+    /**
+     * Delete all orphaned calendar event links (taskId points to deleted task)
+     * CLEANUP: One-time operation to remove zombie events
+     * @return Number of deleted links
+     */
+    suspend fun deleteOrphanedLinks(): Int {
+        return calendarEventLinkDao.deleteOrphanedLinks()
     }
 }

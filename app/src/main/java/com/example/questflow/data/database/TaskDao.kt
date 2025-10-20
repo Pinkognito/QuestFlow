@@ -46,4 +46,8 @@ interface TaskDao {
 
     @Query("SELECT COUNT(*) FROM tasks WHERE parentTaskId = :parentId AND isCompleted = 0")
     suspend fun getIncompleteSubtaskCount(parentId: Long): Int
+
+    // Get tasks with due dates in a specific date range (for month view)
+    @Query("SELECT * FROM tasks WHERE dueDate IS NOT NULL AND dueDate >= :startDate AND dueDate < :endDate ORDER BY dueDate ASC")
+    fun getTasksInRange(startDate: String, endDate: String): Flow<List<TaskEntity>>
 }
