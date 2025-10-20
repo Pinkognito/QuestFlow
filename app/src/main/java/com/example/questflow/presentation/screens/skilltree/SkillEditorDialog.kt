@@ -13,6 +13,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.questflow.data.repository.SkillNodeWithStatus
+import com.example.questflow.presentation.components.NumberInputField
+import com.example.questflow.presentation.components.FloatInputField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,9 +32,9 @@ fun SkillEditorDialog(
 ) {
     var title by remember { mutableStateOf(skill.node.title) }
     var description by remember { mutableStateOf(skill.node.description) }
-    var baseValue by remember { mutableStateOf(skill.node.baseValue.toString()) }
-    var scalingPerPoint by remember { mutableStateOf(skill.node.scalingPerPoint.toString()) }
-    var maxInvestment by remember { mutableStateOf(skill.node.maxInvestment.toString()) }
+    var baseValue by remember { mutableFloatStateOf(skill.node.baseValue) }
+    var scalingPerPoint by remember { mutableFloatStateOf(skill.node.scalingPerPoint) }
+    var maxInvestment by remember { mutableIntStateOf(skill.node.maxInvestment) }
     var colorHex by remember { mutableStateOf(skill.node.colorHex) }
 
     val effectTemplate = SKILL_EFFECT_TEMPLATES.find { it.type == skill.node.effectType }
@@ -127,44 +129,40 @@ fun SkillEditorDialog(
                                 Spacer(Modifier.height(12.dp))
 
                                 // Base Value
-                                OutlinedTextField(
+                                FloatInputField(
                                     value = baseValue,
                                     onValueChange = { baseValue = it },
-                                    label = { Text("Basis-Wert") },
+                                    label = "Basis-Wert",
                                     suffix = { Text(template.unit) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Spacer(Modifier.height(8.dp))
 
                                 // Scaling per Point
-                                OutlinedTextField(
+                                FloatInputField(
                                     value = scalingPerPoint,
                                     onValueChange = { scalingPerPoint = it },
-                                    label = { Text("Skalierung pro Punkt") },
+                                    label = "Skalierung pro Punkt",
                                     suffix = { Text(template.unit) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Spacer(Modifier.height(8.dp))
 
                                 // Max Investment
-                                OutlinedTextField(
+                                NumberInputField(
                                     value = maxInvestment,
                                     onValueChange = { maxInvestment = it },
-                                    label = { Text("Max. Investment") },
+                                    label = "Max. Investment",
                                     suffix = { Text("Punkte") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    minValue = 1,
+                                    maxValue = 100,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 // Show preview calculation
-                                val baseVal = baseValue.toFloatOrNull() ?: 0f
-                                val scaling = scalingPerPoint.toFloatOrNull() ?: 0f
-                                val maxInv = maxInvestment.toIntOrNull() ?: 1
-                                val maxValue = baseVal + (scaling * maxInv)
+                                val maxValue = baseValue + (scalingPerPoint * maxInvestment)
 
                                 Spacer(Modifier.height(8.dp))
 
@@ -240,9 +238,9 @@ fun SkillEditorDialog(
                                 onSave(
                                     title,
                                     description,
-                                    baseValue.toFloatOrNull() ?: 0f,
-                                    scalingPerPoint.toFloatOrNull() ?: 0f,
-                                    maxInvestment.toIntOrNull() ?: 1,
+                                    baseValue,
+                                    scalingPerPoint,
+                                    maxInvestment,
                                     colorHex
                                 )
                                 onDismiss()

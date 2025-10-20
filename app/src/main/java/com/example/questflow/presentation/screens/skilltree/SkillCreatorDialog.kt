@@ -29,6 +29,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.questflow.data.database.entity.SkillEffectType
+import com.example.questflow.presentation.components.NumberInputField
+import com.example.questflow.presentation.components.FloatInputField
 import java.io.File
 
 data class SkillEffectTemplate(
@@ -200,9 +202,9 @@ fun SkillCreatorDialog(
     var selectedTemplate by remember { mutableStateOf<SkillEffectTemplate?>(null) }
     var showEffectPicker by remember { mutableStateOf(false) }
 
-    var baseValue by remember { mutableStateOf("0") }
-    var scalingPerPoint by remember { mutableStateOf("3") }
-    var maxInvestment by remember { mutableStateOf("10") }
+    var baseValue by remember { mutableFloatStateOf(0f) }
+    var scalingPerPoint by remember { mutableFloatStateOf(3f) }
+    var maxInvestment by remember { mutableIntStateOf(10) }
     var colorHex by remember { mutableStateOf("#FFD700") }
 
     // Parent skills management
@@ -286,44 +288,40 @@ fun SkillCreatorDialog(
                                 Spacer(Modifier.height(12.dp))
 
                                 // Base Value
-                                OutlinedTextField(
+                                FloatInputField(
                                     value = baseValue,
                                     onValueChange = { baseValue = it },
-                                    label = { Text("Basis-Wert") },
+                                    label = "Basis-Wert",
                                     suffix = { Text(template.unit) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Spacer(Modifier.height(8.dp))
 
                                 // Scaling per Point
-                                OutlinedTextField(
+                                FloatInputField(
                                     value = scalingPerPoint,
                                     onValueChange = { scalingPerPoint = it },
-                                    label = { Text("Skalierung pro Punkt") },
+                                    label = "Skalierung pro Punkt",
                                     suffix = { Text(template.unit) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Spacer(Modifier.height(8.dp))
 
                                 // Max Investment
-                                OutlinedTextField(
+                                NumberInputField(
                                     value = maxInvestment,
                                     onValueChange = { maxInvestment = it },
-                                    label = { Text("Max. Investment") },
+                                    label = "Max. Investment",
                                     suffix = { Text("Punkte") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    minValue = 1,
+                                    maxValue = 100,
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 // Show preview calculation
-                                val baseVal = baseValue.toFloatOrNull() ?: 0f
-                                val scaling = scalingPerPoint.toFloatOrNull() ?: 0f
-                                val maxInv = maxInvestment.toIntOrNull() ?: 1
-                                val maxValue = baseVal + (scaling * maxInv)
+                                val maxValue = baseValue + (scalingPerPoint * maxInvestment)
 
                                 Spacer(Modifier.height(8.dp))
 
@@ -439,9 +437,9 @@ fun SkillCreatorDialog(
                                     title,
                                     description,
                                     selectedTemplate!!.type,
-                                    baseValue.toFloatOrNull() ?: 0f,
-                                    scalingPerPoint.toFloatOrNull() ?: 0f,
-                                    maxInvestment.toIntOrNull() ?: 1,
+                                    baseValue,
+                                    scalingPerPoint,
+                                    maxInvestment,
                                     colorHex,
                                     selectedParents
                                 )
@@ -478,9 +476,9 @@ fun SkillCreatorDialog(
                             Card(
                                 onClick = {
                                     selectedTemplate = template
-                                    baseValue = template.suggestedBaseValue.toString()
-                                    scalingPerPoint = template.suggestedScaling.toString()
-                                    maxInvestment = template.suggestedMaxInvestment.toString()
+                                    baseValue = template.suggestedBaseValue
+                                    scalingPerPoint = template.suggestedScaling
+                                    maxInvestment = template.suggestedMaxInvestment
                                     showEffectPicker = false
                                 },
                                 modifier = Modifier
@@ -536,8 +534,6 @@ fun ParentSkillPickerDialog(
     onConfirm: (List<Pair<String, Int>>) -> Unit
 ) {
     var tempSelectedParents by remember { mutableStateOf(selectedParents) }
-    var editingParent by remember { mutableStateOf<String?>(null) }
-    var editingMinInvestment by remember { mutableStateOf("1") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -584,8 +580,7 @@ fun ParentSkillPickerDialog(
                                     tempSelectedParents = tempSelectedParents.filter { it.first != skill.node.id }
                                 } else {
                                     // Add with default minInvestment = 1
-                                    editingParent = skill.node.id
-                                    editingMinInvestment = "1"
+                                    tempSelectedParents = tempSelectedParents + (skill.node.id to 1)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -639,11 +634,10 @@ fun ParentSkillPickerDialog(
                                             text = "Min. Punkte:",
                                             style = MaterialTheme.typography.bodySmall
                                         )
-                                        OutlinedTextField(
-                                            value = selectedPair.second.toString(),
-                                            onValueChange = { newValue ->
-                                                val intValue = newValue.toIntOrNull()
-                                                if (intValue != null && intValue in 1..skill.node.maxInvestment) {
+                                        NumberInputField(
+                                            value = selectedPair.second,
+                                            onValueChange = { intValue ->
+                                                if (intValue in 1..skill.node.maxInvestment) {
                                                     tempSelectedParents = tempSelectedParents.map {
                                                         if (it.first == skill.node.id) {
                                                             it.first to intValue
@@ -653,70 +647,14 @@ fun ParentSkillPickerDialog(
                                                     }
                                                 }
                                             },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true
+                                            minValue = 1,
+                                            maxValue = skill.node.maxInvestment,
+                                            modifier = Modifier.weight(1f)
                                         )
                                         Text(
                                             text = "/ ${skill.node.maxInvestment}",
                                             style = MaterialTheme.typography.bodySmall
                                         )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Min Investment Dialog for new parent
-                if (editingParent != null) {
-                    val skill = availableSkills.find { it.node.id == editingParent }
-                    skill?.let {
-                        Spacer(Modifier.height(16.dp))
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(
-                                    text = "Minimale Investment-Stufe für ${it.node.title}",
-                                    style = MaterialTheme.typography.titleSmall
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = editingMinInvestment,
-                                    onValueChange = { editingMinInvestment = it },
-                                    label = { Text("Min. Punkte") },
-                                    suffix = { Text("/ ${it.node.maxInvestment}") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    TextButton(
-                                        onClick = { editingParent = null },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Abbrechen")
-                                    }
-                                    Button(
-                                        onClick = {
-                                            val minInv = editingMinInvestment.toIntOrNull()
-                                            if (minInv != null && minInv in 1..it.node.maxInvestment) {
-                                                tempSelectedParents = tempSelectedParents + (editingParent!! to minInv)
-                                                editingParent = null
-                                            }
-                                        },
-                                        enabled = editingMinInvestment.toIntOrNull()?.let { inv ->
-                                            inv in 1..it.node.maxInvestment
-                                        } ?: false,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Hinzufügen")
                                     }
                                 }
                             }

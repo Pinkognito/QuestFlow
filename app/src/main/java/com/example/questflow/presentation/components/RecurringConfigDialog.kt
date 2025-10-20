@@ -14,16 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.TextStyle
@@ -317,64 +309,7 @@ private fun RecurringModeCard(
 }
 
 
-/**
- * Number input field that clears on focus for easy editing
- */
-@Composable
-private fun NumberInputField(
-    value: Int,
-    onValueChange: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    label: String? = null,
-    placeholder: String? = null,
-    minValue: Int = 1,
-    maxValue: Int = Int.MAX_VALUE
-) {
-    var textValue by remember(value) { mutableStateOf(value.toString()) }
-    var isFirstFocus by remember { mutableStateOf(true) }
-    val focusManager = LocalFocusManager.current
-
-    OutlinedTextField(
-        value = textValue,
-        onValueChange = { text ->
-            if (text.all { it.isDigit() } || text.isEmpty()) {
-                textValue = text
-                text.toIntOrNull()?.let { newValue ->
-                    if (newValue in minValue..maxValue) {
-                        onValueChange(newValue)
-                    }
-                }
-            }
-        },
-        modifier = modifier.onFocusChanged { focusState ->
-            if (focusState.isFocused && isFirstFocus) {
-                // First time getting focus - clear the field
-                isFirstFocus = false
-                textValue = ""
-            } else if (!focusState.isFocused) {
-                // Lost focus - restore value if empty
-                if (textValue.isEmpty()) {
-                    textValue = value.toString()
-                }
-                // Reset for next time
-                isFirstFocus = true
-            }
-        },
-        label = label?.let { { Text(it) } },
-        placeholder = placeholder?.let { { Text(it) } },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
-            imeAction = ImeAction.Done
-        ),
-        keyboardActions = KeyboardActions(
-            onDone = {
-                // Clear focus when Done is pressed
-                focusManager.clearFocus()
-            }
-        )
-    )
-}
+// NumberInputField moved to separate file: NumberInputField.kt
 
 @Composable
 private fun DailyConfig(
@@ -558,13 +493,8 @@ private fun CustomConfig(
     onHoursChange: (Int) -> Unit,
     onMinutesChange: (Int) -> Unit
 ) {
-    // Initialize minutesText with current total minutes value
-    val initialTotalMinutes = hours * 60 + minutes
-    var minutesText by remember(initialTotalMinutes) {
-        mutableStateOf(if (initialTotalMinutes > 0) initialTotalMinutes.toString() else "")
-    }
-    var isEditing by remember { mutableStateOf(false) }
-    val focusManager = LocalFocusManager.current
+    val totalMinutes = hours * 60 + minutes
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Intervall", style = MaterialTheme.typography.labelMedium)
 
@@ -574,54 +504,18 @@ private fun CustomConfig(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        OutlinedTextField(
-            value = minutesText,
-            onValueChange = { text ->
-                if (text.all { it.isDigit() } || text.isEmpty()) {
-                    minutesText = text
-                    text.toIntOrNull()?.let { totalMinutes ->
-                        if (totalMinutes >= 0) {
-                            val h = totalMinutes / 60
-                            val m = totalMinutes % 60
-                            onHoursChange(h)
-                            onMinutesChange(m)
-                        }
-                    } ?: run {
-                        if (text.isEmpty()) {
-                            onHoursChange(0)
-                            onMinutesChange(0)
-                        }
-                    }
-                }
+        NumberInputField(
+            value = if (totalMinutes > 0) totalMinutes else 0,
+            onValueChange = { newTotalMinutes ->
+                val h = newTotalMinutes / 60
+                val m = newTotalMinutes % 60
+                onHoursChange(h)
+                onMinutesChange(m)
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused && !isEditing) {
-                        // First time getting focus - clear
-                        isEditing = true
-                        minutesText = ""
-                    } else if (!focusState.isFocused) {
-                        // Lost focus - restore if empty
-                        if (minutesText.isEmpty()) {
-                            minutesText = if (initialTotalMinutes > 0) initialTotalMinutes.toString() else ""
-                        }
-                        isEditing = false
-                    }
-                },
-            label = { Text("Minuten") },
-            placeholder = { Text("z.B. 60, 90, 120...") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = {
-                    // Clear focus when Done is pressed
-                    focusManager.clearFocus()
-                }
-            )
+            modifier = Modifier.fillMaxWidth(),
+            label = "Minuten",
+            placeholder = "z.B. 60, 90, 120...",
+            minValue = 0
         )
 
         if (hours > 0 || minutes > 0) {
