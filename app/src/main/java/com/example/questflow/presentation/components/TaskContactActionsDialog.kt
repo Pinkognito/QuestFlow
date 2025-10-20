@@ -110,16 +110,7 @@ fun TaskContactActionsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Kontakt-Aktionen")
-                Text(
-                    "🔧 CLAUDE HAT HIER GEARBEITET 🔧",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-        },
+        title = { Text("Kontakt-Aktionen") },
         text = {
             Column(
                 modifier = Modifier

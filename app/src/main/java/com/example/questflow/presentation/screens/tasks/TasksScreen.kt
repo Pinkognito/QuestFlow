@@ -2595,6 +2595,7 @@ fun EditCalendarTaskDialog(
             contactTags = contactTagsMap,
             availableTags = usedContactTags,
             taskContactTags = taskContactTagsMap,
+            allMedia = allMedia,
             textTemplates = textTemplates,
             actionExecutor = viewModel.actionExecutor,
             placeholderResolver = viewModel.placeholderResolver,
