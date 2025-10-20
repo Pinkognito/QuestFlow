@@ -41,9 +41,15 @@ class DayOccupancyCalculator @Inject constructor() {
         val endHour: Float,
         val isOccupied: Boolean,
         val hasOverlap: Boolean = false,
-        val isOwnEvent: Boolean = false,
-        val isCurrentTask: Boolean = false,
-        val isSameCategory: Boolean = false
+        // Separate flags for each task type (can have multiple true)
+        val hasCurrentTask: Boolean = false,       // Aktuell ausgewählter Task
+        val hasSameCategory: Boolean = false,      // Task aus gleicher Kategorie
+        val hasOtherOwnTasks: Boolean = false,     // Andere eigene Tasks
+        val hasExternalEvents: Boolean = false,    // Externe Google Calendar Events
+        // Legacy flags (deprecated but kept for compatibility)
+        @Deprecated("Use hasOtherOwnTasks instead") val isOwnEvent: Boolean = false,
+        @Deprecated("Use hasCurrentTask instead") val isCurrentTask: Boolean = false,
+        @Deprecated("Use hasSameCategory instead") val isSameCategory: Boolean = false
     ) {
         val durationHours: Float get() = endHour - startHour
         val weightInDay: Float get() = durationHours / 24f
@@ -238,37 +244,81 @@ class DayOccupancyCalculator @Inject constructor() {
                 // Free time
                 segments.add(TimeSegment(start, end, isOccupied = false))
             } else {
-                // Occupied - determine color based on priorities
-                val hasOwnEvents = overlappingSlots.any { it.isOwnEvent }
-                val hasExternalEvents = overlappingSlots.any { !it.isOwnEvent }
-                val hasOverlap = hasOwnEvents && hasExternalEvents
+                // Determine all distinct task types in this segment
+                // IMPORTANT: Use specific categories for each slot, not just booleans
+                val distinctTypes = mutableSetOf<String>()
 
-                // Check if this is the current task (highest priority - WHITE)
-                val isCurrentTask = currentTaskId != null &&
+                overlappingSlots.forEach { slot ->
+                    // Classify each slot into exactly ONE type (priority order)
+                    val slotType = when {
+                        // Priority 1: Current task (white)
+                        currentTaskId != null && slot.taskId == currentTaskId ->
+                            "CURRENT_TASK"
+                        // Priority 2: Same category task (yellow)
+                        currentCategoryId != null && slot.categoryId == currentCategoryId && slot.isOwnEvent ->
+                            "SAME_CATEGORY"
+                        // Priority 3: Other own task (blue)
+                        slot.isOwnEvent ->
+                            "OTHER_OWN_TASK"
+                        // Priority 4: External event (red)
+                        else ->
+                            "EXTERNAL_EVENT"
+                    }
+                    distinctTypes.add(slotType)
+                }
+
+                // OVERLAP = 2 or more distinct task types in same time segment
+                val hasOverlap = distinctTypes.size >= 2
+
+                // Determine which task types are present in this segment
+                val hasCurrentTaskType = currentTaskId != null &&
                     overlappingSlots.any { it.taskId == currentTaskId }
 
-                // Check if this is same category (second priority - YELLOW)
-                val isSameCategory = !isCurrentTask && currentCategoryId != null &&
-                    overlappingSlots.any { it.categoryId == currentCategoryId && it.isOwnEvent }
+                val hasSameCategoryType = currentCategoryId != null &&
+                    overlappingSlots.any {
+                        it.categoryId == currentCategoryId &&
+                        it.isOwnEvent &&
+                        it.taskId != currentTaskId  // Exclude current task
+                    }
+
+                val hasOtherOwnTasksType = overlappingSlots.any {
+                    it.isOwnEvent &&
+                    it.taskId != currentTaskId &&
+                    (currentCategoryId == null || it.categoryId != currentCategoryId)
+                }
+
+                val hasExternalEventsType = overlappingSlots.any { !it.isOwnEvent }
+
+                // Legacy flags for compatibility
+                val isCurrentTask = hasCurrentTaskType
+                val isSameCategory = !hasCurrentTaskType && hasSameCategoryType
+                val hasOwnEvents = overlappingSlots.any { it.isOwnEvent }
+                val hasExternalEvents = overlappingSlots.any { !it.isOwnEvent }
 
                 val color = when {
-                    hasOverlap -> "⚫ SCHWARZ (Overlap)"
-                    isCurrentTask -> "⚪ WEISS (Current)"
-                    isSameCategory -> "🟡 GELB (Category)"
-                    hasOwnEvents && !hasExternalEvents -> "🔵 BLAU (Own)"
+                    hasOverlap -> "⚫ SCHWARZ (Overlap: ${distinctTypes.size} types)"
+                    hasCurrentTaskType -> "⚪ WEISS (Current)"
+                    hasSameCategoryType -> "🟡 GELB (Category)"
+                    hasOtherOwnTasksType -> "🔵 BLAU (Own)"
                     else -> "🔴 ROT (External)"
                 }
-                android.util.Log.d("DayOccupancy", "  [$start-$end] → $color")
+                android.util.Log.d("DayOccupancy", "  [$start-$end] → $color | Types: $distinctTypes | Flags: cur=$hasCurrentTaskType sam=$hasSameCategoryType oth=$hasOtherOwnTasksType ext=$hasExternalEventsType")
 
                 segments.add(
                     TimeSegment(
                         start,
                         end,
                         isOccupied = true,
-                        hasOverlap = hasOverlap,  // BLACK if overlap
-                        isOwnEvent = hasOwnEvents && !hasExternalEvents,  // BLUE if own (no category)
-                        isCurrentTask = isCurrentTask,  // WHITE if current task
-                        isSameCategory = isSameCategory  // YELLOW if same category
+                        hasOverlap = hasOverlap,
+                        // NEW separate flags
+                        hasCurrentTask = hasCurrentTaskType,
+                        hasSameCategory = hasSameCategoryType,
+                        hasOtherOwnTasks = hasOtherOwnTasksType,
+                        hasExternalEvents = hasExternalEventsType,
+                        // LEGACY flags (for compatibility)
+                        isOwnEvent = hasOwnEvents && !hasExternalEvents,
+                        isCurrentTask = isCurrentTask,
+                        isSameCategory = isSameCategory
                     )
                 )
             }

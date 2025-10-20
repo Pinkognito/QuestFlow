@@ -1,5 +1,6 @@
 package com.example.questflow.presentation.components
 
+import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,23 +10,30 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import com.example.questflow.domain.model.SimpleCalendarColorConfig
+import com.example.questflow.domain.model.SimpleCalendarColorRepository
 import com.example.questflow.domain.usecase.DayOccupancyCalculator
 import java.time.LocalDate
 import java.time.YearMonth
@@ -54,6 +62,8 @@ fun MonthViewDatePicker(
     currentCategoryId: Long? = null
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var showColorSettings by remember { mutableStateOf(false) }
+    var refreshKey by remember { mutableStateOf(0) } // Trigger recomposition when settings change
 
     Column(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
         // Event/Task list for selected date (Info box - flexible size, scrollable)
@@ -83,7 +93,8 @@ fun MonthViewDatePicker(
             MonthNavigationHeader(
                 currentMonth = currentMonth,
                 onPreviousMonth = { currentMonth = currentMonth.minusMonths(1) },
-                onNextMonth = { currentMonth = currentMonth.plusMonths(1) }
+                onNextMonth = { currentMonth = currentMonth.plusMonths(1) },
+                onSettingsClick = { showColorSettings = true }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -107,18 +118,307 @@ fun MonthViewDatePicker(
             }
         }
     }
+
+    // Color Settings Dialog
+    if (showColorSettings) {
+        CalendarColorSettingsDialog(
+            onDismiss = {
+                showColorSettings = false
+                refreshKey++ // Trigger recomposition to reload colors
+            }
+        )
+    }
+
+    // Use refreshKey in a LaunchedEffect to force recomposition
+    LaunchedEffect(refreshKey) {
+        // This will trigger recomposition whenever refreshKey changes
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CalendarColorSettingsDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("calendar_colors", Context.MODE_PRIVATE)
+    }
+    val repository = remember { SimpleCalendarColorRepository(prefs) }
+    var colorConfig by remember { mutableStateOf(repository.loadConfig()) }
+    var showColorPicker by remember { mutableStateOf(false) }
+    var editingColor by remember { mutableStateOf<CalendarColorType?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Kalender-Farben") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Own Task Color
+                ColorSettingRowWithToggle(
+                    label = "Eigener Task",
+                    description = "Der aktuell geöffnete Task",
+                    colorHex = colorConfig.ownTaskColor,
+                    enabled = colorConfig.ownTaskEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(ownTaskEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.OWN_TASK
+                        showColorPicker = true
+                    }
+                )
+
+                // Same Category Color
+                ColorSettingRowWithToggle(
+                    label = "Gleiche Kategorie",
+                    description = "Tasks aus der gleichen Kategorie",
+                    colorHex = colorConfig.sameCategoryColor,
+                    enabled = colorConfig.sameCategoryEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(sameCategoryEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.SAME_CATEGORY
+                        showColorPicker = true
+                    }
+                )
+
+                // Other Task Color
+                ColorSettingRowWithToggle(
+                    label = "Andere Tasks",
+                    description = "Eigene Tasks aus anderen Kategorien",
+                    colorHex = colorConfig.otherTaskColor,
+                    enabled = colorConfig.otherTaskEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(otherTaskEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.OTHER_TASK
+                        showColorPicker = true
+                    }
+                )
+
+                // External Event Color
+                ColorSettingRowWithToggle(
+                    label = "Google Calendar",
+                    description = "Externe Google Calendar Events",
+                    colorHex = colorConfig.externalEventColor,
+                    enabled = colorConfig.externalEventEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(externalEventEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.EXTERNAL_EVENT
+                        showColorPicker = true
+                    }
+                )
+
+                // Overlap Color
+                ColorSettingRowWithToggle(
+                    label = "Überschneidung",
+                    description = "Konflikte zwischen Tasks/Events",
+                    colorHex = colorConfig.overlapColor,
+                    enabled = colorConfig.overlapEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(overlapEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.OVERLAP
+                        showColorPicker = true
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Fertig")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                colorConfig = SimpleCalendarColorConfig.default()
+                repository.saveConfig(colorConfig)
+            }) {
+                Text("Zurücksetzen")
+            }
+        }
+    )
+
+    // Color Picker Dialog
+    if (showColorPicker && editingColor != null) {
+        val currentColor = when (editingColor) {
+            CalendarColorType.OWN_TASK -> colorConfig.ownTaskColor
+            CalendarColorType.SAME_CATEGORY -> colorConfig.sameCategoryColor
+            CalendarColorType.OTHER_TASK -> colorConfig.otherTaskColor
+            CalendarColorType.EXTERNAL_EVENT -> colorConfig.externalEventColor
+            CalendarColorType.OVERLAP -> colorConfig.overlapColor
+            null -> "#FFFFFF"
+        }
+
+        ColorPickerDialog(
+            currentColor = currentColor,
+            onColorSelected = { newColor ->
+                colorConfig = when (editingColor) {
+                    CalendarColorType.OWN_TASK -> colorConfig.copy(ownTaskColor = newColor)
+                    CalendarColorType.SAME_CATEGORY -> colorConfig.copy(sameCategoryColor = newColor)
+                    CalendarColorType.OTHER_TASK -> colorConfig.copy(otherTaskColor = newColor)
+                    CalendarColorType.EXTERNAL_EVENT -> colorConfig.copy(externalEventColor = newColor)
+                    CalendarColorType.OVERLAP -> colorConfig.copy(overlapColor = newColor)
+                    null -> colorConfig
+                }
+                repository.saveConfig(colorConfig)
+                showColorPicker = false
+                editingColor = null
+            },
+            onDismiss = {
+                showColorPicker = false
+                editingColor = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun ColorSettingRowWithToggle(
+    label: String,
+    description: String,
+    colorHex: String,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onColorClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Checkbox(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange
+                )
+                Column {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(enabled = enabled, onClick = onColorClick)
+            ) {
+                Text(
+                    text = colorHex.uppercase(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(if (enabled) parseColorHex(colorHex) else Color.Gray.copy(alpha = 0.3f))
+                        .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColorSettingRow(
+    label: String,
+    description: String,
+    colorHex: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = colorHex.uppercase(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(parseColorHex(colorHex))
+                    .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            )
+        }
+    }
+}
+
+private enum class CalendarColorType {
+    OWN_TASK,
+    SAME_CATEGORY,
+    OTHER_TASK,
+    EXTERNAL_EVENT,
+    OVERLAP
 }
 
 @Composable
 private fun MonthNavigationHeader(
     currentMonth: YearMonth,
     onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit
+    onNextMonth: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -126,13 +426,29 @@ private fun MonthNavigationHeader(
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Vorheriger Monat")
         }
 
-        Text(
-            text = currentMonth.format(
-                DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
-            ),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = currentMonth.format(
+                    DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Farbeinstellungen",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
 
         IconButton(onClick = onNextMonth) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Nächster Monat")
@@ -360,21 +676,65 @@ private fun OccupancyBar(
     segments: List<DayOccupancyCalculator.TimeSegment>,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("calendar_colors", Context.MODE_PRIVATE)
+    }
+    val repository = remember { SimpleCalendarColorRepository(prefs) }
+    // Make colorConfig reactive by loading it every time this composable recomposes
+    val colorConfig = repository.loadConfig()
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Start
     ) {
         segments.forEach { segment ->
+            // NEW LOGIC: Use separate flags for each task type
+            val actualType = when {
+                !segment.isOccupied -> SegmentType.FREE
+
+                // Count how many task types are BOTH present AND enabled
+                else -> {
+                    var enabledTypesInSegment = 0
+
+                    if (segment.hasCurrentTask && colorConfig.ownTaskEnabled) enabledTypesInSegment++
+                    if (segment.hasSameCategory && colorConfig.sameCategoryEnabled) enabledTypesInSegment++
+                    if (segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled) enabledTypesInSegment++
+                    if (segment.hasExternalEvents && colorConfig.externalEventEnabled) enabledTypesInSegment++
+
+                    android.util.Log.d("MonthViewDebug", "📊 Segment [${segment.startHour}-${segment.endHour}]: cur=${segment.hasCurrentTask} sam=${segment.hasSameCategory} oth=${segment.hasOtherOwnTasks} ext=${segment.hasExternalEvents} | enabled=$enabledTypesInSegment")
+
+                    when {
+                        // 2+ types present AND enabled AND overlap display enabled -> BLACK
+                        enabledTypesInSegment >= 2 && colorConfig.overlapEnabled -> {
+                            android.util.Log.d("MonthViewDebug", "✅ OVERLAP shown (black)")
+                            SegmentType.OVERLAP
+                        }
+
+                        // 2+ types but overlap disabled OR only 1 type -> Show highest priority
+                        else -> {
+                            when {
+                                segment.hasCurrentTask && colorConfig.ownTaskEnabled -> SegmentType.OWN_TASK
+                                segment.hasSameCategory && colorConfig.sameCategoryEnabled -> SegmentType.SAME_CATEGORY
+                                segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled -> SegmentType.OTHER_TASK
+                                segment.hasExternalEvents && colorConfig.externalEventEnabled -> SegmentType.EXTERNAL_EVENT
+                                else -> SegmentType.FREE
+                            }
+                        }
+                    }
+                }
+            }
+
             // Clamp weight to positive value (min 0.01f to ensure visibility)
             val weight = segment.weightInDay.coerceAtLeast(0.01f)
 
-            val color = when {
-                !segment.isOccupied -> Color(0xFF66BB6A) // Grün: Frei
-                segment.hasOverlap -> Color(0xFF000000) // Schwarz: Überlappung
-                segment.isCurrentTask -> Color(0xFFFFFFFF) // Weiß: Aktueller Task
-                segment.isSameCategory -> Color(0xFFFFEB3B) // Gelb: Gleiche Kategorie
-                segment.isOwnEvent -> Color(0xFF42A5F5) // Blau: Anderer eigener Task
-                else -> Color(0xFFEF5350) // Rot: Externes Google Calendar Event
+            val color = when (actualType) {
+                SegmentType.FREE -> Color(0xFF66BB6A) // Green
+                SegmentType.OVERLAP -> parseColorHex(colorConfig.overlapColor)
+                SegmentType.OWN_TASK -> parseColorHex(colorConfig.ownTaskColor)
+                SegmentType.SAME_CATEGORY -> parseColorHex(colorConfig.sameCategoryColor)
+                SegmentType.OTHER_TASK -> parseColorHex(colorConfig.otherTaskColor)
+                SegmentType.EXTERNAL_EVENT -> parseColorHex(colorConfig.externalEventColor)
             }
 
             Box(
@@ -384,6 +744,23 @@ private fun OccupancyBar(
                     .background(color)
             )
         }
+    }
+}
+
+private enum class SegmentType {
+    FREE,
+    OVERLAP,
+    OWN_TASK,
+    SAME_CATEGORY,
+    OTHER_TASK,
+    EXTERNAL_EVENT
+}
+
+private fun parseColorHex(hex: String): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(hex))
+    } catch (e: Exception) {
+        Color.Gray
     }
 }
 
@@ -400,6 +777,13 @@ private fun DayDetailsList(
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null
 ) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("calendar_colors", Context.MODE_PRIVATE)
+    }
+    val repository = remember { SimpleCalendarColorRepository(prefs) }
+    val colorConfig = remember { repository.loadConfig() }
+
     val dayStart = date.atStartOfDay()
     val dayEnd = date.plusDays(1).atStartOfDay()
 
@@ -447,9 +831,11 @@ private fun DayDetailsList(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ColorLegendItem("Blau", Color(0xFF42A5F5), "Eigene Tasks")
-                    ColorLegendItem("Rot", Color(0xFFEF5350), "Google Kalender")
-                    ColorLegendItem("Lila", Color(0xFF9C27B0), "Überlappung")
+                    ColorLegendItem("Weiß", parseColorHex(colorConfig.ownTaskColor), "Eigener Task")
+                    ColorLegendItem("Gelb", parseColorHex(colorConfig.sameCategoryColor), "Gleiche Kategorie")
+                    ColorLegendItem("Blau", parseColorHex(colorConfig.otherTaskColor), "Andere Tasks")
+                    ColorLegendItem("Rot", parseColorHex(colorConfig.externalEventColor), "Google Kalender")
+                    ColorLegendItem("Schwarz", parseColorHex(colorConfig.overlapColor), "Überlappung")
                 }
             }
 

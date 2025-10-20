@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.questflow.presentation.components.CalendarColorSettings
 import com.example.questflow.presentation.viewmodels.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -254,6 +255,18 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Section: Darstellung
+            Text(
+                text = "Darstellung",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // Calendar Color Settings
+            CalendarColorSettings()
 
             Spacer(modifier = Modifier.height(8.dp))
 
