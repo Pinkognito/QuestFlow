@@ -214,6 +214,7 @@ private fun ContactsList(
     navController: NavController
 ) {
     val contacts by viewModel.contacts.collectAsState()
+    val allMedia by viewModel.allMedia.collectAsState()
 
     if (contacts.isEmpty()) {
         EmptyState("Keine Kontakte vorhanden")
@@ -225,6 +226,7 @@ private fun ContactsList(
             items(contacts) { contact ->
                 ContactCard(
                     contact = contact,
+                    allMedia = allMedia,
                     onDelete = { viewModel.deleteContact(contact) },
                     onClick = { navController.navigate("contact_detail/${contact.id}") }
                 )
@@ -377,6 +379,7 @@ private fun NoteCard(
 @Composable
 private fun ContactCard(
     contact: MetadataContactEntity,
+    allMedia: List<MediaLibraryEntity>,
     onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -396,7 +399,21 @@ private fun ContactCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (contact.photoUri != null) {
+                // Photo from Media Library or fallback to photoUri
+                val photoMedia = contact.photoMediaId?.let { mediaId ->
+                    allMedia.find { it.id == mediaId }
+                }
+
+                if (photoMedia != null) {
+                    AsyncImage(
+                        model = java.io.File(photoMedia.filePath),
+                        contentDescription = "Kontaktfoto",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (contact.photoUri != null) {
                     AsyncImage(
                         model = Uri.parse(contact.photoUri),
                         contentDescription = "Kontaktfoto",

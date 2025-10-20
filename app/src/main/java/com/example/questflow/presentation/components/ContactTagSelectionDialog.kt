@@ -1,17 +1,23 @@
 package com.example.questflow.presentation.components
 
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
+import com.example.questflow.data.database.entity.MediaLibraryEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
 import com.example.questflow.data.repository.TagSuggestion
 import com.example.questflow.domain.contact.ContactSelectionManager
@@ -32,6 +38,7 @@ fun ContactTagSelectionDialog(
     availableContacts: List<MetadataContactEntity>,
     initialSelectedContacts: Set<Long>,
     initialTags: Map<String, List<Long>>, // tag -> list of contact IDs
+    allMedia: List<MediaLibraryEntity> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (selectedContacts: Set<Long>, contactTagMap: Map<Long, List<String>>) -> Unit,
     getTagSuggestions: suspend (String) -> List<TagSuggestion>,
@@ -239,13 +246,42 @@ fun ContactTagSelectionDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = null
-                                )
-                                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                                // Contact photo
+                                val photoMedia = contact.photoMediaId?.let { mediaId ->
+                                    allMedia.find { it.id == mediaId }
+                                }
+
+                                if (photoMedia != null) {
+                                    AsyncImage(
+                                        model = java.io.File(photoMedia.filePath),
+                                        contentDescription = "Kontaktfoto",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else if (contact.photoUri != null) {
+                                    AsyncImage(
+                                        model = Uri.parse(contact.photoUri),
+                                        contentDescription = "Kontaktfoto",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(contact.displayName, fontWeight = FontWeight.Medium)
                                     if (isManual) {
                                         Text(
@@ -261,6 +297,11 @@ fun ContactTagSelectionDialog(
                                         )
                                     }
                                 }
+
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = null
+                                )
                             }
                         }
                     }

@@ -24,7 +24,8 @@ class MetadataLibraryViewModel @Inject constructor(
     private val urlDao: MetadataUrlDao,
     private val noteDao: MetadataNoteDao,
     private val fileDao: MetadataFileAttachmentDao,
-    private val taskContactLinkDao: TaskContactLinkDao
+    private val taskContactLinkDao: TaskContactLinkDao,
+    private val mediaLibraryDao: MediaLibraryDao
 ) : ViewModel() {
 
     companion object {
@@ -54,6 +55,9 @@ class MetadataLibraryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val files: StateFlow<List<MetadataFileAttachmentEntity>> = fileDao.getAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allMedia: StateFlow<List<MediaLibraryEntity>> = mediaLibraryDao.getAllMedia()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Contact-specific flows for detail screen
