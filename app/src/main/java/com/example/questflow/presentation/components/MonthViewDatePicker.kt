@@ -5,6 +5,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -80,7 +86,15 @@ fun MonthViewDatePicker(
     var showStartTimeInput by remember { mutableStateOf(false) }
     var showEndTimeInput by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
+    // Radial Button Menu state
+    var radialButtonState by remember { mutableStateOf<CalendarRadialButtonState?>(null) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
         // Event/Task list for selected date (Info box - flexible size, scrollable)
         if (selectedDate != null) {
             Column(
@@ -141,7 +155,68 @@ fun MonthViewDatePicker(
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
                     currentTaskId = currentTaskId,
-                    currentCategoryId = currentCategoryId
+                    currentCategoryId = currentCategoryId,
+                    radialButtonState = radialButtonState,
+                    onRadialButtonRequest = { date, centerX, centerY ->
+                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                        android.util.Log.d("MonthViewPicker", "🎯 onRadialButtonRequest called")
+                        android.util.Log.d("MonthViewPicker", "   date=$date")
+                        android.util.Log.d("MonthViewPicker", "   position: ($centerX, $centerY)")
+                        val newState = CalendarRadialButtonState(
+                            centerX = centerX,
+                            centerY = centerY,
+                            targetDate = date,
+                            isActive = true
+                        )
+                        radialButtonState = newState
+                        android.util.Log.d("MonthViewPicker", "   ✅ radialButtonState SET")
+                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                    }
+                )
+            }
+        }
+        }
+
+        // Radial Button Menu Overlay - Use Popup to float above everything!
+        radialButtonState?.let { state ->
+            android.util.Log.d("MonthViewPicker", "✨ Rendering CalendarRadialButton in Popup")
+            androidx.compose.ui.window.Popup(
+                alignment = Alignment.TopStart,
+                offset = androidx.compose.ui.unit.IntOffset.Zero
+            ) {
+                CalendarRadialButton(
+                    state = state,
+                    onActionSelected = { action ->
+                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                        android.util.Log.d("MonthViewPicker", "🎬 Action selected: $action")
+                        when (action) {
+                            is CalendarButtonAction.SetAsStart -> {
+                                android.util.Log.d("MonthViewPicker", "   📅 Setting as start: ${state.targetDate}")
+                                onDateSelected(state.targetDate)
+                                onStartTimeChange?.invoke(LocalTime.now())
+                            }
+                            is CalendarButtonAction.SetAsEnd -> {
+                                android.util.Log.d("MonthViewPicker", "   📅 Setting as end: ${state.targetDate}")
+                                onDateSelected(state.targetDate)
+                                onEndTimeChange?.invoke(LocalTime.now())
+                            }
+                            is CalendarButtonAction.ChangeStartTime -> {
+                                android.util.Log.d("MonthViewPicker", "   ⏰ Opening start time input")
+                                showStartTimeInput = true
+                            }
+                            is CalendarButtonAction.ChangeEndTime -> {
+                                android.util.Log.d("MonthViewPicker", "   ⏰ Opening end time input")
+                                showEndTimeInput = true
+                            }
+                        }
+                        radialButtonState = null
+                        android.util.Log.d("MonthViewPicker", "   ✅ Button state cleared")
+                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                    },
+                    onDismiss = {
+                        android.util.Log.d("MonthViewPicker", "❌ Button menu dismissed")
+                        radialButtonState = null
+                    }
                 )
             }
         }
@@ -548,7 +623,9 @@ private fun MonthCalendarGrid(
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
-    currentCategoryId: Long? = null
+    currentCategoryId: Long? = null,
+    radialButtonState: CalendarRadialButtonState? = null,
+    onRadialButtonRequest: (LocalDate, Float, Float) -> Unit = { _, _, _ -> }
 ) {
     // Build list of dates for the month view (includes leading/trailing days)
     val calendarDates = buildCalendarDates(currentMonth)
@@ -594,7 +671,9 @@ private fun MonthCalendarGrid(
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
                     currentTaskId = currentTaskId,
-                    currentCategoryId = currentCategoryId
+                    currentCategoryId = currentCategoryId,
+                    radialButtonState = radialButtonState,
+                    onRadialButtonRequest = onRadialButtonRequest
                 )
             }
         }
@@ -669,7 +748,9 @@ private fun DayCell(
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
-    currentCategoryId: Long? = null
+    currentCategoryId: Long? = null,
+    radialButtonState: CalendarRadialButtonState? = null,
+    onRadialButtonRequest: (LocalDate, Float, Float) -> Unit = { _, _, _ -> }
 ) {
     val isToday = date == LocalDate.now()
 
@@ -677,6 +758,10 @@ private fun DayCell(
     val segments = remember(date, events, tasks, currentTaskId, currentCategoryId) {
         occupancyCalculator.calculateDayOccupancy(events, date, tasks, currentTaskId, currentCategoryId)
     }
+
+    // Track cell position for radial menu
+    var cellPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    var cellSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
 
     Box(
         modifier = Modifier
@@ -688,7 +773,75 @@ private fun DayCell(
                     else -> MaterialTheme.colorScheme.surface
                 }
             )
-            .clickable { onDateSelected(date) }
+            .onGloballyPositioned { coordinates ->
+                cellPositionInRoot = coordinates.positionInRoot()
+                cellSize = coordinates.size
+                android.util.Log.d("MonthViewPicker", "📍 Cell[${date.dayOfMonth}] position in root: $cellPositionInRoot, size: $cellSize")
+            }
+            .then(
+                // Only attach gesture detection if menu is NOT open
+                if (radialButtonState == null) {
+                    Modifier.pointerInput(date) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val downPosition = down.position
+                            val downTime = System.currentTimeMillis()
+
+                            android.util.Log.d("MonthViewPicker", "👇 Touch down on ${date.dayOfMonth}")
+
+                            // Wait for long press (500ms)
+                            val longPressDetected = withTimeoutOrNull(500L) {
+                                var currentEvent = down
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    currentEvent = event.changes.first()
+
+                                    // Check if moved too much (> 20px = not a long press)
+                                    val delta = (currentEvent.position - downPosition).getDistance()
+                                    if (delta > 20f) {
+                                        android.util.Log.d("MonthViewPicker", "❌ Moved too much ($delta px), not long press")
+                                        return@withTimeoutOrNull false
+                                    }
+
+                                    // Check if released (tap)
+                                    if (!currentEvent.pressed) {
+                                        val duration = System.currentTimeMillis() - downTime
+                                        android.util.Log.d("MonthViewPicker", "👆 Released after ${duration}ms")
+                                        return@withTimeoutOrNull false
+                                    }
+                                }
+                                @Suppress("UNREACHABLE_CODE")
+                                true
+                            }
+
+                            if (longPressDetected == null) {
+                                // Long press detected!
+                                android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                                android.util.Log.d("MonthViewPicker", "🔴 Long press detected on ${date.dayOfMonth}")
+                                android.util.Log.d("MonthViewPicker", "   Cell in root: $cellPositionInRoot")
+                                android.util.Log.d("MonthViewPicker", "   Cell size: $cellSize")
+
+                                // Calculate cell center - use WINDOW coordinates
+                                // CalendarRadialButton will handle header offset (like Timeline does)
+                                val centerX = cellPositionInRoot.x + cellSize.width / 2f
+                                val centerY = cellPositionInRoot.y + cellSize.height / 2f
+
+                                android.util.Log.d("MonthViewPicker", "   Button center (window): ($centerX, $centerY)")
+                                android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+
+                                // Activate radial button
+                                onRadialButtonRequest(date, centerX, centerY)
+                            } else if (longPressDetected == false) {
+                                // Tap detected
+                                android.util.Log.d("MonthViewPicker", "👆 Tap detected on ${date.dayOfMonth}")
+                                onDateSelected(date)
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .padding(2.dp)
     ) {
         Column(
