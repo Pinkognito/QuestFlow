@@ -1155,6 +1155,49 @@ fun EditCalendarTaskDialog(
         mutableStateOf(commonEndDateTime ?: calendarLink.endsAt)
     }
 
+    // Time Adjustment Preferences
+    val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
+
+    // Helper function to adjust end time based on start time change
+    fun adjustEndTimeIfNeeded(newStartDateTime: java.time.LocalDateTime, oldStartDateTime: java.time.LocalDateTime): java.time.LocalDateTime {
+        return when (timeAdjustmentPrefs.getAdjustmentMode()) {
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT -> {
+                // Don't change end time
+                endDateTime
+            }
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION -> {
+                // Calculate new end time: newStart + fixed duration
+                newStartDateTime.plusMinutes(timeAdjustmentPrefs.getFixedDurationMinutes().toLong())
+            }
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE -> {
+                // Calculate current distance between old start and end
+                val currentDistance = java.time.Duration.between(oldStartDateTime, endDateTime).toMinutes()
+                // Apply the same distance to the new start time
+                newStartDateTime.plusMinutes(currentDistance)
+            }
+        }
+    }
+
+    // Helper function to adjust start time based on end time change (bidirectional)
+    fun adjustStartTimeIfNeeded(newEndDateTime: java.time.LocalDateTime, oldEndDateTime: java.time.LocalDateTime): java.time.LocalDateTime {
+        return when (timeAdjustmentPrefs.getAdjustmentMode()) {
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT -> {
+                // Don't change start time
+                startDateTime
+            }
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION -> {
+                // Calculate new start time: newEnd - fixed duration
+                newEndDateTime.minusMinutes(timeAdjustmentPrefs.getFixedDurationMinutes().toLong())
+            }
+            com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE -> {
+                // Calculate current distance between start and old end
+                val currentDistance = java.time.Duration.between(startDateTime, oldEndDateTime).toMinutes()
+                // Apply the same distance backwards from the new end time
+                newEndDateTime.minusMinutes(currentDistance)
+            }
+        }
+    }
+
     // DateTime Validation: End must be >= Start
     LaunchedEffect(startDateTime, endDateTime) {
         if (endDateTime < startDateTime) {
@@ -1801,7 +1844,12 @@ fun EditCalendarTaskDialog(
                         com.example.questflow.presentation.components.CompactDateTimeSection(
                             label = "Start",
                             dateTime = startDateTime,
-                            onDateTimeChange = { startDateTime = it },
+                            onDateTimeChange = { newStart ->
+                                val oldStart = startDateTime
+                                startDateTime = newStart
+                                // Auto-adjust end time based on preferences
+                                endDateTime = adjustEndTimeIfNeeded(newStart, oldStart)
+                            },
                             dayIncrement = uiSettings.startDayIncrement,
                             minuteIncrement = uiSettings.startMinuteIncrement,
                             onDayIncrementChange = { newValue ->
@@ -1815,7 +1863,9 @@ fun EditCalendarTaskDialog(
                             categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
                             tasks = monthViewTasks,
                             currentTaskId = currentTask?.id,
-                            currentCategoryId = taskCategory?.id
+                            currentCategoryId = taskCategory?.id,
+                            alternativeTime = endDateTime,
+                            onAlternativeTimeChange = { endDateTime = it }
                         )
                     }
 
@@ -1834,7 +1884,12 @@ fun EditCalendarTaskDialog(
                         com.example.questflow.presentation.components.CompactDateTimeSection(
                             label = "Ende",
                             dateTime = endDateTime,
-                            onDateTimeChange = { endDateTime = it },
+                            onDateTimeChange = { newEnd ->
+                                val oldEnd = endDateTime
+                                endDateTime = newEnd
+                                // Auto-adjust start time based on preferences (bidirectional)
+                                startDateTime = adjustStartTimeIfNeeded(newEnd, oldEnd)
+                            },
                             dayIncrement = uiSettings.endDayIncrement,
                             minuteIncrement = uiSettings.endMinuteIncrement,
                             onDayIncrementChange = { newValue ->
@@ -1848,7 +1903,9 @@ fun EditCalendarTaskDialog(
                             categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
                             tasks = monthViewTasks,
                             currentTaskId = currentTask?.id,
-                            currentCategoryId = taskCategory?.id
+                            currentCategoryId = taskCategory?.id,
+                            alternativeTime = startDateTime,
+                            onAlternativeTimeChange = { startDateTime = it }
                         )
                     }
 

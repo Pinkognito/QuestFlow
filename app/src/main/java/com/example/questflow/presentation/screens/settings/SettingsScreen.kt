@@ -1,7 +1,9 @@
 package com.example.questflow.presentation.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,8 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.questflow.domain.preferences.TimeAdjustmentPreferences
 import com.example.questflow.presentation.components.CalendarColorSettings
 import com.example.questflow.presentation.viewmodels.SettingsViewModel
 
@@ -24,6 +29,9 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeAdjustmentPrefs = remember { TimeAdjustmentPreferences(context) }
+
     val isBackupInProgress by viewModel.isBackupInProgress.collectAsState()
     val isCalendarSyncInProgress by viewModel.isCalendarSyncInProgress.collectAsState()
     val backupProgress by viewModel.backupProgress.collectAsState()
@@ -35,6 +43,11 @@ fun SettingsScreen(
 
     val workingHours by viewModel.workingHoursSettings.collectAsState()
     var showWorkingHoursDialog by remember { mutableStateOf(false) }
+
+    // Time Adjustment Settings
+    var showTimeAdjustmentDialog by remember { mutableStateOf(false) }
+    var timeAdjustmentMode by remember { mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode()) }
+    var fixedDuration by remember { mutableStateOf(timeAdjustmentPrefs.getFixedDurationMinutes()) }
 
     Scaffold(
         topBar = {
@@ -256,6 +269,67 @@ fun SettingsScreen(
                 }
             }
 
+            // Time Adjustment Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Automatische Ende-Zeit",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = when (timeAdjustmentMode) {
+                                    TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT ->
+                                        "Unabhängig (keine automatische Anpassung)"
+                                    TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION ->
+                                        "Feste Dauer: ${fixedDuration} Minuten"
+                                    TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE ->
+                                        "Aktuelle Distanz (nutzt vorhandene Zeitspanne)"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Legt fest, wie sich die Ende-Zeit verhält, wenn du die Start-Zeit änderst",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Button(
+                        onClick = { showTimeAdjustmentDialog = true },
+                        enabled = !isBackupInProgress && !isCalendarSyncInProgress,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DateRange, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ende-Zeit-Verhalten anpassen")
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Section: Darstellung
@@ -458,6 +532,123 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showWorkingHoursDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Time Adjustment Configuration Dialog
+    if (showTimeAdjustmentDialog) {
+        var tempMode by remember { mutableStateOf(timeAdjustmentMode) }
+        var tempDuration by remember { mutableStateOf(fixedDuration) }
+
+        AlertDialog(
+            onDismissRequest = { showTimeAdjustmentDialog = false },
+            icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+            title = { Text("Ende-Zeit-Verhalten konfigurieren") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("Legt fest, ob Start- und Ende-Zeit automatisch zusammen angepasst werden (bidirektional).")
+
+                    // Mode Selection
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Modus:",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // INDEPENDENT Option
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { tempMode = TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT }
+                        ) {
+                            RadioButton(
+                                selected = tempMode == TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT,
+                                onClick = { tempMode = TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT }
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text("Unabhängig", fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Start und Ende sind komplett unabhängig voneinander",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // FIXED_DURATION Option
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { tempMode = TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION }
+                        ) {
+                            RadioButton(
+                                selected = tempMode == TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION,
+                                onClick = { tempMode = TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION }
+                            )
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                Text("Automatische Anpassung", fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Feste Dauer - beide Zeiten passen sich gegenseitig an",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Duration Input (only shown when FIXED_DURATION is selected)
+                    if (tempMode == TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Dauer in Minuten:",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedTextField(
+                                value = tempDuration.toString(),
+                                onValueChange = { newValue ->
+                                    tempDuration = newValue.toIntOrNull()?.coerceIn(1, 1440) ?: tempDuration
+                                },
+                                label = { Text("Minuten") },
+                                placeholder = { Text("60") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "Beispiel bei 60 Min:\n• Start 09:00 → Ende 10:00\n• Ende 12:00 → Start 11:00",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // Save settings
+                        timeAdjustmentPrefs.setAdjustmentMode(tempMode)
+                        timeAdjustmentPrefs.setFixedDurationMinutes(tempDuration)
+
+                        // Update UI state
+                        timeAdjustmentMode = tempMode
+                        fixedDuration = tempDuration
+
+                        showTimeAdjustmentDialog = false
+                    }
+                ) {
+                    Text("Speichern")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimeAdjustmentDialog = false }) {
                     Text("Abbrechen")
                 }
             }

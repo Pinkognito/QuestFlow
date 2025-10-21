@@ -59,7 +59,11 @@ fun ModernDateTimePicker(
     categoryColor: androidx.compose.ui.graphics.Color? = null,
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
-    currentCategoryId: Long? = null
+    currentCategoryId: Long? = null,
+    // NEW: Optional alternative time to show as second time field (e.g., end time when this is start)
+    alternativeTime: LocalDateTime? = null,
+    onAlternativeTimeChange: ((LocalDateTime) -> Unit)? = null,
+    alternativeLabel: String? = null
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -105,13 +109,25 @@ fun ModernDateTimePicker(
                     selectedDate = dateTime.toLocalDate(),
                     onDateSelected = { selectedDate ->
                         onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime()))
-                        showDatePicker = false
                     },
                     events = events,
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
                     currentTaskId = currentTaskId,
-                    currentCategoryId = currentCategoryId
+                    currentCategoryId = currentCategoryId,
+                    // ALWAYS show Start | Ende (regardless of which picker this is)
+                    startTime = if (label == "Start") dateTime.toLocalTime() else alternativeTime?.toLocalTime(),
+                    endTime = if (label == "Start") alternativeTime?.toLocalTime() else dateTime.toLocalTime(),
+                    onStartTimeChange = if (label == "Start") {
+                        { newTime -> onDateTimeChange(LocalDateTime.of(dateTime.toLocalDate(), newTime)) }
+                    } else {
+                        { newTime -> onAlternativeTimeChange?.invoke(LocalDateTime.of(alternativeTime!!.toLocalDate(), newTime)) }
+                    },
+                    onEndTimeChange = if (label == "Start") {
+                        { newTime -> onAlternativeTimeChange?.invoke(LocalDateTime.of(alternativeTime!!.toLocalDate(), newTime)) }
+                    } else {
+                        { newTime -> onDateTimeChange(LocalDateTime.of(dateTime.toLocalDate(), newTime)) }
+                    }
                 )
             },
             confirmButton = {},

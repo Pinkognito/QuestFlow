@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.TextFieldValue
+import com.example.questflow.domain.preferences.TimeAdjustmentPreferences
 import com.example.questflow.presentation.viewmodels.TodayViewModel
 import kotlinx.coroutines.launch
 
@@ -131,6 +132,50 @@ fun AddTaskDialog(
     val defaultEndDateTime = inheritFromCalendarLink?.endsAt ?: currentDateTime.plusHours(1)
     var endDateTime by remember {
         mutableStateOf(defaultEndDateTime)
+    }
+
+    // Time Adjustment Preferences
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeAdjustmentPrefs = remember { TimeAdjustmentPreferences(context) }
+
+    // Helper function to adjust end time based on start time change
+    fun adjustEndTimeIfNeeded(newStartDateTime: java.time.LocalDateTime, oldStartDateTime: java.time.LocalDateTime): java.time.LocalDateTime {
+        return when (timeAdjustmentPrefs.getAdjustmentMode()) {
+            TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT -> {
+                // Don't change end time
+                endDateTime
+            }
+            TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION -> {
+                // Calculate new end time: newStart + fixed duration
+                newStartDateTime.plusMinutes(timeAdjustmentPrefs.getFixedDurationMinutes().toLong())
+            }
+            TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE -> {
+                // Calculate current distance between old start and end
+                val currentDistance = java.time.Duration.between(oldStartDateTime, endDateTime).toMinutes()
+                // Apply the same distance to the new start time
+                newStartDateTime.plusMinutes(currentDistance)
+            }
+        }
+    }
+
+    // Helper function to adjust start time based on end time change (bidirectional)
+    fun adjustStartTimeIfNeeded(newEndDateTime: java.time.LocalDateTime, oldEndDateTime: java.time.LocalDateTime): java.time.LocalDateTime {
+        return when (timeAdjustmentPrefs.getAdjustmentMode()) {
+            TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT -> {
+                // Don't change start time
+                startDateTime
+            }
+            TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION -> {
+                // Calculate new start time: newEnd - fixed duration
+                newEndDateTime.minusMinutes(timeAdjustmentPrefs.getFixedDurationMinutes().toLong())
+            }
+            TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE -> {
+                // Calculate current distance between start and old end
+                val currentDistance = java.time.Duration.between(startDateTime, oldEndDateTime).toMinutes()
+                // Apply the same distance backwards from the new end time
+                newEndDateTime.minusMinutes(currentDistance)
+            }
+        }
     }
 
     // Smart scheduling state
@@ -552,12 +597,20 @@ fun AddTaskDialog(
                         ModernDateTimePicker(
                             label = "Start",
                             dateTime = startDateTime,
-                            onDateTimeChange = { startDateTime = it },
+                            onDateTimeChange = { newStart ->
+                                val oldStart = startDateTime
+                                startDateTime = newStart
+                                // Auto-adjust end time based on preferences
+                                endDateTime = adjustEndTimeIfNeeded(newStart, oldStart)
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             events = monthViewEvents,
                             occupancyCalculator = occupancyCalculator,
                             currentTaskId = inheritFromTask?.id,
-                            currentCategoryId = taskCategory?.id
+                            currentCategoryId = taskCategory?.id,
+                            alternativeTime = endDateTime,
+                            onAlternativeTimeChange = { endDateTime = it },
+                            alternativeLabel = "Ende"
                         )
                     }
 
@@ -566,12 +619,20 @@ fun AddTaskDialog(
                         ModernDateTimePicker(
                             label = "Ende",
                             dateTime = endDateTime,
-                            onDateTimeChange = { endDateTime = it },
+                            onDateTimeChange = { newEnd ->
+                                val oldEnd = endDateTime
+                                endDateTime = newEnd
+                                // Auto-adjust start time based on preferences (bidirectional)
+                                startDateTime = adjustStartTimeIfNeeded(newEnd, oldEnd)
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             events = monthViewEvents,
                             occupancyCalculator = occupancyCalculator,
                             currentTaskId = inheritFromTask?.id,
-                            currentCategoryId = taskCategory?.id
+                            currentCategoryId = taskCategory?.id,
+                            alternativeTime = startDateTime,
+                            onAlternativeTimeChange = { startDateTime = it },
+                            alternativeLabel = "Start"
                         )
                     }
 

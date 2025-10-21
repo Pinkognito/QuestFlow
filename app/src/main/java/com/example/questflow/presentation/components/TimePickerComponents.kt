@@ -308,18 +308,27 @@ fun HHMMInputDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (timeInput.length == 4) {
-                        val hour = timeInput.substring(0, 2).toIntOrNull()
-                        val minute = timeInput.substring(2, 4).toIntOrNull()
-                        android.util.Log.d("TimePicker", "HHMM OK clicked: input='$timeInput', hour=$hour, minute=$minute")
-
-                        if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
-                            onConfirm(hour, minute)
-                        } else {
-                            errorMessage = "Ungültige Zeit"
+                    when {
+                        // Empty input: Keep old time and close dialog
+                        timeInput.isEmpty() -> {
+                            onConfirm(currentHour, currentMinute)
                         }
-                    } else {
-                        errorMessage = "4 Ziffern erforderlich"
+                        // Valid 4-digit input
+                        timeInput.length == 4 -> {
+                            val hour = timeInput.substring(0, 2).toIntOrNull()
+                            val minute = timeInput.substring(2, 4).toIntOrNull()
+                            android.util.Log.d("TimePicker", "HHMM OK clicked: input='$timeInput', hour=$hour, minute=$minute")
+
+                            if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
+                                onConfirm(hour, minute)
+                            } else {
+                                errorMessage = "Ungültige Zeit"
+                            }
+                        }
+                        // Invalid input length
+                        else -> {
+                            errorMessage = "4 Ziffern erforderlich oder leer lassen"
+                        }
                     }
                 }
             ) {

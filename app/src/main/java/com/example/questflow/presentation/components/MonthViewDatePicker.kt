@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +38,7 @@ import com.example.questflow.domain.model.SimpleCalendarColorConfig
 import com.example.questflow.domain.model.SimpleCalendarColorRepository
 import com.example.questflow.domain.usecase.DayOccupancyCalculator
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -59,11 +62,20 @@ fun MonthViewDatePicker(
     modifier: Modifier = Modifier,
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
-    currentCategoryId: Long? = null
+    currentCategoryId: Long? = null,
+    // Time input support - ALWAYS shows "Start | Ende"
+    startTime: LocalTime? = null,
+    endTime: LocalTime? = null,
+    onStartTimeChange: ((LocalTime) -> Unit)? = null,
+    onEndTimeChange: ((LocalTime) -> Unit)? = null
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var showColorSettings by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) } // Trigger recomposition when settings change
+
+    // Time input state
+    var showStartTimeInput by remember { mutableStateOf(false) }
+    var showEndTimeInput by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
         // Event/Task list for selected date (Info box - flexible size, scrollable)
@@ -85,6 +97,17 @@ fun MonthViewDatePicker(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Time input row (ALWAYS shows "Start | Ende")
+        if (startTime != null && endTime != null && onStartTimeChange != null && onEndTimeChange != null) {
+            CompactTimeInputRow(
+                startTime = startTime,
+                endTime = endTime,
+                onStartTimeClick = { showStartTimeInput = true },
+                onEndTimeClick = { showEndTimeInput = true }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         // Calendar - FIXED size, always fully visible at bottom
@@ -132,6 +155,31 @@ fun MonthViewDatePicker(
     // Use refreshKey in a LaunchedEffect to force recomposition
     LaunchedEffect(refreshKey) {
         // This will trigger recomposition whenever refreshKey changes
+    }
+
+    // Time Input Dialogs
+    if (showStartTimeInput && startTime != null && onStartTimeChange != null) {
+        HHMMInputDialog(
+            currentHour = startTime.hour,
+            currentMinute = startTime.minute,
+            onDismiss = { showStartTimeInput = false },
+            onConfirm = { hour, minute ->
+                onStartTimeChange(LocalTime.of(hour, minute))
+                showStartTimeInput = false
+            }
+        )
+    }
+
+    if (showEndTimeInput && endTime != null && onEndTimeChange != null) {
+        HHMMInputDialog(
+            currentHour = endTime.hour,
+            currentMinute = endTime.minute,
+            onDismiss = { showEndTimeInput = false },
+            onConfirm = { hour, minute ->
+                onEndTimeChange(LocalTime.of(hour, minute))
+                showEndTimeInput = false
+            }
+        )
     }
 }
 
@@ -433,7 +481,7 @@ private fun MonthNavigationHeader(
         ) {
             Text(
                 text = currentMonth.format(
-                    DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
+                    DateTimeFormatter.ofPattern("MMM yyyy", Locale.GERMAN)
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
@@ -955,4 +1003,269 @@ private fun ColorLegendItem(label: String, color: Color, description: String) {
             fontSize = 10.sp
         )
     }
+}
+
+/**
+ * Compact time input row - ALWAYS shows "S | Ende" with settings icon and duration display
+ */
+@Composable
+private fun CompactTimeInputRow(
+    startTime: LocalTime,
+    endTime: LocalTime,
+    onStartTimeClick: () -> Unit,
+    onEndTimeClick: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    // Calculate duration in minutes
+    val durationMinutes = java.time.Duration.between(startTime, endTime).toMinutes().toInt()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Start Time
+            TimeInputField(
+                label = "S",
+                time = startTime,
+                onClick = onStartTimeClick,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Duration display
+            Text(
+                text = "${durationMinutes} Min",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            // End Time
+            TimeInputField(
+                label = "E",
+                time = endTime,
+                onClick = onEndTimeClick,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Settings Icon
+            androidx.compose.material3.IconButton(
+                onClick = { showSettingsDialog = true },
+                modifier = Modifier.size(32.dp)
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                    contentDescription = "Zeit-Anpassung Einstellungen",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+
+    // Time Adjustment Settings Dialog
+    if (showSettingsDialog) {
+        TimeAdjustmentDialog(
+            timeAdjustmentPrefs = timeAdjustmentPrefs,
+            currentDuration = durationMinutes,
+            onDismiss = { showSettingsDialog = false }
+        )
+    }
+}
+
+/**
+ * Single time input field (HH:MM format, clickable)
+ */
+@Composable
+private fun TimeInputField(
+    label: String,
+    time: LocalTime,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = String.format("%02d:%02d", time.hour, time.minute),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+/**
+ * Time Adjustment Settings Dialog - shown when clicking the settings icon in time input row
+ */
+@Composable
+private fun TimeAdjustmentDialog(
+    timeAdjustmentPrefs: com.example.questflow.domain.preferences.TimeAdjustmentPreferences,
+    currentDuration: Int,
+    onDismiss: () -> Unit
+) {
+    var tempMode by remember { mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode()) }
+    var tempDuration by remember { mutableStateOf(timeAdjustmentPrefs.getFixedDurationMinutes()) }
+
+    // Automatically set tempDuration to currentDuration when CURRENT_DISTANCE is selected
+    LaunchedEffect(tempMode) {
+        if (tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE) {
+            tempDuration = currentDuration
+        }
+    }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            androidx.compose.material3.Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                contentDescription = null
+            )
+        },
+        title = { androidx.compose.material3.Text("Zeit-Anpassung") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                androidx.compose.material3.Text(
+                    text = "Wähle, wie sich Start- und Endzeit verhalten:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                // Option 1: INDEPENDENT
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.RadioButton(
+                        selected = tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT,
+                        onClick = { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        androidx.compose.material3.Text(
+                            text = "Unabhängig",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Text(
+                            text = "Start und Ende sind vollständig unabhängig",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Option 2: FIXED_DURATION
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.RadioButton(
+                        selected = tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION,
+                        onClick = { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        androidx.compose.material3.Text(
+                            text = "Feste Distanz",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Text(
+                            text = "Ende = Start + feste Minutenzahl",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Option 3: CURRENT_DISTANCE (NEW)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.RadioButton(
+                        selected = tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE,
+                        onClick = { tempMode = com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        androidx.compose.material3.Text(
+                            text = "Aktuelle Distanz",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Text(
+                            text = "Nutzt die vorhandene Distanz ($currentDuration Min)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Duration TextField (shown for FIXED_DURATION and CURRENT_DISTANCE)
+                if (tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION ||
+                    tempMode == com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE) {
+
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tempDuration.toString(),
+                        onValueChange = { newValue ->
+                            newValue.toIntOrNull()?.let { tempDuration = it }
+                        },
+                        label = { androidx.compose.material3.Text("Distanz in Minuten") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    timeAdjustmentPrefs.setAdjustmentMode(tempMode)
+                    timeAdjustmentPrefs.setFixedDurationMinutes(tempDuration)
+                    onDismiss()
+                }
+            ) {
+                androidx.compose.material3.Text("Speichern")
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                androidx.compose.material3.Text("Abbrechen")
+            }
+        }
+    )
 }
