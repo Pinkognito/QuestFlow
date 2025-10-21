@@ -1234,6 +1234,14 @@ fun EditCalendarTaskDialog(
         android.util.Log.d("TaskDialog-ClaimBtn", "🔘 Claim button visibility: isClaimable=$isClaimable, deleteOnClaim=$deleteOnClaim, rewarded=${calendarLink.rewarded}, status=${calendarLink.status}")
     }
 
+    // Tab state
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabIcons = listOf("📝", "⏰", "👥", "⚙️", "📜") // Only icons, no text
+
+    // Collapsible sections state
+    var taskFamilyExpanded by remember { mutableStateOf(true) }
+    var calendarExpanded by remember { mutableStateOf(true) } // Default: expanded
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1358,11 +1366,250 @@ fun EditCalendarTaskDialog(
                 }
             }
 
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                    .heightIn(max = 550.dp)
             ) {
+                // Content area (Tab-based, Lazy Loading)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    when (selectedTab) {
+                        0 -> {
+                            // TAB 1: Basis (Lazy Loading)
+                            com.example.questflow.presentation.components.taskdialog.TaskDialogBasicTab(
+                                taskTitle = taskTitle,
+                                onTaskTitleChange = { taskTitle = it },
+                                taskDescription = taskDescription,
+                                onTaskDescriptionChange = { taskDescription = it },
+                                selectedPercentage = selectedPercentage,
+                                onPercentageChange = { selectedPercentage = it },
+                                taskCategory = taskCategory,
+                                onCategoryClick = { showCategorySelectionDialog = true },
+                                selectedParentTask = selectedParentTask,
+                                onParentTaskClick = { showParentSelectionDialog = true },
+                                autoCompleteParent = autoCompleteParent,
+                                onAutoCompleteParentChange = { autoCompleteParent = it },
+                                hasTextTemplates = textTemplates.isNotEmpty(),
+                                onTitleTemplateClick = { showTaskTitleTemplateDialog = true },
+                                onTitlePlaceholderClick = { showTaskTitlePlaceholderDialog = true },
+                                onDescriptionTemplateClick = { showTaskDescriptionTemplateDialog = true },
+                                onDescriptionPlaceholderClick = { showTaskDescriptionPlaceholderDialog = true },
+                                showParentSection = availableTasks.isNotEmpty() && calendarLink.taskId != null,
+                                // Task Family Navigation
+                                currentTask = currentTask,
+                                availableTasks = availableTasks,
+                                taskFamilyExpanded = taskFamilyExpanded,
+                                onTaskFamilyExpandedChange = { taskFamilyExpanded = it },
+                                onNavigateToTask = { task ->
+                                    val taskLink = tasksViewModel.uiState.value.links.find { it.taskId == task.id }
+                                    if (taskLink != null) {
+                                        onDismiss()
+                                        onNavigateToTask(taskLink)
+                                    }
+                                }
+                            )
+                        }
+                        1 -> {
+                            // TAB 2: Zeit (Lazy Loading - DatePicker nur hier!)
+                            com.example.questflow.presentation.components.taskdialog.TaskDialogTimeTab(
+                                startDateTime = startDateTime,
+                                onStartDateTimeChange = { newStart ->
+                                    val oldStart = startDateTime
+                                    startDateTime = newStart
+                                    endDateTime = adjustEndTimeIfNeeded(newStart, oldStart)
+                                },
+                                endDateTime = endDateTime,
+                                onEndDateTimeChange = { newEnd ->
+                                    val oldEnd = endDateTime
+                                    endDateTime = newEnd
+                                    startDateTime = adjustStartTimeIfNeeded(newEnd, oldEnd)
+                                },
+                                startDayIncrement = uiSettings.startDayIncrement,
+                                onStartDayIncrementChange = { tasksViewModel.updateUISettings(uiSettings.copy(startDayIncrement = it)) },
+                                startMinuteIncrement = uiSettings.startMinuteIncrement,
+                                onStartMinuteIncrementChange = { tasksViewModel.updateUISettings(uiSettings.copy(startMinuteIncrement = it)) },
+                                endDayIncrement = uiSettings.endDayIncrement,
+                                onEndDayIncrementChange = { tasksViewModel.updateUISettings(uiSettings.copy(endDayIncrement = it)) },
+                                endMinuteIncrement = uiSettings.endMinuteIncrement,
+                                onEndMinuteIncrementChange = { tasksViewModel.updateUISettings(uiSettings.copy(endMinuteIncrement = it)) },
+                                scheduleConflicts = scheduleConflicts.map { event ->
+                                    CalendarEventLinkEntity(
+                                        id = event.id,
+                                        calendarEventId = event.id,
+                                        title = event.title,
+                                        startsAt = event.startTime,
+                                        endsAt = event.endTime,
+                                        xp = 0,
+                                        xpPercentage = 0,
+                                        rewarded = true,
+                                        taskId = null,
+                                        status = "EXTERNAL"
+                                    )
+                                },
+                                onFindFreeTimesClick = {
+                                    coroutineScope.launch {
+                                        val durationMinutes = java.time.Duration.between(startDateTime, endDateTime).toMinutes()
+                                        val startDate = startDateTime.toLocalDate()
+                                        val endDate = startDate.plusDays(30)
+                                        dailyFreeTime = viewModel.findFreeTimeSlots(
+                                            startDate = startDate,
+                                            endDate = endDate,
+                                            minDurationMinutes = durationMinutes,
+                                            excludeEventId = calendarLink.calendarEventId
+                                        )
+                                        timeSlotSuggestions = viewModel.suggestTimeSlots(
+                                            requiredDurationMinutes = durationMinutes,
+                                            startSearchFrom = startDateTime,
+                                            maxSuggestions = 5,
+                                            excludeEventId = calendarLink.calendarEventId
+                                        )
+                                        showTimeSlotDialog = true
+                                    }
+                                },
+                                isRecurring = isRecurring,
+                                onIsRecurringChange = { isRecurring = it },
+                                recurringConfig = recurringConfig,
+                                onRecurringConfigClick = { showRecurringDialog = true },
+                                monthViewEvents = monthViewEvents,
+                                occupancyCalculator = occupancyCalculator,
+                                categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
+                                monthViewTasks = monthViewTasks,
+                                currentTaskId = currentTask?.id,
+                                currentCategoryId = taskCategory?.id,
+                                calendarExpanded = calendarExpanded,
+                                onCalendarExpandedChange = { calendarExpanded = it }
+                            )
+                        }
+                        2 -> {
+                            // TAB 3: Personen (Lazy Loading)
+                            com.example.questflow.presentation.components.taskdialog.TaskDialogContactsTab(
+                                selectedContactIds = selectedContactIds,
+                                availableContacts = availableContacts,
+                                onSelectContactsClick = { showContactDialog = true },
+                                onActionsClick = { showActionDialog = true },
+                                taskContactListExpanded = uiSettings.taskContactListExpanded,
+                                onTaskContactListExpandedChange = { tasksViewModel.updateUISettings(uiSettings.copy(taskContactListExpanded = it)) },
+                                taskContactTagsMap = taskContactTagsMap,
+                                allMedia = allMedia
+                            )
+                        }
+                        3 -> {
+                            // TAB 4: Optionen (Lazy Loading)
+                            com.example.questflow.presentation.components.taskdialog.TaskDialogOptionsTab(
+                                hasCalendarPermission = hasCalendarPermission,
+                                addToCalendar = addToCalendar,
+                                onAddToCalendarChange = { addToCalendar = it },
+                                deleteOnClaim = deleteOnClaim,
+                                onDeleteOnClaimChange = { deleteOnClaim = it },
+                                deleteOnExpiry = deleteOnExpiry,
+                                onDeleteOnExpiryChange = { deleteOnExpiry = it },
+                                isClaimedTask = calendarLink.rewarded || calendarLink.status == "CLAIMED",
+                                shouldReactivate = shouldReactivate,
+                                onShouldReactivateChange = { shouldReactivate = it },
+                                onDeleteTask = {
+                                    calendarLink.taskId?.let { taskId ->
+                                        tasksViewModel.deleteTask(taskId) {
+                                            onDismiss()
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                        4 -> {
+                            // TAB 5: Verlauf (Lazy Loading)
+                            com.example.questflow.presentation.components.taskdialog.TaskDialogHistoryTab(
+                                taskHistory = taskHistory
+                            )
+                        }
+                    }
+                }
+
+                // TabRow (UNTEN - immer sichtbar) - NUR ICONS
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab,
+                    modifier = Modifier.fillMaxWidth(),
+                    edgePadding = 0.dp
+                ) {
+                    tabIcons.forEachIndexed { index, icon ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = {
+                                Text(
+                                    text = icon,
+                                    style = MaterialTheme.typography.titleLarge // Larger for better visibility
+                                )
+                            }
+                        )
+                    }
+                }
+
+                // Action Buttons (UNTEN - immer sichtbar)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Zurücksetzen Button
+                    TextButton(
+                        onClick = {
+                            taskTitle = initialSnapshot.title
+                            taskDescription = initialSnapshot.description
+                            selectedPercentage = initialSnapshot.xpPercentage
+                            taskCategory = categories.find { it.id == initialSnapshot.categoryId }
+                            startDateTime = initialSnapshot.startDateTime
+                            endDateTime = initialSnapshot.endDateTime
+                            addToCalendar = initialSnapshot.addToCalendar
+                            deleteOnClaim = initialSnapshot.deleteOnClaim
+                            deleteOnExpiry = initialSnapshot.deleteOnExpiry
+                            isRecurring = initialSnapshot.isRecurring
+                            recurringConfig = initialRecurringConfig
+                            selectedParentTask = availableTasks.find { it.id == initialSnapshot.parentTaskId }
+                            autoCompleteParent = initialSnapshot.autoCompleteParent
+                            shouldReactivate = initialSnapshot.shouldReactivate
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Zurücksetzen")
+                    }
+
+                    // Schließen Button
+                    TextButton(
+                        onClick = {
+                            // Update contact links and task-tags if task has an ID
+                            calendarLink.taskId?.let { taskId ->
+                                viewModel.saveTaskContactLinks(taskId, selectedContactIds)
+                                tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
+                            }
+                            onDismiss()
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Schließen")
+                    }
+                }
+            }
+
+            // OLD CONTENT COMMENTED OUT - wird durch Tabs ersetzt
+            if (false) {
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2456,47 +2703,8 @@ fun EditCalendarTaskDialog(
                 }
             }
         },
-        confirmButton = {
-            // Changed from "Speichern" to "Schließen" since auto-save is active
-            TextButton(onClick = {
-                // Update contact links and task-tags if task has an ID
-                calendarLink.taskId?.let { taskId ->
-                    viewModel.saveTaskContactLinks(taskId, selectedContactIds)
-                    android.util.Log.d("TaskTags", "FINAL SAVE on dialog close - task $taskId: $taskContactTagsMap")
-                    tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
-                    android.util.Log.d("TaskTags", "FINAL SAVE completed")
-                }
-                onDismiss()
-            }) {
-                Text("Schließen")
-            }
-        },
-        dismissButton = {
-            // Changed from "Abbrechen" to "Zurücksetzen" to restore initial state
-            TextButton(
-                onClick = {
-                    taskTitle = initialSnapshot.title
-                    taskDescription = initialSnapshot.description
-                    selectedPercentage = initialSnapshot.xpPercentage
-                    taskCategory = categories.find { it.id == initialSnapshot.categoryId }
-                    startDateTime = initialSnapshot.startDateTime
-                    endDateTime = initialSnapshot.endDateTime
-                    addToCalendar = initialSnapshot.addToCalendar
-                    deleteOnClaim = initialSnapshot.deleteOnClaim
-                    deleteOnExpiry = initialSnapshot.deleteOnExpiry
-                    isRecurring = initialSnapshot.isRecurring
-                    recurringConfig = initialRecurringConfig  // Use initialRecurringConfig directly instead of from snapshot
-                    selectedParentTask = availableTasks.find { it.id == initialSnapshot.parentTaskId }
-                    autoCompleteParent = initialSnapshot.autoCompleteParent
-                    shouldReactivate = initialSnapshot.shouldReactivate
-                },
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Text("Zurücksetzen")
-            }
-        }
+        confirmButton = { },  // Buttons are now in the tab UI
+        dismissButton = { }   // Buttons are now in the tab UI
     )
 
     // Template Selection Dialogs with IMMEDIATE RESOLUTION
