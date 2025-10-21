@@ -5,9 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,16 +22,21 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.DateRange
+import kotlin.math.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -86,8 +89,8 @@ fun MonthViewDatePicker(
     var showStartTimeInput by remember { mutableStateOf(false) }
     var showEndTimeInput by remember { mutableStateOf(false) }
 
-    // Radial Button Menu state
-    var radialButtonState by remember { mutableStateOf<CalendarRadialButtonState?>(null) }
+    // Radial Button Menu state - Track which date has active button
+    var activeButtonDate by remember { mutableStateOf<LocalDate?>(null) }
 
     Box(
         modifier = modifier
@@ -156,69 +159,31 @@ fun MonthViewDatePicker(
                     tasks = tasks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
-                    radialButtonState = radialButtonState,
-                    onRadialButtonRequest = { date, centerX, centerY ->
-                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
-                        android.util.Log.d("MonthViewPicker", "🎯 onRadialButtonRequest called")
-                        android.util.Log.d("MonthViewPicker", "   date=$date")
-                        android.util.Log.d("MonthViewPicker", "   position: ($centerX, $centerY)")
-                        val newState = CalendarRadialButtonState(
-                            centerX = centerX,
-                            centerY = centerY,
-                            targetDate = date,
-                            isActive = true
-                        )
-                        radialButtonState = newState
-                        android.util.Log.d("MonthViewPicker", "   ✅ radialButtonState SET")
-                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
-                    }
-                )
-            }
-        }
-        }
-
-        // Radial Button Menu Overlay - Use Popup to float above everything!
-        radialButtonState?.let { state ->
-            android.util.Log.d("MonthViewPicker", "✨ Rendering CalendarRadialButton in Popup")
-            androidx.compose.ui.window.Popup(
-                alignment = Alignment.TopStart,
-                offset = androidx.compose.ui.unit.IntOffset.Zero
-            ) {
-                CalendarRadialButton(
-                    state = state,
-                    onActionSelected = { action ->
-                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
-                        android.util.Log.d("MonthViewPicker", "🎬 Action selected: $action")
-                        when (action) {
-                            is CalendarButtonAction.SetAsStart -> {
-                                android.util.Log.d("MonthViewPicker", "   📅 Setting as start: ${state.targetDate}")
-                                onDateSelected(state.targetDate)
-                                onStartTimeChange?.invoke(LocalTime.now())
-                            }
-                            is CalendarButtonAction.SetAsEnd -> {
-                                android.util.Log.d("MonthViewPicker", "   📅 Setting as end: ${state.targetDate}")
-                                onDateSelected(state.targetDate)
-                                onEndTimeChange?.invoke(LocalTime.now())
-                            }
-                            is CalendarButtonAction.ChangeStartTime -> {
-                                android.util.Log.d("MonthViewPicker", "   ⏰ Opening start time input")
-                                showStartTimeInput = true
-                            }
-                            is CalendarButtonAction.ChangeEndTime -> {
-                                android.util.Log.d("MonthViewPicker", "   ⏰ Opening end time input")
-                                showEndTimeInput = true
-                            }
-                        }
-                        radialButtonState = null
-                        android.util.Log.d("MonthViewPicker", "   ✅ Button state cleared")
-                        android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
+                    activeButtonDate = activeButtonDate,
+                    onButtonRequest = { date ->
+                        activeButtonDate = date
                     },
-                    onDismiss = {
-                        android.util.Log.d("MonthViewPicker", "❌ Button menu dismissed")
-                        radialButtonState = null
+                    onSetAsStart = { date ->
+                        onDateSelected(date)
+                        onStartTimeChange?.invoke(LocalTime.now())
+                        activeButtonDate = null
+                    },
+                    onSetAsEnd = { date ->
+                        onDateSelected(date)
+                        onEndTimeChange?.invoke(LocalTime.now())
+                        activeButtonDate = null
+                    },
+                    onChangeStartTime = {
+                        showStartTimeInput = true
+                        activeButtonDate = null
+                    },
+                    onChangeEndTime = {
+                        showEndTimeInput = true
+                        activeButtonDate = null
                     }
                 )
             }
+        }
         }
     }
 
@@ -624,12 +589,19 @@ private fun MonthCalendarGrid(
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
-    radialButtonState: CalendarRadialButtonState? = null,
-    onRadialButtonRequest: (LocalDate, Float, Float) -> Unit = { _, _, _ -> }
+    activeButtonDate: LocalDate? = null,
+    onButtonRequest: (LocalDate) -> Unit = {},
+    onSetAsStart: (LocalDate) -> Unit = {},
+    onSetAsEnd: (LocalDate) -> Unit = {},
+    onChangeStartTime: () -> Unit = {},
+    onChangeEndTime: () -> Unit = {}
 ) {
     // Build list of dates for the month view (includes leading/trailing days)
     val calendarDates = buildCalendarDates(currentMonth)
     val rows = (calendarDates.size / 7) // Number of rows
+
+    // Track button position for overlay rendering
+    var buttonPosition by remember { mutableStateOf(Offset.Zero) }
 
     Box(
         modifier = Modifier
@@ -672,8 +644,15 @@ private fun MonthCalendarGrid(
                     tasks = tasks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
-                    radialButtonState = radialButtonState,
-                    onRadialButtonRequest = onRadialButtonRequest
+                    showButton = activeButtonDate == date,
+                    onButtonRequest = { position ->
+                        buttonPosition = position
+                        onButtonRequest(date)
+                    },
+                    onSetAsStart = { onSetAsStart(date) },
+                    onSetAsEnd = { onSetAsEnd(date) },
+                    onChangeStartTime = onChangeStartTime,
+                    onChangeEndTime = onChangeEndTime
                 )
             }
         }
@@ -703,6 +682,28 @@ private fun MonthCalendarGrid(
                     start = Offset(0f, y),
                     end = Offset(size.width, y),
                     strokeWidth = 1f
+                )
+            }
+        }
+
+        // Radial menu overlay - rendered ABOVE all cells with zIndex
+        if (activeButtonDate != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1000f)
+            ) {
+                InlineDateRadialMenu(
+                    onSetAsStart = { onSetAsStart(activeButtonDate) },
+                    onSetAsEnd = { onSetAsEnd(activeButtonDate) },
+                    onChangeStartTime = onChangeStartTime,
+                    onChangeEndTime = onChangeEndTime,
+                    modifier = Modifier.offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            buttonPosition.x.toInt(),
+                            buttonPosition.y.toInt()
+                        )
+                    }
                 )
             }
         }
@@ -749,8 +750,12 @@ private fun DayCell(
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
-    radialButtonState: CalendarRadialButtonState? = null,
-    onRadialButtonRequest: (LocalDate, Float, Float) -> Unit = { _, _, _ -> }
+    showButton: Boolean = false,
+    onButtonRequest: (Offset) -> Unit = {},
+    onSetAsStart: () -> Unit = {},
+    onSetAsEnd: () -> Unit = {},
+    onChangeStartTime: () -> Unit = {},
+    onChangeEndTime: () -> Unit = {}
 ) {
     val isToday = date == LocalDate.now()
 
@@ -759,13 +764,22 @@ private fun DayCell(
         occupancyCalculator.calculateDayOccupancy(events, date, tasks, currentTaskId, currentCategoryId)
     }
 
-    // Track cell position for radial menu
-    var cellPositionInRoot by remember { mutableStateOf(Offset.Zero) }
-    var cellSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var cellPosition by remember { mutableStateOf(Offset.Zero) }
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
+            .onGloballyPositioned { coordinates ->
+                cellPosition = coordinates.positionInWindow()
+            }
+            .clickable(
+                enabled = !showButton,
+                onClick = {
+                    if (!showButton) {
+                        onButtonRequest(cellPosition)
+                    }
+                }
+            )
             .background(
                 color = when {
                     isSelected -> MaterialTheme.colorScheme.primaryContainer
@@ -773,77 +787,18 @@ private fun DayCell(
                     else -> MaterialTheme.colorScheme.surface
                 }
             )
-            .onGloballyPositioned { coordinates ->
-                cellPositionInRoot = coordinates.positionInRoot()
-                cellSize = coordinates.size
-                android.util.Log.d("MonthViewPicker", "📍 Cell[${date.dayOfMonth}] position in root: $cellPositionInRoot, size: $cellSize")
-            }
-            .then(
-                // Only attach gesture detection if menu is NOT open
-                if (radialButtonState == null) {
-                    Modifier.pointerInput(date) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val downPosition = down.position
-                            val downTime = System.currentTimeMillis()
-
-                            android.util.Log.d("MonthViewPicker", "👇 Touch down on ${date.dayOfMonth}")
-
-                            // Wait for long press (500ms)
-                            val longPressDetected = withTimeoutOrNull(500L) {
-                                var currentEvent = down
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    currentEvent = event.changes.first()
-
-                                    // Check if moved too much (> 20px = not a long press)
-                                    val delta = (currentEvent.position - downPosition).getDistance()
-                                    if (delta > 20f) {
-                                        android.util.Log.d("MonthViewPicker", "❌ Moved too much ($delta px), not long press")
-                                        return@withTimeoutOrNull false
-                                    }
-
-                                    // Check if released (tap)
-                                    if (!currentEvent.pressed) {
-                                        val duration = System.currentTimeMillis() - downTime
-                                        android.util.Log.d("MonthViewPicker", "👆 Released after ${duration}ms")
-                                        return@withTimeoutOrNull false
-                                    }
-                                }
-                                @Suppress("UNREACHABLE_CODE")
-                                true
-                            }
-
-                            if (longPressDetected == null) {
-                                // Long press detected!
-                                android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
-                                android.util.Log.d("MonthViewPicker", "🔴 Long press detected on ${date.dayOfMonth}")
-                                android.util.Log.d("MonthViewPicker", "   Cell in root: $cellPositionInRoot")
-                                android.util.Log.d("MonthViewPicker", "   Cell size: $cellSize")
-
-                                // Calculate cell center - use WINDOW coordinates
-                                // CalendarRadialButton will handle header offset (like Timeline does)
-                                val centerX = cellPositionInRoot.x + cellSize.width / 2f
-                                val centerY = cellPositionInRoot.y + cellSize.height / 2f
-
-                                android.util.Log.d("MonthViewPicker", "   Button center (window): ($centerX, $centerY)")
-                                android.util.Log.d("MonthViewPicker", "═══════════════════════════════════════")
-
-                                // Activate radial button
-                                onRadialButtonRequest(date, centerX, centerY)
-                            } else if (longPressDetected == false) {
-                                // Tap detected
-                                android.util.Log.d("MonthViewPicker", "👆 Tap detected on ${date.dayOfMonth}")
-                                onDateSelected(date)
-                            }
-                        }
-                    }
-                } else {
-                    Modifier
-                }
-            )
             .padding(2.dp)
     ) {
+        // Show indicator dot if this cell is active (menu rendered at grid level)
+        if (showButton) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -875,6 +830,173 @@ private fun DayCell(
             }
         }
     }
+}
+
+/**
+ * Inline radial menu for date selection - renders directly in cell
+ * Press & hold button → Drag to option → Release to select
+ * NO OVERLAY - Calendar remains fully functional!
+ */
+@Composable
+private fun InlineDateRadialMenu(
+    onSetAsStart: () -> Unit,
+    onSetAsEnd: () -> Unit,
+    onChangeStartTime: () -> Unit,
+    onChangeEndTime: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var isMenuActive by remember { mutableStateOf(false) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var selectedAction by remember { mutableStateOf<String?>(null) }
+
+    val actions = listOf(
+        RadialMenuAction(id = "start", label = "Als Start", angle = 0f),
+        RadialMenuAction(id = "start_time", label = "Startzeit", angle = 90f),
+        RadialMenuAction(id = "end", label = "Als Ende", angle = 180f),
+        RadialMenuAction(id = "end_time", label = "Endzeit", angle = 270f)
+    )
+
+    // Animation für Menu-Scale
+    val menuScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isMenuActive) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+        ),
+        label = "menu_scale"
+    )
+
+    Box(
+        modifier = modifier.size(200.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // Center button with drag detection
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            isMenuActive = true
+                            dragOffset = Offset.Zero
+                            selectedAction = null
+                        },
+                        onDrag = { change, drag ->
+                            change.consume()
+                            dragOffset += drag
+                            val distance = sqrt(dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y)
+                            if (distance > 20f) {
+                                val angle = atan2(dragOffset.y, dragOffset.x) * 180 / PI.toFloat()
+                                selectedAction = getActionByAngle(angle, actions)
+                            } else {
+                                selectedAction = null
+                            }
+                        },
+                        onDragEnd = {
+                            val actionLabel = actions.find { it.id == selectedAction }?.label
+                            when (selectedAction) {
+                                "start" -> {
+                                    onSetAsStart()
+                                    android.widget.Toast.makeText(context, "✓ Als Startdatum gesetzt", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                "end" -> {
+                                    onSetAsEnd()
+                                    android.widget.Toast.makeText(context, "✓ Als Enddatum gesetzt", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                "start_time" -> {
+                                    onChangeStartTime()
+                                    android.widget.Toast.makeText(context, "✓ Startzeit ändern", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                "end_time" -> {
+                                    onChangeEndTime()
+                                    android.widget.Toast.makeText(context, "✓ Endzeit ändern", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                null -> {
+                                    android.widget.Toast.makeText(context, "Keine Option gewählt", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            isMenuActive = false
+                            dragOffset = Offset.Zero
+                            selectedAction = null
+                        },
+                        onDragCancel = {
+                            isMenuActive = false
+                            dragOffset = Offset.Zero
+                            selectedAction = null
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.DateRange,
+                contentDescription = "Datum-Menü",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        // Radial menu buttons with animation
+        if (isMenuActive) {
+            actions.forEach { action ->
+                val angleRad = Math.toRadians(action.angle.toDouble())
+                val radius = 60.dp * menuScale  // Größerer Radius, animiert
+                val offsetX = (radius.value * cos(angleRad)).dp
+                val offsetY = (radius.value * sin(angleRad)).dp
+                val isSelected = selectedAction == action.id
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = offsetX, y = offsetY)
+                        .size(if (isSelected) 44.dp else 40.dp)
+                        .scale(menuScale)
+                ) {
+                    androidx.compose.material3.Surface(
+                        shape = CircleShape,
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.primaryContainer,
+                        tonalElevation = if (isSelected) 8.dp else 4.dp,
+                        shadowElevation = if (isSelected) 12.dp else 6.dp,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = action.label.take(1),  // Erster Buchstabe
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                color = if (isSelected)
+                                    MaterialTheme.colorScheme.onPrimary
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class RadialMenuAction(
+    val id: String,
+    val label: String,
+    val angle: Float
+)
+
+private fun getActionByAngle(angle: Float, actions: List<RadialMenuAction>): String? {
+    val normalizedAngle = ((angle + 360) % 360)
+    return actions.minByOrNull { action ->
+        val diff = abs(normalizedAngle - action.angle)
+        min(diff, 360 - diff)
+    }?.id
 }
 
 @Composable
