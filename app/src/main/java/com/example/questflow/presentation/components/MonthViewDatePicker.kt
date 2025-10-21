@@ -17,6 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -100,12 +103,14 @@ fun MonthViewDatePicker(
         }
 
         // Time input row (ALWAYS shows "Start | Ende")
-        if (startTime != null && endTime != null && onStartTimeChange != null && onEndTimeChange != null) {
+        if (selectedDate != null && startTime != null && endTime != null && onStartTimeChange != null && onEndTimeChange != null) {
             CompactTimeInputRow(
+                selectedDate = selectedDate,
                 startTime = startTime,
                 endTime = endTime,
                 onStartTimeClick = { showStartTimeInput = true },
-                onEndTimeClick = { showEndTimeInput = true }
+                onEndTimeClick = { showEndTimeInput = true },
+                onEndTimeChange = onEndTimeChange
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -1010,17 +1015,33 @@ private fun ColorLegendItem(label: String, color: Color, description: String) {
  */
 @Composable
 private fun CompactTimeInputRow(
+    selectedDate: LocalDate,
     startTime: LocalTime,
     endTime: LocalTime,
     onStartTimeClick: () -> Unit,
-    onEndTimeClick: () -> Unit
+    onEndTimeClick: () -> Unit,
+    onEndTimeChange: (LocalTime) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
-    // Calculate duration in minutes
-    val durationMinutes = java.time.Duration.between(startTime, endTime).toMinutes().toInt()
+    // Calculate duration in minutes using LocalDateTime to account for day changes
+    val startDateTime = java.time.LocalDateTime.of(selectedDate, startTime)
+    val endDateTime = java.time.LocalDateTime.of(selectedDate, endTime)
+
+    // If endTime is earlier than startTime, assume it's the next day
+    val adjustedEndDateTime = if (endTime.isBefore(startTime)) {
+        endDateTime.plusDays(1)
+    } else {
+        endDateTime
+    }
+
+    val durationMinutes = java.time.Duration.between(startDateTime, adjustedEndDateTime).toMinutes().toInt()
+
+    // Remember initial duration ONCE when component is first created (no keys = never recalculated)
+    val initialDuration = remember { durationMinutes }
+    android.util.Log.d("CompactTimeInputRow", "Initial duration: $initialDuration min, Current duration: $durationMinutes min (Start: $startDateTime, End: $adjustedEndDateTime)")
 
     Column(
         modifier = Modifier
@@ -1028,47 +1049,94 @@ private fun CompactTimeInputRow(
             .padding(horizontal = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        var showDistanceDialog by remember { mutableStateOf(false) }
+
+        val adjustmentMode = timeAdjustmentPrefs.getAdjustmentMode()
+        val isLocked = adjustmentMode != com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Start Time
+            // Start Time (no label)
             TimeInputField(
-                label = "S",
                 time = startTime,
                 onClick = onStartTimeClick,
                 modifier = Modifier.weight(1f)
             )
 
-            // Duration display
-            Text(
-                text = "${durationMinutes} Min",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
+            // Lock/Unlock Button with Distance
+            Surface(
+                modifier = Modifier.clickable { showDistanceDialog = true },
+                color = if (isLocked)
+                    MaterialTheme.colorScheme.primaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = if (isLocked)
+                            androidx.compose.material.icons.Icons.Default.Lock
+                        else
+                            androidx.compose.material.icons.Icons.Default.Close,
+                        contentDescription = if (isLocked) "Gesperrt" else "Unabhängig",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isLocked)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    androidx.compose.material3.Text(
+                        text = "$durationMinutes Min",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        color = if (isLocked)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
-            // End Time
+            // End Time (no label)
             TimeInputField(
-                label = "E",
                 time = endTime,
                 onClick = onEndTimeClick,
                 modifier = Modifier.weight(1f)
             )
 
-            // Settings Icon
+            // Reset Button
             androidx.compose.material3.IconButton(
-                onClick = { showSettingsDialog = true },
+                onClick = {
+                    // Reset to initial duration
+                    android.util.Log.d("CompactTimeInputRow", "RESET clicked: startTime=$startTime, initialDuration=$initialDuration")
+                    val newEndTime = startTime.plusMinutes(initialDuration.toLong())
+                    android.util.Log.d("CompactTimeInputRow", "RESET: Calculated newEndTime=$newEndTime")
+                    onEndTimeChange(newEndTime)
+                },
                 modifier = Modifier.size(32.dp)
             ) {
                 androidx.compose.material3.Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Default.Settings,
-                    contentDescription = "Zeit-Anpassung Einstellungen",
+                    imageVector = androidx.compose.material.icons.Icons.Default.Refresh,
+                    contentDescription = "Zurücksetzen",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
             }
+        }
+
+        // Quick Distance Settings Dialog
+        if (showDistanceDialog) {
+            QuickDistanceDialog(
+                timeAdjustmentPrefs = timeAdjustmentPrefs,
+                currentDuration = durationMinutes,
+                onDismiss = { showDistanceDialog = false }
+            )
         }
     }
 
@@ -1087,7 +1155,6 @@ private fun CompactTimeInputRow(
  */
 @Composable
 private fun TimeInputField(
-    label: String,
     time: LocalTime,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1099,26 +1166,123 @@ private fun TimeInputField(
         shape = RoundedCornerShape(8.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             Text(
                 text = String.format("%02d:%02d", time.hour, time.minute),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
+}
+
+/**
+ * Quick Distance Dialog - Compact version for fast distance adjustment
+ */
+@Composable
+private fun QuickDistanceDialog(
+    timeAdjustmentPrefs: com.example.questflow.domain.preferences.TimeAdjustmentPreferences,
+    currentDuration: Int,
+    onDismiss: () -> Unit
+) {
+    var tempDuration by remember { mutableStateOf(currentDuration) }
+    val currentMode = timeAdjustmentPrefs.getAdjustmentMode()
+    val isLocked = currentMode != com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            androidx.compose.material3.Icon(
+                imageVector = if (isLocked) androidx.compose.material.icons.Icons.Default.Lock else androidx.compose.material.icons.Icons.Default.Close,
+                contentDescription = null
+            )
+        },
+        title = { androidx.compose.material3.Text("Zeitdistanz") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Toggle Lock/Unlock
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (isLocked) {
+                                timeAdjustmentPrefs.setAdjustmentMode(
+                                    com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT
+                                )
+                            } else {
+                                timeAdjustmentPrefs.setAdjustmentMode(
+                                    com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE
+                                )
+                                timeAdjustmentPrefs.setFixedDurationMinutes(tempDuration)
+                            }
+                        }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    androidx.compose.material3.Text(
+                        text = if (isLocked) "Distanz gesperrt" else "Unabhängig",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    androidx.compose.material3.Switch(
+                        checked = isLocked,
+                        onCheckedChange = { locked ->
+                            if (locked) {
+                                timeAdjustmentPrefs.setAdjustmentMode(
+                                    com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.CURRENT_DISTANCE
+                                )
+                                timeAdjustmentPrefs.setFixedDurationMinutes(tempDuration)
+                            } else {
+                                timeAdjustmentPrefs.setAdjustmentMode(
+                                    com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT
+                                )
+                            }
+                        }
+                    )
+                }
+
+                // Duration Input (shown when locked)
+                if (isLocked) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tempDuration.toString(),
+                        onValueChange = { newValue ->
+                            newValue.toIntOrNull()?.let { tempDuration = it }
+                        },
+                        label = { androidx.compose.material3.Text("Distanz (Minuten)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    if (isLocked) {
+                        timeAdjustmentPrefs.setFixedDurationMinutes(tempDuration)
+                    }
+                    onDismiss()
+                }
+            ) {
+                androidx.compose.material3.Text("OK")
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                androidx.compose.material3.Text("Abbrechen")
+            }
+        }
+    )
 }
 
 /**

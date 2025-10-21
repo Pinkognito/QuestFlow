@@ -70,7 +70,9 @@ fun HorizontalWheelTimePicker(
                 text = String.format("%02d:%02d", currentHour, currentMinute),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                maxLines = 1,
+                softWrap = false
             )
         }
 
@@ -221,7 +223,9 @@ fun HorizontalWheelTimePicker(
 
 /**
  * HHMM Input Dialog
- * Enter full time as 4 digits: HHMM (e.g., 1430 for 14:30)
+ * Enter full time as 3-4 digits:
+ * - 3 digits: HMM (e.g., 612 for 06:12)
+ * - 4 digits: HHMM (e.g., 1430 for 14:30)
  */
 @Composable
 fun HHMMInputDialog(
@@ -232,6 +236,7 @@ fun HHMMInputDialog(
 ) {
     var timeInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var lastInvalidInput by remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
 
     // Auto-focus when dialog opens
@@ -239,9 +244,32 @@ fun HHMMInputDialog(
         focusRequester.requestFocus()
     }
 
+    // Helper function to parse and validate time input
+    fun parseTimeInput(input: String): Pair<Int, Int>? {
+        return when (input.length) {
+            3 -> {
+                // HMM format: 612 -> 06:12
+                val hour = input.substring(0, 1).toIntOrNull()
+                val minute = input.substring(1, 3).toIntOrNull()
+                if (hour != null && minute != null && hour in 0..9 && minute in 0..59) {
+                    Pair(hour, minute)
+                } else null
+            }
+            4 -> {
+                // HHMM format: 0612 -> 06:12
+                val hour = input.substring(0, 2).toIntOrNull()
+                val minute = input.substring(2, 4).toIntOrNull()
+                if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
+                    Pair(hour, minute)
+                } else null
+            }
+            else -> null
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Zeit eingeben (HHMM)") },
+        title = { Text("Zeit eingeben") },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -253,7 +281,7 @@ fun HHMMInputDialog(
                 )
 
                 Text(
-                    text = "Format: HHMM (z.B. 1430 für 14:30)",
+                    text = "Format: 3-4 Ziffern (z.B. 612 oder 0612 für 06:12)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -264,28 +292,25 @@ fun HHMMInputDialog(
                         if (input.length <= 4 && input.all { it.isDigit() }) {
                             timeInput = input
                             errorMessage = null
+                            lastInvalidInput = null
                         }
                     },
-                    label = { Text("HHMM") },
-                    placeholder = { Text("1430") },
+                    label = { Text("Zeit") },
+                    placeholder = { Text("612") },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
-                            if (timeInput.length == 4) {
-                                val hour = timeInput.substring(0, 2).toIntOrNull()
-                                val minute = timeInput.substring(2, 4).toIntOrNull()
-                                android.util.Log.d("TimePicker", "HHMM onDone: input='$timeInput', hour=$hour, minute=$minute")
-
-                                if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
-                                    onConfirm(hour, minute)
-                                } else {
-                                    errorMessage = "Ungültige Zeit"
-                                }
-                            } else {
-                                errorMessage = "4 Ziffern erforderlich"
+                            val parsed = parseTimeInput(timeInput)
+                            if (parsed != null) {
+                                onConfirm(parsed.first, parsed.second)
+                            } else if (timeInput.isNotEmpty()) {
+                                // Invalid input - save it, clear field, show error
+                                lastInvalidInput = timeInput
+                                timeInput = ""
+                                errorMessage = "Ungültige Zeit: $lastInvalidInput"
                             }
                         }
                     ),
@@ -313,21 +338,17 @@ fun HHMMInputDialog(
                         timeInput.isEmpty() -> {
                             onConfirm(currentHour, currentMinute)
                         }
-                        // Valid 4-digit input
-                        timeInput.length == 4 -> {
-                            val hour = timeInput.substring(0, 2).toIntOrNull()
-                            val minute = timeInput.substring(2, 4).toIntOrNull()
-                            android.util.Log.d("TimePicker", "HHMM OK clicked: input='$timeInput', hour=$hour, minute=$minute")
-
-                            if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
-                                onConfirm(hour, minute)
-                            } else {
-                                errorMessage = "Ungültige Zeit"
-                            }
-                        }
-                        // Invalid input length
+                        // Try to parse 3 or 4 digit input
                         else -> {
-                            errorMessage = "4 Ziffern erforderlich oder leer lassen"
+                            val parsed = parseTimeInput(timeInput)
+                            if (parsed != null) {
+                                onConfirm(parsed.first, parsed.second)
+                            } else {
+                                // Invalid input - save it, clear field, show error
+                                lastInvalidInput = timeInput
+                                timeInput = ""
+                                errorMessage = "Ungültige Zeit: $lastInvalidInput"
+                            }
                         }
                     }
                 }
