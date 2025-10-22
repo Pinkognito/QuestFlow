@@ -1236,7 +1236,6 @@ fun EditCalendarTaskDialog(
 
     // Tab state
     var selectedTab by remember { mutableStateOf(0) }
-    val tabIcons = listOf("📝", "⏰", "👥", "⚙️", "📜") // Only icons, no text
 
     // Collapsible sections state
     var taskFamilyExpanded by remember { mutableStateOf(true) }
@@ -1528,35 +1527,17 @@ fun EditCalendarTaskDialog(
                     }
                 }
 
-                // TabRow (UNTEN - immer sichtbar) - NUR ICONS
-                ScrollableTabRow(
-                    selectedTabIndex = selectedTab,
-                    modifier = Modifier.fillMaxWidth(),
-                    edgePadding = 0.dp
-                ) {
-                    tabIcons.forEachIndexed { index, icon ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = {
-                                Text(
-                                    text = icon,
-                                    style = MaterialTheme.typography.titleLarge // Larger for better visibility
-                                )
-                            }
-                        )
-                    }
-                }
-
-                // Action Buttons (UNTEN - immer sichtbar)
+                // ACTION BUTTONS ROW (UNTEN - immer sichtbar)
+                // 3 Icon-Only Buttons: Reset | Radial Tab Switcher | Close
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Zurücksetzen Button
-                    TextButton(
+                    // 1. Zurücksetzen Button (Icon Only)
+                    IconButton(
                         onClick = {
                             taskTitle = initialSnapshot.title
                             taskDescription = initialSnapshot.description
@@ -1573,21 +1554,32 @@ fun EditCalendarTaskDialog(
                             autoCompleteParent = initialSnapshot.autoCompleteParent
                             shouldReactivate = initialSnapshot.shouldReactivate
                         },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.secondary
-                        )
+                        modifier = Modifier.size(56.dp)
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            contentDescription = "Zurücksetzen",
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.secondary
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Zurücksetzen")
                     }
 
-                    // Schließen Button
-                    TextButton(
+                    // 2. RADIAL TAB SWITCHER (Center - kompakte Version)
+                    Box(
+                        modifier = Modifier.size(56.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        com.example.questflow.presentation.components.TaskDialogRadialTabSwitcher(
+                            selectedTab = selectedTab,
+                            onTabSelected = { newTab ->
+                                selectedTab = newTab
+                            },
+                            modifier = Modifier.size(56.dp)
+                        )
+                    }
+
+                    // 3. Schließen Button (Icon Only)
+                    IconButton(
                         onClick = {
                             // Update contact links and task-tags if task has an ID
                             calendarLink.taskId?.let { taskId ->
@@ -1595,15 +1587,15 @@ fun EditCalendarTaskDialog(
                                 tasksViewModel.saveTaskContactTags(taskId, taskContactTagsMap)
                             }
                             onDismiss()
-                        }
+                        },
+                        modifier = Modifier.size(56.dp)
                     ) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            contentDescription = "Schließen",
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.error
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Schließen")
                     }
                 }
             }
