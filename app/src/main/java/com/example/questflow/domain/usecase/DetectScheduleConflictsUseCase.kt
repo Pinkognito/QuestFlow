@@ -115,6 +115,12 @@ class DetectScheduleConflictsUseCase @Inject constructor(
                 return@forEach
             }
 
+            // CRITICAL FIX: Skip if this link has EXACTLY the same times as what we're checking
+            // This prevents finding "ourselves" when editing times creates temporary duplicates
+            if (task.startsAt == startTime && task.endsAt == endTime) {
+                return@forEach
+            }
+
             // Check for time overlap
             // Tasks overlap if: start1 < end2 AND start2 < end1
             val hasOverlap = startTime < task.endsAt && endTime > task.startsAt
