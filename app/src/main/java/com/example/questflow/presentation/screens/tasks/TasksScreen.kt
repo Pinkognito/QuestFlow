@@ -2115,10 +2115,17 @@ fun EditCalendarTaskDialog(
 
                     // Duration Row - between start and end
                     item {
+                        val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
+                        var isDistanceLocked by remember {
+                            mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode() != com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+                        }
+
                         com.example.questflow.presentation.components.DurationRow(
                             startDateTime = startDateTime,
                             endDateTime = endDateTime,
                             onEndDateTimeChange = { endDateTime = it },
+                            isLocked = isDistanceLocked,
+                            onLockChange = { isDistanceLocked = it },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

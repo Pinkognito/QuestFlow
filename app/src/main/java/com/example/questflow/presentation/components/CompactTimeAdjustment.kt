@@ -1,10 +1,16 @@
 package com.example.questflow.presentation.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,10 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
@@ -360,69 +370,259 @@ fun CompactTimeAdjustment(
 
 /**
  * Duration Row - Set end time relative to start time
+ * All elements in ONE row: [Current] [Radial] [Custom] [Lock]
  */
 @Composable
 fun DurationRow(
     startDateTime: LocalDateTime,
     endDateTime: LocalDateTime,
     onEndDateTimeChange: (LocalDateTime) -> Unit,
+    isLocked: Boolean,
+    onLockChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var durationMinutes by remember { mutableStateOf(60) }
-    var showDialog by remember { mutableStateOf(false) }
+    // Calculate current duration between start and end
+    val currentDurationMinutes = remember(startDateTime, endDateTime) {
+        java.time.Duration.between(startDateTime, endDateTime).toMinutes().toInt()
+    }
+
+    var customDurationMinutes by remember { mutableStateOf(currentDurationMinutes) }
+    var showInputDialog by remember { mutableStateOf(false) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        // Current duration display (read-only)
+        OutlinedButton(
+            onClick = { /* read-only */ },
+            enabled = false,
+            modifier = Modifier.width(70.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+        ) {
             Text(
-                "Dauer: Ende = Start + $durationMinutes min",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium
-            )
-            val calculatedEnd = startDateTime.plusMinutes(durationMinutes.toLong())
-            Text(
-                "Ergebnis: ${calculatedEnd.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM. HH:mm"))}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
+                "$currentDurationMinutes",
+                style = MaterialTheme.typography.bodySmall
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            // Config button
-            FilledTonalIconButton(
-                onClick = { showDialog = true },
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(Icons.Default.Settings, contentDescription = "Dauer ändern", modifier = Modifier.size(16.dp))
-            }
+        // Radial menu button (compact, no extra space)
+        DurationRadialMenuButton(
+            startDateTime = startDateTime,
+            durationMinutes = customDurationMinutes,
+            onEndDateTimeChange = onEndDateTimeChange,
+            onDurationChange = { customDurationMinutes = it },
+            isLocked = isLocked,
+            onLockChange = { newLockState ->
+                onLockChange(newLockState)
+                if (newLockState) {
+                    timeAdjustmentPrefs.setFixedDurationMinutes(customDurationMinutes)
+                    timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION)
+                } else {
+                    timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+                }
+            },
+            modifier = Modifier.size(36.dp)
+        )
 
-            // Apply button
-            Button(
-                onClick = {
-                    onEndDateTimeChange(startDateTime.plusMinutes(durationMinutes.toLong()))
-                },
-                modifier = Modifier.height(36.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp)
-            ) {
-                Text("Anwenden", style = MaterialTheme.typography.labelSmall)
-            }
+        // Desired duration input field (clickable, editable)
+        OutlinedButton(
+            onClick = { showInputDialog = true },
+            modifier = Modifier.width(70.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+        ) {
+            Text(
+                "$customDurationMinutes",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Lock/Unlock duration button
+        FilledTonalIconButton(
+            onClick = {
+                val newLockState = !isLocked
+                onLockChange(newLockState)
+                if (newLockState) {
+                    timeAdjustmentPrefs.setFixedDurationMinutes(customDurationMinutes)
+                    timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION)
+                } else {
+                    timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+                }
+            },
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.Close,
+                contentDescription = if (isLocked) "Gesperrt" else "Entsperrt",
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 
-    if (showDialog) {
+    // Input dialog for custom duration
+    if (showInputDialog) {
         IncrementConfigDialog(
             title = "Dauer festlegen",
-            currentValue = durationMinutes,
+            currentValue = currentDurationMinutes,
             suggestions = listOf(15, 30, 60, 90, 120, 180, 240, 480),
-            onDismiss = { showDialog = false },
+            onDismiss = { showInputDialog = false },
             onConfirm = { newValue ->
-                durationMinutes = newValue
-                showDialog = false
+                customDurationMinutes = newValue
+                showInputDialog = false
             }
         )
+    }
+}
+
+/**
+ * Radial Menu Button for Duration Actions - COMPACT version for inline use
+ */
+@Composable
+fun DurationRadialMenuButton(
+    startDateTime: LocalDateTime,
+    durationMinutes: Int,
+    onEndDateTimeChange: (LocalDateTime) -> Unit,
+    onDurationChange: (Int) -> Unit,
+    isLocked: Boolean,
+    onLockChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var isMenuActive by remember { mutableStateOf(false) }
+    var selectedAction by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // Dynamic actions based on lock state
+    val actions = listOf(
+        RadialMenuAction(id = "apply", label = "Anwenden", angle = 0f),      // Rechts (0°)
+        RadialMenuAction(
+            id = "lock",
+            label = if (isLocked) "Entsperren" else "Sperren",
+            angle = 90f
+        ),       // Unten (90°)
+        RadialMenuAction(id = "quick_30", label = "30min", angle = 180f),    // Links (180°)
+        RadialMenuAction(id = "quick_60", label = "60min", angle = 270f)     // Oben (270°)
+    )
+
+    // COMPACT: No wrapper box, just the button itself
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        // Center button
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    color = if (isMenuActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = CircleShape
+                )
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            isMenuActive = true
+                            selectedAction = null
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffset += dragAmount
+
+                            // Calculate angle
+                            val angle = (Math.toDegrees(kotlin.math.atan2(dragOffset.y.toDouble(), dragOffset.x.toDouble())) + 360) % 360
+
+                            // Find closest action
+                            selectedAction = actions.minByOrNull { action ->
+                                val diff = kotlin.math.abs(angle - action.angle)
+                                kotlin.math.min(diff, 360 - diff)
+                            }?.id
+                        },
+                        onDragEnd = {
+                            when (selectedAction) {
+                                "apply" -> {
+                                    onEndDateTimeChange(startDateTime.plusMinutes(durationMinutes.toLong()))
+                                    android.widget.Toast.makeText(context, "Ende angepasst ($durationMinutes min)", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                "lock" -> {
+                                    // Toggle lock state
+                                    val newLockState = !isLocked
+                                    onLockChange(newLockState)
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        if (newLockState) "Dauer gesperrt ($durationMinutes min)" else "Dauer entsperrt",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                "quick_30" -> {
+                                    onDurationChange(30)
+                                    android.widget.Toast.makeText(context, "30 Minuten", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                "quick_60" -> {
+                                    onDurationChange(60)
+                                    android.widget.Toast.makeText(context, "60 Minuten", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            isMenuActive = false
+                            dragOffset = Offset.Zero
+                            selectedAction = null
+                        },
+                        onDragCancel = {
+                            isMenuActive = false
+                            dragOffset = Offset.Zero
+                            selectedAction = null
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "Dauer-Optionen",
+                tint = if (isMenuActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Radial menu options
+        if (isMenuActive) {
+            actions.forEach { action ->
+                val angleRad = Math.toRadians(action.angle.toDouble())
+                val radius = 50.dp  // Smaller radius to fit within container
+                val offsetX = (radius.value * kotlin.math.cos(angleRad)).dp
+                val offsetY = (radius.value * kotlin.math.sin(angleRad)).dp
+                val isSelected = selectedAction == action.id
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = offsetX, y = offsetY)
+                        .size(if (isSelected) 44.dp else 40.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        tonalElevation = 4.dp
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Text(
+                                text = action.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1124,7 +1124,7 @@ private fun InlineDateRadialMenu(
     }
 }
 
-private data class RadialMenuAction(
+data class RadialMenuAction(
     val id: String,
     val label: String,
     val angle: Float

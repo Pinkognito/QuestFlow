@@ -58,11 +58,16 @@ fun TaskDialogTimeTab(
     onCalendarExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Time distance lock state
+    // Time distance lock state - CENTRAL state for all lock-related UI
     val context = androidx.compose.ui.platform.LocalContext.current
     val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
     var isDistanceLocked by remember {
         mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode() != com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+    }
+
+    // Callback to update lock state everywhere
+    val onLockChange: (Boolean) -> Unit = { newLockState ->
+        isDistanceLocked = newLockState
     }
 
     // Collapsible section states (saved in SharedPreferences)
@@ -93,7 +98,7 @@ fun TaskDialogTimeTab(
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // MonthViewDatePicker - Collapsible Calendar (Default: Expanded)
         item {
@@ -161,10 +166,11 @@ fun TaskDialogTimeTab(
                     },
                     isDistanceLocked = isDistanceLocked,
                     onDistanceLockToggle = {
-                        // Toggle lock state
-                        isDistanceLocked = !isDistanceLocked
+                        // Toggle lock state using central callback
+                        val newLockState = !isDistanceLocked
+                        onLockChange(newLockState)
                         // Update preferences
-                        if (isDistanceLocked) {
+                        if (newLockState) {
                             // Calculate current duration and set FIXED_DURATION mode
                             val durationMinutes = java.time.Duration.between(startDateTime, endDateTime).toMinutes().toInt()
                             timeAdjustmentPrefs.setFixedDurationMinutes(durationMinutes)
@@ -285,12 +291,14 @@ fun TaskDialogTimeTab(
             }
         }
 
-        // Duration Row - between start and end
+        // Duration Row - ALL in one row: [Current] [Radial] [Custom] [Lock]
         item {
             com.example.questflow.presentation.components.DurationRow(
                 startDateTime = startDateTime,
                 endDateTime = endDateTime,
                 onEndDateTimeChange = onEndDateTimeChange,
+                isLocked = isDistanceLocked,
+                onLockChange = onLockChange,
                 modifier = Modifier.fillMaxWidth()
             )
         }
