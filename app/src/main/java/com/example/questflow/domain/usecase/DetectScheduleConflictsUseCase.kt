@@ -22,13 +22,15 @@ class DetectScheduleConflictsUseCase @Inject constructor(
      * @param endTime End of the proposed time slot
      * @param excludeEventId Optional event ID to exclude (for editing existing calendar events)
      * @param excludeTaskId Optional task ID to exclude (for editing existing tasks)
+     * @param excludeLinkId Optional CalendarEventLink ID to exclude (for editing existing calendar links)
      * @return List of conflicting events (empty if no conflicts) - includes calendar events, TimeBlocks AND QuestFlow Tasks converted to CalendarEvent
      */
     suspend operator fun invoke(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
         excludeEventId: Long? = null,
-        excludeTaskId: Long? = null
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ): List<CalendarEvent> {
         // Query all calendar events in the date range
         val startDate = startTime.toLocalDate()
@@ -98,12 +100,17 @@ class DetectScheduleConflictsUseCase @Inject constructor(
         val tasksInRange = calendarEventLinkDao.getEventsInRangeSync(startDateTimeString, endDateTimeString)
 
         tasksInRange.forEach { task ->
-            // Skip if this is the task we're editing
+            // Skip if this is the CalendarEventLink we're editing (primary exclusion)
+            if (excludeLinkId != null && task.id == excludeLinkId) {
+                return@forEach
+            }
+
+            // Skip if this is the task we're editing (for tasks with multiple links)
             if (excludeTaskId != null && task.taskId == excludeTaskId) {
                 return@forEach
             }
 
-            // Skip if this is linked to the calendar event we're editing
+            // Skip if this is linked to the calendar event we're editing (for synced events)
             if (excludeEventId != null && task.calendarEventId == excludeEventId) {
                 return@forEach
             }
@@ -249,9 +256,10 @@ class DetectScheduleConflictsUseCase @Inject constructor(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
         excludeEventId: Long? = null,
-        excludeTaskId: Long? = null
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ): Boolean {
-        val conflicts = invoke(startTime, endTime, excludeEventId, excludeTaskId)
+        val conflicts = invoke(startTime, endTime, excludeEventId, excludeTaskId, excludeLinkId)
         return conflicts.isEmpty()
     }
 }

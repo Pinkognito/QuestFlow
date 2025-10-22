@@ -1219,14 +1219,15 @@ fun EditCalendarTaskDialog(
 
     // Check for conflicts whenever date/time changes (exclude current event AND current task)
     var rawScheduleConflicts by remember { mutableStateOf<List<com.example.questflow.data.calendar.CalendarEvent>>(emptyList()) }
-    LaunchedEffect(startDateTime, endDateTime, currentTask?.id) {
+    LaunchedEffect(startDateTime, endDateTime, currentTask?.id, calendarLink.id) {
         val hasPermission = viewModel.hasCalendarPermission.value
         if (hasPermission) {
             val conflicts = viewModel.checkScheduleConflicts(
                 startTime = startDateTime,
                 endTime = endDateTime,
                 excludeEventId = calendarLink.calendarEventId,
-                excludeTaskId = currentTask?.id
+                excludeTaskId = currentTask?.id,
+                excludeLinkId = calendarLink.id
             )
             rawScheduleConflicts = conflicts
             scheduleConflicts = conflicts
