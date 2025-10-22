@@ -603,11 +603,15 @@ private fun MonthCalendarGrid(
 
     // Track button position for overlay rendering
     var buttonPosition by remember { mutableStateOf(Offset.Zero) }
+    var gridPosition by remember { mutableStateOf(Offset.Zero) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(240.dp) // ~6 weeks * 40dp per row (kompakter)
+            .onGloballyPositioned { coordinates ->
+                gridPosition = coordinates.positionInWindow()
+            }
             .background(
                 color = MaterialTheme.colorScheme.surface,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(
@@ -646,8 +650,12 @@ private fun MonthCalendarGrid(
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     showButton = activeButtonDate == date,
-                    onButtonRequest = { position ->
-                        buttonPosition = position
+                    onButtonRequest = { cellWindowPosition ->
+                        // Calculate position relative to grid container
+                        buttonPosition = Offset(
+                            x = cellWindowPosition.x - gridPosition.x,
+                            y = cellWindowPosition.y - gridPosition.y
+                        )
                         onButtonRequest(date)
                     },
                     onSetAsStart = { onSetAsStart(date) },
