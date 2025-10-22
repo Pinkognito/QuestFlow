@@ -32,6 +32,10 @@ class DetectScheduleConflictsUseCase @Inject constructor(
         excludeTaskId: Long? = null,
         excludeLinkId: Long? = null
     ): List<CalendarEvent> {
+        android.util.Log.d("ConflictDetection", "====== CONFLICT CHECK START ======")
+        android.util.Log.d("ConflictDetection", "Checking: $startTime → $endTime")
+        android.util.Log.d("ConflictDetection", "Exclude: linkId=$excludeLinkId, taskId=$excludeTaskId, eventId=$excludeEventId")
+
         // Query all calendar events in the date range
         val startDate = startTime.toLocalDate()
         val endDate = endTime.toLocalDate()
@@ -98,26 +102,33 @@ class DetectScheduleConflictsUseCase @Inject constructor(
         val endDateTimeString = endTime.plusDays(1).toString() // Add 1 day to include endTime
 
         val tasksInRange = calendarEventLinkDao.getEventsInRangeSync(startDateTimeString, endDateTimeString)
+        android.util.Log.d("ConflictDetection", "Found ${tasksInRange.size} tasks in range")
 
         tasksInRange.forEach { task ->
+            android.util.Log.d("ConflictDetection", "Checking Task: id=${task.id}, taskId=${task.taskId}, ${task.startsAt} → ${task.endsAt}, title='${task.title}'")
+
             // Skip if this is the CalendarEventLink we're editing (primary exclusion)
             if (excludeLinkId != null && task.id == excludeLinkId) {
+                android.util.Log.d("ConflictDetection", "  ✓ SKIP: Matches excludeLinkId")
                 return@forEach
             }
 
             // Skip if this is the task we're editing (for tasks with multiple links)
             if (excludeTaskId != null && task.taskId == excludeTaskId) {
+                android.util.Log.d("ConflictDetection", "  ✓ SKIP: Matches excludeTaskId")
                 return@forEach
             }
 
             // Skip if this is linked to the calendar event we're editing (for synced events)
             if (excludeEventId != null && task.calendarEventId == excludeEventId) {
+                android.util.Log.d("ConflictDetection", "  ✓ SKIP: Matches excludeEventId")
                 return@forEach
             }
 
             // CRITICAL FIX: Skip if this link has EXACTLY the same times as what we're checking
             // This prevents finding "ourselves" when editing times creates temporary duplicates
             if (task.startsAt == startTime && task.endsAt == endTime) {
+                android.util.Log.d("ConflictDetection", "  ✓ SKIP: Exact time match (self-exclusion)")
                 return@forEach
             }
 
@@ -126,12 +137,20 @@ class DetectScheduleConflictsUseCase @Inject constructor(
             val hasOverlap = startTime < task.endsAt && endTime > task.startsAt
 
             if (hasOverlap) {
+                android.util.Log.d("ConflictDetection", "  ❌ CONFLICT: Task overlaps!")
                 taskConflicts.add(convertTaskToCalendarEvent(task))
+            } else {
+                android.util.Log.d("ConflictDetection", "  ✓ NO overlap")
             }
         }
 
         // Combine event, TimeBlock AND Task conflicts
-        return eventConflicts + timeBlockConflicts + taskConflicts
+        val allConflicts = eventConflicts + timeBlockConflicts + taskConflicts
+        android.util.Log.d("ConflictDetection", "====== RESULT: ${allConflicts.size} total conflicts ======")
+        allConflicts.forEach { conflict ->
+            android.util.Log.d("ConflictDetection", "  - ${conflict.title} (${conflict.startTime} → ${conflict.endTime})")
+        }
+        return allConflicts
     }
 
     /**
