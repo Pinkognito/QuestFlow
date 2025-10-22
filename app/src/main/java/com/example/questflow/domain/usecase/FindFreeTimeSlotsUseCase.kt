@@ -117,6 +117,7 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
 
     /**
      * Find the next available free time slot starting from a given date/time
+     * IMPORTANT: Searches from START OF DAY to find ALL available slots
      */
     suspend fun findNextAvailableSlot(
         requiredDurationMinutes: Long,
@@ -126,11 +127,13 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         excludeTaskId: Long? = null,
         excludeLinkId: Long? = null
     ): FreeSlot? {
-        val startDate = startSearchFrom.toLocalDate()
-        val endDate = startDate.plusDays(maxDaysToSearch.toLong())
+        // CRITICAL FIX: Start search from beginning of the day
+        val searchStartDate = startSearchFrom.toLocalDate()
+        val actualSearchStart = LocalDateTime.of(searchStartDate, LocalTime.MIN)
+        val endDate = searchStartDate.plusDays(maxDaysToSearch.toLong())
 
         val dailyFreeTime = invoke(
-            startDate = startDate,
+            startDate = searchStartDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
             excludeEventId = excludeEventId,
@@ -141,8 +144,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         for (day in dailyFreeTime) {
             for (slot in day.freeSlots) {
                 if (slot.durationMinutes >= requiredDurationMinutes) {
-                    // If slot is on or after startSearchFrom
-                    if (slot.startTime >= startSearchFrom) {
+                    // Accept slots that start at/after start of search day
+                    if (slot.startTime >= actualSearchStart) {
                         return slot
                     }
                 }
@@ -154,6 +157,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
 
     /**
      * Suggest multiple time slots for scheduling
+     * IMPORTANT: Searches from START OF DAY, not from startSearchFrom time
+     * This ensures we find ALL free slots in the day, not just after current task time
      */
     suspend fun suggestTimeSlots(
         requiredDurationMinutes: Long,
@@ -163,11 +168,14 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         excludeTaskId: Long? = null,
         excludeLinkId: Long? = null
     ): List<FreeSlot> {
-        val startDate = startSearchFrom.toLocalDate()
-        val endDate = startDate.plusDays(14) // Search up to 2 weeks
+        // CRITICAL FIX: Start search from beginning of the day, not from specific time
+        // This allows finding free slots throughout the entire day
+        val searchStartDate = startSearchFrom.toLocalDate()
+        val actualSearchStart = LocalDateTime.of(searchStartDate, LocalTime.MIN)
+        val endDate = searchStartDate.plusDays(14) // Search up to 2 weeks
 
         val dailyFreeTime = invoke(
-            startDate = startDate,
+            startDate = searchStartDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
             excludeEventId = excludeEventId,
@@ -179,7 +187,8 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
 
         for (day in dailyFreeTime) {
             for (slot in day.freeSlots) {
-                if (slot.durationMinutes >= requiredDurationMinutes && slot.startTime >= startSearchFrom) {
+                // Accept slots that are >= required duration AND start at/after start of search day
+                if (slot.durationMinutes >= requiredDurationMinutes && slot.startTime >= actualSearchStart) {
                     suggestions.add(slot)
                     if (suggestions.size >= maxSuggestions) {
                         return suggestions
