@@ -10,11 +10,15 @@ import kotlin.math.min
 
 /**
  * Use case to find free time slots in the calendar
- * Now uses TimeBlocks instead of WorkingHours
+ * Now uses DetectScheduleConflictsUseCase to include ALL conflict types:
+ * - External calendar events (Google Calendar, etc.)
+ * - TimeBlocks (blocked time windows)
+ * - QuestFlow Tasks (CalendarEventLinks)
  */
 class FindFreeTimeSlotsUseCase @Inject constructor(
     private val calendarManager: CalendarManager,
-    private val timeBlockRepository: TimeBlockRepository
+    private val timeBlockRepository: TimeBlockRepository,
+    private val detectScheduleConflictsUseCase: DetectScheduleConflictsUseCase
 ) {
     data class FreeSlot(
         val startTime: LocalDateTime,
@@ -46,17 +50,15 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         minDurationMinutes: Long = 30,
         workingHoursStart: LocalTime? = null,
         workingHoursEnd: LocalTime? = null,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ): List<DailyFreeTime> {
         val (effectiveStart, effectiveEnd) = if (workingHoursStart != null && workingHoursEnd != null) {
             Pair(workingHoursStart, workingHoursEnd)
         } else {
             getActiveTimeWindow()
         }
-
-        val allEvents = calendarManager.getAllCalendarEvents(startDate, endDate)
-            .filter { event -> excludeEventId == null || event.id != excludeEventId }
-            .sortedBy { it.startTime }
 
         val dailyResults = mutableListOf<DailyFreeTime>()
         var currentDate = startDate
@@ -65,26 +67,29 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             val dayStart = LocalDateTime.of(currentDate, effectiveStart)
             val dayEnd = LocalDateTime.of(currentDate, effectiveEnd)
 
-            val dayEvents = allEvents.filter { event ->
-                val eventStart = event.startTime
-                val eventEnd = event.endTime
-                eventStart.toLocalDate() == currentDate || eventEnd.toLocalDate() == currentDate
-            }
+            // Use DetectScheduleConflictsUseCase to get ALL conflicts (Events, TimeBlocks, Tasks)
+            val allConflicts = detectScheduleConflictsUseCase(
+                startTime = dayStart,
+                endTime = dayEnd,
+                excludeEventId = excludeEventId,
+                excludeTaskId = excludeTaskId,
+                excludeLinkId = excludeLinkId
+            ).sortedBy { it.startTime }
 
             val freeSlots = mutableListOf<FreeSlot>()
             var lastEnd = dayStart
 
-            dayEvents.forEach { event ->
-                val eventStart = maxOf(event.startTime, dayStart)
-                val eventEnd = minOf(event.endTime, dayEnd)
+            allConflicts.forEach { conflict ->
+                val conflictStart = maxOf(conflict.startTime, dayStart)
+                val conflictEnd = minOf(conflict.endTime, dayEnd)
 
-                if (eventStart.isAfter(lastEnd)) {
-                    val gapMinutes = java.time.Duration.between(lastEnd, eventStart).toMinutes()
+                if (conflictStart.isAfter(lastEnd)) {
+                    val gapMinutes = java.time.Duration.between(lastEnd, conflictStart).toMinutes()
                     if (gapMinutes >= minDurationMinutes) {
-                        freeSlots.add(FreeSlot(lastEnd, eventStart, gapMinutes))
+                        freeSlots.add(FreeSlot(lastEnd, conflictStart, gapMinutes))
                     }
                 }
-                lastEnd = maxOf(lastEnd, eventEnd)
+                lastEnd = maxOf(lastEnd, conflictEnd)
             }
 
             if (lastEnd.isBefore(dayEnd)) {
@@ -117,7 +122,9 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         requiredDurationMinutes: Long,
         startSearchFrom: LocalDateTime,
         maxDaysToSearch: Int = 7,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ): FreeSlot? {
         val startDate = startSearchFrom.toLocalDate()
         val endDate = startDate.plusDays(maxDaysToSearch.toLong())
@@ -126,7 +133,9 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             startDate = startDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
-            excludeEventId = excludeEventId
+            excludeEventId = excludeEventId,
+            excludeTaskId = excludeTaskId,
+            excludeLinkId = excludeLinkId
         )
 
         for (day in dailyFreeTime) {
@@ -150,7 +159,9 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
         requiredDurationMinutes: Long,
         startSearchFrom: LocalDateTime,
         maxSuggestions: Int = 5,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ): List<FreeSlot> {
         val startDate = startSearchFrom.toLocalDate()
         val endDate = startDate.plusDays(14) // Search up to 2 weeks
@@ -159,7 +170,9 @@ class FindFreeTimeSlotsUseCase @Inject constructor(
             startDate = startDate,
             endDate = endDate,
             minDurationMinutes = requiredDurationMinutes,
-            excludeEventId = excludeEventId
+            excludeEventId = excludeEventId,
+            excludeTaskId = excludeTaskId,
+            excludeLinkId = excludeLinkId
         )
 
         val suggestions = mutableListOf<FreeSlot>()

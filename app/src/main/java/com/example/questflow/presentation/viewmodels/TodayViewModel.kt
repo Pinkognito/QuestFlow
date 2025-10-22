@@ -574,12 +574,16 @@ class TodayViewModel @Inject constructor(
         startDate: java.time.LocalDate,
         endDate: java.time.LocalDate,
         minDurationMinutes: Long = 30,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ) = findFreeTimeSlotsUseCase(
         startDate = startDate,
         endDate = endDate,
         minDurationMinutes = minDurationMinutes,
-        excludeEventId = excludeEventId
+        excludeEventId = excludeEventId,
+        excludeTaskId = excludeTaskId,
+        excludeLinkId = excludeLinkId
     )
 
     /**
@@ -589,12 +593,16 @@ class TodayViewModel @Inject constructor(
         requiredDurationMinutes: Long,
         startSearchFrom: LocalDateTime = LocalDateTime.now(),
         maxSuggestions: Int = 5,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null,
+        excludeLinkId: Long? = null
     ) = findFreeTimeSlotsUseCase.suggestTimeSlots(
         requiredDurationMinutes = requiredDurationMinutes,
         startSearchFrom = startSearchFrom,
         maxSuggestions = maxSuggestions,
-        excludeEventId = excludeEventId
+        excludeEventId = excludeEventId,
+        excludeTaskId = excludeTaskId,
+        excludeLinkId = excludeLinkId
     )
 
     /**

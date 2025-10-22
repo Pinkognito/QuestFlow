@@ -1474,13 +1474,17 @@ fun EditCalendarTaskDialog(
                                             startDate = startDate,
                                             endDate = endDate,
                                             minDurationMinutes = durationMinutes,
-                                            excludeEventId = calendarLink.calendarEventId
+                                            excludeEventId = calendarLink.calendarEventId,
+                                            excludeTaskId = currentTask?.id,
+                                            excludeLinkId = calendarLink.id
                                         )
                                         timeSlotSuggestions = viewModel.suggestTimeSlots(
                                             requiredDurationMinutes = durationMinutes,
                                             startSearchFrom = startDateTime,
                                             maxSuggestions = 5,
-                                            excludeEventId = calendarLink.calendarEventId
+                                            excludeEventId = calendarLink.calendarEventId,
+                                            excludeTaskId = currentTask?.id,
+                                            excludeLinkId = calendarLink.id
                                         )
                                         showTimeSlotDialog = true
                                     }
@@ -2232,7 +2236,9 @@ fun EditCalendarTaskDialog(
                                                     startDate = startDate,
                                                     endDate = endDate,
                                                     minDurationMinutes = durationMinutes,
-                                                    excludeEventId = calendarLink.calendarEventId
+                                                    excludeEventId = calendarLink.calendarEventId,
+                                                    excludeTaskId = currentTask?.id,
+                                                    excludeLinkId = calendarLink.id
                                                 )
 
                                                 // Get suggestions
@@ -2240,7 +2246,9 @@ fun EditCalendarTaskDialog(
                                                     requiredDurationMinutes = durationMinutes,
                                                     startSearchFrom = startDateTime,
                                                     maxSuggestions = 5,
-                                                    excludeEventId = calendarLink.calendarEventId
+                                                    excludeEventId = calendarLink.calendarEventId,
+                                                    excludeTaskId = currentTask?.id,
+                                                    excludeLinkId = calendarLink.id
                                                 )
 
                                                 showTimeSlotDialog = true
