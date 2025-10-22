@@ -1,12 +1,18 @@
 package com.example.questflow.presentation.screens.metadata
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -18,12 +24,19 @@ import com.example.questflow.data.database.entity.*
 import com.example.questflow.presentation.AppViewModel
 import com.example.questflow.presentation.components.QuestFlowTopBar
 import com.example.questflow.presentation.viewmodels.MetadataLibraryViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Main screen for managing the Metadata Library
  * Displays tabs for different metadata types with CRUD operations
+ *
+ * OPTIMIZED (2025-10-22):
+ * - HorizontalPager for lazy loading (only active tab rendered)
+ * - Scroll state preservation per tab
+ * - Auto-preview on swipe (smooth transitions)
+ * - Smaller tab icons for better visibility
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MetadataLibraryScreen(
     appViewModel: AppViewModel,
@@ -35,7 +48,6 @@ fun MetadataLibraryScreen(
     val categories by appViewModel.categories.collectAsState()
     val globalStats by appViewModel.globalStats.collectAsState()
 
-    var selectedTabIndex by remember { mutableStateOf(0) }
     var previousXp by remember { mutableStateOf(globalStats?.xp ?: 0L) }
 
     // Track XP changes for animation
@@ -58,6 +70,19 @@ fun MetadataLibraryScreen(
         MetadataTab("Dateien", Icons.Default.Settings, MetadataType.FILE_ATTACHMENT)
     )
 
+    // Pager state for smooth swiping and auto-preview
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { tabs.size })
+    val coroutineScope = rememberCoroutineScope()
+
+    // Scroll states for EACH tab (preserved during tab switches)
+    val scrollStates = remember {
+        mutableStateMapOf<Int, LazyListState>().apply {
+            tabs.indices.forEach { index ->
+                this[index] = LazyListState()
+            }
+        }
+    }
+
     Scaffold(
         topBar = if (showTopBar) {
             {
@@ -75,17 +100,21 @@ fun MetadataLibraryScreen(
                         previousXp = previousXp
                     )
 
-                    // Scrollable Tab Row
+                    // Scrollable Tab Row - SMALLER ICONS (16dp instead of default 24dp)
                     ScrollableTabRow(
-                        selectedTabIndex = selectedTabIndex,
+                        selectedTabIndex = pagerState.currentPage,
                         edgePadding = 0.dp
                     ) {
                         tabs.forEachIndexed { index, tab ->
                             Tab(
-                                selected = selectedTabIndex == index,
-                                onClick = { selectedTabIndex = index },
-                                text = { Text(tab.title) },
-                                icon = { Icon(tab.icon, contentDescription = tab.title) }
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                text = { Text(tab.title, style = MaterialTheme.typography.labelSmall) },
+                                icon = { Icon(tab.icon, contentDescription = tab.title, modifier = Modifier.size(16.dp)) }
                             )
                         }
                     }
@@ -93,36 +122,45 @@ fun MetadataLibraryScreen(
             }
         } else {
             {
-                // Just the tab row when embedded
+                // Just the tab row when embedded - SMALLER ICONS
                 ScrollableTabRow(
-                    selectedTabIndex = selectedTabIndex,
+                    selectedTabIndex = pagerState.currentPage,
                     edgePadding = 0.dp
                 ) {
                     tabs.forEachIndexed { index, tab ->
                         Tab(
-                            selected = selectedTabIndex == index,
-                            onClick = { selectedTabIndex = index },
-                            text = { Text(tab.title) },
-                            icon = { Icon(tab.icon, contentDescription = tab.title) }
+                            selected = pagerState.currentPage == index,
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(index)
+                                }
+                            },
+                            text = { Text(tab.title, style = MaterialTheme.typography.labelSmall) },
+                            icon = { Icon(tab.icon, contentDescription = tab.title, modifier = Modifier.size(16.dp)) }
                         )
                     }
                 }
             }
         }
     ) { paddingValues ->
-        Box(
+        // HorizontalPager for LAZY LOADING (only active tab + adjacent rendered)
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-        ) {
-            when (tabs[selectedTabIndex].type) {
-                MetadataType.LOCATION -> LocationTab(viewModel)
+        ) { pageIndex ->
+            // Get or create scroll state for this page
+            val scrollState = scrollStates.getOrPut(pageIndex) { LazyListState() }
+
+            when (tabs[pageIndex].type) {
+                MetadataType.LOCATION -> LocationTab(viewModel, scrollState)
                 MetadataType.CONTACT -> ContactTab(viewModel)
-                MetadataType.PHONE -> PhoneTab(viewModel)
+                MetadataType.PHONE -> PhoneTab(viewModel, scrollState)
                 MetadataType.ADDRESS -> AddressTab(viewModel)
                 MetadataType.EMAIL -> EmailTab(viewModel)
                 MetadataType.URL -> UrlTab(viewModel)
-                MetadataType.NOTE -> NoteTab(viewModel)
+                MetadataType.NOTE -> NoteTab(viewModel, scrollState)
                 MetadataType.FILE_ATTACHMENT -> FileTab(viewModel)
             }
         }
@@ -137,7 +175,7 @@ private data class MetadataTab(
 
 // Location Tab
 @Composable
-private fun LocationTab(viewModel: MetadataLibraryViewModel) {
+private fun LocationTab(viewModel: MetadataLibraryViewModel, scrollState: LazyListState = rememberLazyListState()) {
     val locations by viewModel.locations.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -145,6 +183,7 @@ private fun LocationTab(viewModel: MetadataLibraryViewModel) {
         items = locations,
         onAddClick = { showAddDialog = true },
         emptyText = "Keine Standorte vorhanden",
+        scrollState = scrollState,
         itemContent = { location ->
             LocationCard(
                 location = location,
@@ -166,7 +205,7 @@ private fun LocationTab(viewModel: MetadataLibraryViewModel) {
 
 // Phone Tab
 @Composable
-private fun PhoneTab(viewModel: MetadataLibraryViewModel) {
+private fun PhoneTab(viewModel: MetadataLibraryViewModel, scrollState: LazyListState = rememberLazyListState()) {
     val phoneNumbers by viewModel.phoneNumbers.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -174,6 +213,7 @@ private fun PhoneTab(viewModel: MetadataLibraryViewModel) {
         items = phoneNumbers,
         onAddClick = { showAddDialog = true },
         emptyText = "Keine Telefonnummern vorhanden",
+        scrollState = scrollState,
         itemContent = { phone ->
             PhoneCard(
                 phone = phone,
@@ -195,7 +235,7 @@ private fun PhoneTab(viewModel: MetadataLibraryViewModel) {
 
 // Note Tab
 @Composable
-private fun NoteTab(viewModel: MetadataLibraryViewModel) {
+private fun NoteTab(viewModel: MetadataLibraryViewModel, scrollState: LazyListState = rememberLazyListState()) {
     val notes by viewModel.notes.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -203,6 +243,7 @@ private fun NoteTab(viewModel: MetadataLibraryViewModel) {
         items = notes,
         onAddClick = { showAddDialog = true },
         emptyText = "Keine Notizen vorhanden",
+        scrollState = scrollState,
         itemContent = { note ->
             NoteCard(
                 note = note,
@@ -277,12 +318,13 @@ private fun FileTab(viewModel: MetadataLibraryViewModel) {
     }
 }
 
-// Generic Tab Content Layout
+// Generic Tab Content Layout - WITH SCROLL STATE
 @Composable
 private fun <T> MetadataTabContent(
     items: List<T>,
     onAddClick: () -> Unit,
     emptyText: String,
+    scrollState: LazyListState = rememberLazyListState(),
     itemContent: @Composable (T) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -308,6 +350,7 @@ private fun <T> MetadataTabContent(
             }
         } else {
             LazyColumn(
+                state = scrollState, // USE PRESERVED SCROLL STATE!
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
