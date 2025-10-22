@@ -44,6 +44,7 @@ fun TaskDialogTimeTab(
     onEndMinuteIncrementChange: (Int) -> Unit,
     scheduleConflicts: List<CalendarEventLinkEntity>,
     onFindFreeTimesClick: () -> Unit,
+    onShowConflictDetails: (() -> Unit)? = null,
     isRecurring: Boolean,
     onIsRecurringChange: (Boolean) -> Unit,
     recurringConfig: RecurringConfig,
@@ -198,9 +199,17 @@ fun TaskDialogTimeTab(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Warning icon + count
+                    // Warning icon + count (CLICKABLE if callback provided)
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(
+                                if (onShowConflictDetails != null) {
+                                    Modifier.clickable { onShowConflictDetails() }
+                                } else {
+                                    Modifier
+                                }
+                            ),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -220,6 +229,14 @@ fun TaskDialogTimeTab(
                             color = overlapColor,
                             fontWeight = FontWeight.Medium
                         )
+                        if (onShowConflictDetails != null) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowRight,
+                                contentDescription = "Details anzeigen",
+                                tint = overlapColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     // Find free times button

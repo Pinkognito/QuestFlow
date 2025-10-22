@@ -1218,14 +1218,17 @@ fun EditCalendarTaskDialog(
     var timeSlotSuggestions by remember { mutableStateOf<List<com.example.questflow.domain.usecase.FindFreeTimeSlotsUseCase.FreeSlot>>(emptyList()) }
 
     // Check for conflicts whenever date/time changes (exclude current event)
+    var rawScheduleConflicts by remember { mutableStateOf<List<com.example.questflow.data.calendar.CalendarEvent>>(emptyList()) }
     LaunchedEffect(startDateTime, endDateTime) {
         val hasPermission = viewModel.hasCalendarPermission.value
         if (hasPermission) {
-            scheduleConflicts = viewModel.checkScheduleConflicts(
+            val conflicts = viewModel.checkScheduleConflicts(
                 startTime = startDateTime,
                 endTime = endDateTime,
                 excludeEventId = calendarLink.calendarEventId
             )
+            rawScheduleConflicts = conflicts
+            scheduleConflicts = conflicts
         }
     }
 
@@ -1244,6 +1247,9 @@ fun EditCalendarTaskDialog(
     val collapsePrefs = remember { context.getSharedPreferences("task_dialog_collapse_state", android.content.Context.MODE_PRIVATE) }
     var taskFamilyExpanded by remember { mutableStateOf(true) }
     var calendarExpanded by remember { mutableStateOf(collapsePrefs.getBoolean("calendar_expanded", true)) } // Load from prefs
+
+    // Conflict details dialog state
+    var showConflictDetailsDialog by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1476,6 +1482,9 @@ fun EditCalendarTaskDialog(
                                         )
                                         showTimeSlotDialog = true
                                     }
+                                },
+                                onShowConflictDetails = {
+                                    showConflictDetailsDialog = true
                                 },
                                 isRecurring = isRecurring,
                                 onIsRecurringChange = { isRecurring = it },
@@ -2987,6 +2996,22 @@ fun EditCalendarTaskDialog(
             inheritFromTask = currentTask,  // Inherit category from parent
             inheritFromCalendarLink = calendarLink,  // Inherit time from parent
             occupancyCalculator = occupancyCalculator
+        )
+    }
+
+    // Conflict details dialog
+    if (showConflictDetailsDialog && rawScheduleConflicts.isNotEmpty()) {
+        com.example.questflow.presentation.components.ConflictDetailsDialog(
+            conflicts = rawScheduleConflicts,
+            taskStart = startDateTime,
+            taskEnd = endDateTime,
+            onDismiss = { showConflictDetailsDialog = false },
+            onNavigateToTask = { taskId ->
+                showConflictDetailsDialog = false
+                // Find and open the conflicting task
+                // Note: Navigation to task would require additional callback from parent
+                android.util.Log.d("ConflictDialog", "Navigate to task: $taskId")
+            }
         )
     }
 }

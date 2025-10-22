@@ -2,22 +2,25 @@ package com.example.questflow.domain.usecase
 
 import com.example.questflow.data.calendar.CalendarEvent
 import com.example.questflow.data.calendar.CalendarManager
+import com.example.questflow.data.repository.TimeBlockRepository
 import java.time.LocalDateTime
+import java.time.LocalTime
 import javax.inject.Inject
 
 /**
- * Use case to detect scheduling conflicts with existing calendar events
- * across ALL calendars (Google Calendar, QuestFlow, Outlook, etc.)
+ * Use case to detect scheduling conflicts with existing calendar events AND TimeBlocks
+ * across ALL calendars (Google Calendar, QuestFlow, Outlook, etc.) plus TimeBlocks
  */
 class DetectScheduleConflictsUseCase @Inject constructor(
-    private val calendarManager: CalendarManager
+    private val calendarManager: CalendarManager,
+    private val timeBlockRepository: TimeBlockRepository
 ) {
     /**
-     * Check if a time slot conflicts with existing events
+     * Check if a time slot conflicts with existing events AND TimeBlocks
      * @param startTime Start of the proposed time slot
      * @param endTime End of the proposed time slot
      * @param excludeEventId Optional event ID to exclude (for editing existing events)
-     * @return List of conflicting events (empty if no conflicts)
+     * @return List of conflicting events (empty if no conflicts) - includes both calendar events AND TimeBlocks converted to CalendarEvent
      */
     suspend operator fun invoke(
         startTime: LocalDateTime,
@@ -30,8 +33,8 @@ class DetectScheduleConflictsUseCase @Inject constructor(
 
         val allEvents = calendarManager.getAllCalendarEvents(startDate, endDate)
 
-        // Filter for actual conflicts
-        return allEvents.filter { event ->
+        // Filter for actual event conflicts
+        val eventConflicts = allEvents.filter { event ->
             // Skip if this is the event we're editing
             if (excludeEventId != null && event.id == excludeEventId) {
                 return@filter false
@@ -43,6 +46,152 @@ class DetectScheduleConflictsUseCase @Inject constructor(
 
             hasOverlap
         }
+
+        // Check for TimeBlock conflicts
+        val activeTimeBlocks = timeBlockRepository.getActiveTimeBlocks()
+        val timeBlockConflicts = mutableListOf<CalendarEvent>()
+
+        // Check each day in the range
+        var currentDate = startDate
+        while (!currentDate.isAfter(endDate)) {
+            val dayStart = LocalDateTime.of(currentDate, LocalTime.MIN)
+            val dayEnd = LocalDateTime.of(currentDate, LocalTime.MAX)
+
+            // Only check TimeBlocks that are active on this specific date
+            activeTimeBlocks
+                .filter { it.isActiveOn(currentDate) }
+                .forEach { timeBlock ->
+                    if (timeBlock.allDay) {
+                        // All-day TimeBlock conflicts with any time on this day
+                        if (startTime.toLocalDate() == currentDate || endTime.toLocalDate() == currentDate) {
+                            timeBlockConflicts.add(convertTimeBlockToCalendarEvent(timeBlock, dayStart, dayEnd))
+                        }
+                    } else if (timeBlock.startTime != null && timeBlock.endTime != null) {
+                        // Specific time window
+                        val blockStartTime = parseTimeString(timeBlock.startTime)
+                        val blockEndTime = parseTimeString(timeBlock.endTime)
+
+                        if (blockStartTime != null && blockEndTime != null) {
+                            val blockStart = LocalDateTime.of(currentDate, blockStartTime)
+                            val blockEnd = LocalDateTime.of(currentDate, blockEndTime)
+
+                            // Check for overlap with this TimeBlock
+                            val hasOverlap = startTime < blockEnd && endTime > blockStart
+                            if (hasOverlap) {
+                                timeBlockConflicts.add(convertTimeBlockToCalendarEvent(timeBlock, blockStart, blockEnd))
+                            }
+                        }
+                    }
+                }
+
+            currentDate = currentDate.plusDays(1)
+        }
+
+        // Combine both event and TimeBlock conflicts
+        return eventConflicts + timeBlockConflicts
+    }
+
+    /**
+     * Check if a TimeBlock is active on a specific date based on its recurrence rules
+     */
+    private fun com.example.questflow.data.database.entity.TimeBlockEntity.isActiveOn(date: java.time.LocalDate): Boolean {
+        // Check validity period
+        if (validFrom != null) {
+            val validFrom = java.time.LocalDate.parse(validFrom)
+            if (date.isBefore(validFrom)) return false
+        }
+        if (validUntil != null) {
+            val validUntil = java.time.LocalDate.parse(validUntil)
+            if (date.isAfter(validUntil)) return false
+        }
+
+        // Check specific dates (highest priority)
+        if (!specificDates.isNullOrBlank()) {
+            val specificDates = specificDates.split(",").map { it.trim() }
+            if (specificDates.contains(date.toString())) {
+                return true
+            }
+        }
+
+        // Check day of week (1=Monday, 7=Sunday)
+        if (!daysOfWeek.isNullOrBlank()) {
+            val daysOfWeek = daysOfWeek.split(",").map { it.trim().toIntOrNull() }
+            val dayOfWeek = date.dayOfWeek.value  // Monday=1, Sunday=7
+            if (daysOfWeek.contains(dayOfWeek)) {
+                return true
+            }
+        }
+
+        // Check day of month (1-31)
+        if (!daysOfMonth.isNullOrBlank()) {
+            val daysOfMonth = daysOfMonth.split(",").map { it.trim().toIntOrNull() }
+            val dayOfMonth = date.dayOfMonth
+            if (daysOfMonth.contains(dayOfMonth)) {
+                return true
+            }
+        }
+
+        // Check months (1=January, 12=December)
+        if (!monthsOfYear.isNullOrBlank()) {
+            val monthsOfYear = monthsOfYear.split(",").map { it.trim().toIntOrNull() }
+            val monthValue = date.monthValue
+            if (monthsOfYear.contains(monthValue)) {
+                return true
+            }
+        }
+
+        // If no specific recurrence rules are set, match all dates within validity period
+        if (daysOfWeek.isNullOrBlank() &&
+            daysOfMonth.isNullOrBlank() &&
+            monthsOfYear.isNullOrBlank() &&
+            specificDates.isNullOrBlank()) {
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Parse time string in format "HH:mm:ss" or "HH:mm" to LocalTime
+     */
+    private fun parseTimeString(timeString: String): LocalTime? {
+        return try {
+            when {
+                timeString.matches(Regex("\\d{2}:\\d{2}:\\d{2}")) -> {
+                    // HH:mm:ss format
+                    val parts = timeString.split(":")
+                    LocalTime.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
+                }
+                timeString.matches(Regex("\\d{2}:\\d{2}")) -> {
+                    // HH:mm format
+                    val parts = timeString.split(":")
+                    LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Convert a TimeBlock to a CalendarEvent for conflict reporting
+     */
+    private fun convertTimeBlockToCalendarEvent(
+        timeBlock: com.example.questflow.data.database.entity.TimeBlockEntity,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime
+    ): CalendarEvent {
+        return CalendarEvent(
+            id = -timeBlock.id, // Negative ID to distinguish from real calendar events
+            title = timeBlock.name ?: "Blockierte Zeit",
+            description = timeBlock.description ?: "",
+            startTime = startTime,
+            endTime = endTime,
+            calendarId = -1L, // Special calendar ID for TimeBlocks
+            calendarName = "TimeBlock",
+            isExternal = false
+        )
     }
 
     /**
