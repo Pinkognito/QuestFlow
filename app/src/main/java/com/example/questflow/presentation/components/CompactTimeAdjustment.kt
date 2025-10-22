@@ -56,6 +56,7 @@ fun CompactDateTimeSection(
     occupancyCalculator: DayOccupancyCalculator? = null,
     categoryColor: androidx.compose.ui.graphics.Color? = null,
     tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
     // Alternative time to show in calendar (e.g., end time when this is start)
@@ -145,6 +146,7 @@ fun CompactDateTimeSection(
                         { selectedDate -> onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime())) }
                     } else null,
                     tasks = tasks,
+                    timeBlocks = timeBlocks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     // ALWAYS show Start | Ende (regardless of which picker this is)
