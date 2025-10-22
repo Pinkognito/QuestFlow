@@ -1469,7 +1469,7 @@ fun EditCalendarTaskDialog(
                                     coroutineScope.launch {
                                         val durationMinutes = java.time.Duration.between(startDateTime, endDateTime).toMinutes()
                                         val startDate = startDateTime.toLocalDate()
-                                        val endDate = startDate.plusDays(30)
+                                        val endDate = startDate.plusDays(60) // Extended to 2 months to find slots in next month
                                         dailyFreeTime = viewModel.findFreeTimeSlots(
                                             startDate = startDate,
                                             endDate = endDate,
@@ -2231,7 +2231,7 @@ fun EditCalendarTaskDialog(
 
                                                 // Load free time slots
                                                 val startDate = startDateTime.toLocalDate()
-                                                val endDate = startDate.plusDays(30)
+                                                val endDate = startDate.plusDays(60) // Extended to 2 months to find slots in next month
                                                 dailyFreeTime = viewModel.findFreeTimeSlots(
                                                     startDate = startDate,
                                                     endDate = endDate,

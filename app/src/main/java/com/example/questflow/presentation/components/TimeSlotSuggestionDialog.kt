@@ -45,6 +45,8 @@ fun TimeSlotSuggestionDialog(
     onTimeSlotSelected: (startTime: LocalDateTime, endTime: LocalDateTime) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Calculate original task duration to preserve it when selecting a slot
+    val originalDurationMinutes = java.time.Duration.between(currentStartTime, currentEndTime).toMinutes()
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -67,24 +69,17 @@ fun TimeSlotSuggestionDialog(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                // Header
+                // Compact header - just title and close button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "Freie Zeiten finden",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Wähle einen optimalen Zeitpunkt",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "Freie Zeiten",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -93,49 +88,7 @@ fun TimeSlotSuggestionDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Conflict warning if present
-                if (hasConflict) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Column {
-                                Text(
-                                    text = "⚠️ Zeitkonflikt erkannt",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    text = if (conflictCount == 1) {
-                                        "Zur gewählten Zeit ist bereits 1 Termin eingetragen"
-                                    } else {
-                                        "Zur gewählten Zeit sind bereits $conflictCount Termine eingetragen"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
+                Spacer(modifier = Modifier.height(12.dp))
 
                 LazyColumn(
                     modifier = Modifier
@@ -158,7 +111,10 @@ fun TimeSlotSuggestionDialog(
                             TimeSlotSuggestionCard(
                                 slot = slot,
                                 onClick = {
-                                    onTimeSlotSelected(slot.startTime, slot.endTime)
+                                    // IMPORTANT: Preserve original task duration, don't fill entire free slot
+                                    val newStart = slot.startTime
+                                    val newEnd = newStart.plusMinutes(originalDurationMinutes)
+                                    onTimeSlotSelected(newStart, newEnd)
                                     onDismiss()
                                 }
                             )
