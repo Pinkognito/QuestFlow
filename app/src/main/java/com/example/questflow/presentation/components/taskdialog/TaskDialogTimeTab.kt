@@ -71,6 +71,26 @@ fun TaskDialogTimeTab(
     var endSectionExpanded by remember { mutableStateOf(prefs.getBoolean("end_section_expanded", true)) }
     var recurringSectionExpanded by remember { mutableStateOf(prefs.getBoolean("recurring_section_expanded", true)) }
 
+    // Load calendar color configuration for overlap color
+    // Uses SimpleCalendarColorRepository with key "simple_cal_overlap"
+    val calendarColorPrefs = remember { context.getSharedPreferences("calendar_colors", android.content.Context.MODE_PRIVATE) }
+    val overlapColorHex = remember {
+        // Correct key from SimpleCalendarColorRepository
+        val color = calendarColorPrefs.getString("simple_cal_overlap", "#000000") ?: "#000000"
+        android.util.Log.d("TaskDialogTimeTab", "🎨 Overlap color from prefs (simple_cal_overlap): $color")
+        color
+    }
+    val overlapColor = remember(overlapColorHex) {
+        try {
+            val parsedColor = androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(overlapColorHex))
+            android.util.Log.d("TaskDialogTimeTab", "✅ Parsed overlap color: $parsedColor")
+            parsedColor
+        } catch (e: Exception) {
+            android.util.Log.e("TaskDialogTimeTab", "❌ Failed to parse color: $overlapColorHex", e)
+            androidx.compose.ui.graphics.Color.Black
+        }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -156,6 +176,61 @@ fun TaskDialogTimeTab(
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        }
+
+        // Conflict warning - COMPACT (one line with count + button)
+        // Uses overlap color from calendar color settings
+        if (scheduleConflicts.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Warning icon + count
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = overlapColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = if (scheduleConflicts.size == 1) {
+                                "1 Konflikt"
+                            } else {
+                                "${scheduleConflicts.size} Konflikte"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = overlapColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    // Find free times button
+                    OutlinedButton(
+                        onClick = onFindFreeTimesClick,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = overlapColor
+                        ),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Freie Zeiten", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
 
@@ -267,69 +342,6 @@ fun TaskDialogTimeTab(
                         onAlternativeTimeChange = onStartDateTimeChange,
                         showLabel = false  // Hide duplicate label (header already shows "Ende")
                     )
-                }
-            }
-        }
-
-        // Conflict warning and smart scheduling
-        if (scheduleConflicts.isNotEmpty()) {
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Column {
-                                Text(
-                                    text = "⚠️ Zeitkonflikt",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    text = if (scheduleConflicts.size == 1) {
-                                        "Zur gewählten Zeit ist bereits 1 Termin eingetragen"
-                                    } else {
-                                        "Zur gewählten Zeit sind bereits ${scheduleConflicts.size} Termine eingetragen"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-
-                        // Smart scheduling button
-                        OutlinedButton(
-                            onClick = onFindFreeTimesClick,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DateRange,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Freie Zeiten finden")
-                        }
-                    }
                 }
             }
         }
