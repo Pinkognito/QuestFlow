@@ -186,15 +186,19 @@ fun MonthViewDatePicker(
                         activeButtonDate = date
                     },
                     onSetAsStart = { date ->
+                        android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsStart: date=$date, callback=${onStartDateSelected != null || onDateSelected != null}")
                         // BUG FIX: Use onStartDateSelected, not onDateSelected
                         (onStartDateSelected ?: onDateSelected)?.invoke(date)
-                        onStartTimeChange?.invoke(LocalTime.now())
+                        // DON'T set time to now - keep existing time!
+                        // onStartTimeChange?.invoke(LocalTime.now())
                         activeButtonDate = null
                     },
                     onSetAsEnd = { date ->
+                        android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsEnd: date=$date, callback=${onEndDateSelected != null}")
                         // BUG FIX: Use onEndDateSelected, not onDateSelected
                         onEndDateSelected?.invoke(date)
-                        onEndTimeChange?.invoke(LocalTime.now())
+                        // DON'T set time to now - keep existing time!
+                        // onEndTimeChange?.invoke(LocalTime.now())
                         activeButtonDate = null
                     },
                     onChangeStartTime = {
@@ -734,10 +738,22 @@ private fun MonthCalendarGrid(
                     .zIndex(1000f)
             ) {
                 InlineDateRadialMenu(
-                    onSetAsStart = { onSetAsStart(activeButtonDate) },
-                    onSetAsEnd = { onSetAsEnd(activeButtonDate) },
-                    onChangeStartTime = onChangeStartTime,
-                    onChangeEndTime = onChangeEndTime,
+                    onSetAsStart = {
+                        android.util.Log.d("MonthViewDatePicker", "📅 Radial: Set as Start - date=$activeButtonDate")
+                        onSetAsStart(activeButtonDate)
+                    },
+                    onSetAsEnd = {
+                        android.util.Log.d("MonthViewDatePicker", "📅 Radial: Set as End - date=$activeButtonDate")
+                        onSetAsEnd(activeButtonDate)
+                    },
+                    onChangeStartTime = {
+                        android.util.Log.d("MonthViewDatePicker", "🕐 Radial: Change Start Time")
+                        onChangeStartTime()
+                    },
+                    onChangeEndTime = {
+                        android.util.Log.d("MonthViewDatePicker", "🕐 Radial: Change End Time")
+                        onChangeEndTime()
+                    },
                     modifier = Modifier.offset {
                         androidx.compose.ui.unit.IntOffset(
                             (buttonPosition.x - halfMenuSize).toInt(),
@@ -961,25 +977,31 @@ private fun InlineDateRadialMenu(
                             }
                         },
                         onDragEnd = {
+                            android.util.Log.d("InlineDateRadialMenu", "🎯 onDragEnd: selectedAction=$selectedAction")
                             val actionLabel = actions.find { it.id == selectedAction }?.label
                             when (selectedAction) {
                                 "start" -> {
+                                    android.util.Log.d("InlineDateRadialMenu", "   → Calling onSetAsStart()")
                                     onSetAsStart()
                                     android.widget.Toast.makeText(context, "✓ Als Startdatum gesetzt", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                                 "end" -> {
+                                    android.util.Log.d("InlineDateRadialMenu", "   → Calling onSetAsEnd()")
                                     onSetAsEnd()
                                     android.widget.Toast.makeText(context, "✓ Als Enddatum gesetzt", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                                 "start_time" -> {
+                                    android.util.Log.d("InlineDateRadialMenu", "   → Calling onChangeStartTime()")
                                     onChangeStartTime()
                                     android.widget.Toast.makeText(context, "✓ Startzeit ändern", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                                 "end_time" -> {
+                                    android.util.Log.d("InlineDateRadialMenu", "   → Calling onChangeEndTime()")
                                     onChangeEndTime()
                                     android.widget.Toast.makeText(context, "✓ Endzeit ändern", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                                 null -> {
+                                    android.util.Log.d("InlineDateRadialMenu", "   → No action selected")
                                     android.widget.Toast.makeText(context, "Keine Option gewählt", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }

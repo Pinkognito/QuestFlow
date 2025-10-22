@@ -1417,15 +1417,19 @@ fun EditCalendarTaskDialog(
                             com.example.questflow.presentation.components.taskdialog.TaskDialogTimeTab(
                                 startDateTime = startDateTime,
                                 onStartDateTimeChange = { newStart ->
+                                    android.util.Log.d("TasksScreen", "🔥🔥 onStartDateTimeChange: OLD=$startDateTime, NEW=$newStart")
                                     val oldStart = startDateTime
                                     startDateTime = newStart
                                     endDateTime = adjustEndTimeIfNeeded(newStart, oldStart)
+                                    android.util.Log.d("TasksScreen", "   → UPDATED: start=$startDateTime, end=$endDateTime")
                                 },
                                 endDateTime = endDateTime,
                                 onEndDateTimeChange = { newEnd ->
+                                    android.util.Log.d("TasksScreen", "🔥🔥 onEndDateTimeChange: OLD=$endDateTime, NEW=$newEnd")
                                     val oldEnd = endDateTime
                                     endDateTime = newEnd
                                     startDateTime = adjustStartTimeIfNeeded(newEnd, oldEnd)
+                                    android.util.Log.d("TasksScreen", "   → UPDATED: start=$startDateTime, end=$endDateTime")
                                 },
                                 startDayIncrement = uiSettings.startDayIncrement,
                                 onStartDayIncrementChange = { tasksViewModel.updateUISettings(uiSettings.copy(startDayIncrement = it)) },

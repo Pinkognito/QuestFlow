@@ -91,16 +91,26 @@ fun TaskDialogTimeTab(
         // Show MonthViewDatePicker when expanded
         if (calendarExpanded && occupancyCalculator != null) {
             item {
+                // IMPORTANT: selectedDate must be independent to avoid recomposition loops!
+                // Use remember (not rememberSaveable) to keep it simple
+                val calendarSelectedDate by remember {
+                    mutableStateOf(startDateTime.toLocalDate())
+                }
+
                 com.example.questflow.presentation.components.MonthViewDatePicker(
-                    selectedDate = startDateTime.toLocalDate(),
+                    selectedDate = calendarSelectedDate,
                     events = monthViewEvents,
                     occupancyCalculator = occupancyCalculator,
                     mode = com.example.questflow.presentation.components.CalendarMode.RADIAL_MENU,
                     onStartDateSelected = { selectedDate ->
+                        android.util.Log.d("TaskDialogTimeTab", "✅ onStartDateSelected: $selectedDate → calling onStartDateTimeChange")
                         onStartDateTimeChange(LocalDateTime.of(selectedDate, startDateTime.toLocalTime()))
+                        android.util.Log.d("TaskDialogTimeTab", "   → onStartDateTimeChange DONE")
                     },
                     onEndDateSelected = { selectedDate ->
+                        android.util.Log.d("TaskDialogTimeTab", "✅ onEndDateSelected: $selectedDate → calling onEndDateTimeChange")
                         onEndDateTimeChange(LocalDateTime.of(selectedDate, endDateTime.toLocalTime()))
+                        android.util.Log.d("TaskDialogTimeTab", "   → onEndDateTimeChange DONE")
                     },
                     tasks = monthViewTasks,
                     currentTaskId = currentTaskId,
