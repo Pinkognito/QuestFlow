@@ -650,11 +650,11 @@ private fun MonthCalendarGrid(
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     showButton = activeButtonDate == date,
-                    onButtonRequest = { cellWindowPosition ->
-                        // Calculate position relative to grid container
+                    onButtonRequest = { cellWindowPosition, cellSize ->
+                        // Calculate position relative to grid container, centered on cell
                         buttonPosition = Offset(
-                            x = cellWindowPosition.x - gridPosition.x,
-                            y = cellWindowPosition.y - gridPosition.y
+                            x = cellWindowPosition.x - gridPosition.x + (cellSize.width / 2f),
+                            y = cellWindowPosition.y - gridPosition.y + (cellSize.height / 2f)
                         )
                         onButtonRequest(date)
                     },
@@ -764,7 +764,7 @@ private fun DayCell(
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
     showButton: Boolean = false,
-    onButtonRequest: (Offset) -> Unit = {},
+    onButtonRequest: (Offset, androidx.compose.ui.geometry.Size) -> Unit = { _, _ -> },
     onSetAsStart: () -> Unit = {},
     onSetAsEnd: () -> Unit = {},
     onChangeStartTime: () -> Unit = {},
@@ -778,18 +778,23 @@ private fun DayCell(
     }
 
     var cellPosition by remember { mutableStateOf(Offset.Zero) }
+    var cellSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .onGloballyPositioned { coordinates ->
                 cellPosition = coordinates.positionInWindow()
+                cellSize = androidx.compose.ui.geometry.Size(
+                    width = coordinates.size.width.toFloat(),
+                    height = coordinates.size.height.toFloat()
+                )
             }
             .clickable(
                 enabled = !showButton,
                 onClick = {
                     if (!showButton) {
-                        onButtonRequest(cellPosition)
+                        onButtonRequest(cellPosition, cellSize)
                     }
                 }
             )
