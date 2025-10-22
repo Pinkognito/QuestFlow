@@ -869,10 +869,10 @@ private fun InlineDateRadialMenu(
     var selectedAction by remember { mutableStateOf<String?>(null) }
 
     val actions = listOf(
-        RadialMenuAction(id = "start", label = "Als Start", angle = 0f),
-        RadialMenuAction(id = "start_time", label = "Startzeit", angle = 90f),
-        RadialMenuAction(id = "end", label = "Als Ende", angle = 180f),
-        RadialMenuAction(id = "end_time", label = "Endzeit", angle = 270f)
+        RadialMenuAction(id = "start", label = "Start", angle = 0f),
+        RadialMenuAction(id = "start_time", label = "Von", angle = 90f),
+        RadialMenuAction(id = "end", label = "Ende", angle = 180f),
+        RadialMenuAction(id = "end_time", label = "Bis", angle = 270f)
     )
 
     // Animation für Menu-Scale
