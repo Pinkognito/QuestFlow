@@ -8,24 +8,27 @@ import java.time.LocalTime
 import javax.inject.Inject
 
 /**
- * Use case to detect scheduling conflicts with existing calendar events AND TimeBlocks
- * across ALL calendars (Google Calendar, QuestFlow, Outlook, etc.) plus TimeBlocks
+ * Use case to detect scheduling conflicts with existing calendar events, TimeBlocks AND QuestFlow Tasks
+ * across ALL calendars (Google Calendar, QuestFlow, Outlook, etc.) plus TimeBlocks and Tasks
  */
 class DetectScheduleConflictsUseCase @Inject constructor(
     private val calendarManager: CalendarManager,
-    private val timeBlockRepository: TimeBlockRepository
+    private val timeBlockRepository: TimeBlockRepository,
+    private val calendarEventLinkDao: com.example.questflow.data.database.dao.CalendarEventLinkDao
 ) {
     /**
-     * Check if a time slot conflicts with existing events AND TimeBlocks
+     * Check if a time slot conflicts with existing events, TimeBlocks AND QuestFlow Tasks
      * @param startTime Start of the proposed time slot
      * @param endTime End of the proposed time slot
-     * @param excludeEventId Optional event ID to exclude (for editing existing events)
-     * @return List of conflicting events (empty if no conflicts) - includes both calendar events AND TimeBlocks converted to CalendarEvent
+     * @param excludeEventId Optional event ID to exclude (for editing existing calendar events)
+     * @param excludeTaskId Optional task ID to exclude (for editing existing tasks)
+     * @return List of conflicting events (empty if no conflicts) - includes calendar events, TimeBlocks AND QuestFlow Tasks converted to CalendarEvent
      */
     suspend operator fun invoke(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null
     ): List<CalendarEvent> {
         // Query all calendar events in the date range
         val startDate = startTime.toLocalDate()
@@ -87,8 +90,35 @@ class DetectScheduleConflictsUseCase @Inject constructor(
             currentDate = currentDate.plusDays(1)
         }
 
-        // Combine both event and TimeBlock conflicts
-        return eventConflicts + timeBlockConflicts
+        // Check for QuestFlow Task conflicts (CalendarEventLinks)
+        val taskConflicts = mutableListOf<CalendarEvent>()
+        val startDateTimeString = startTime.toString()
+        val endDateTimeString = endTime.plusDays(1).toString() // Add 1 day to include endTime
+
+        val tasksInRange = calendarEventLinkDao.getEventsInRangeSync(startDateTimeString, endDateTimeString)
+
+        tasksInRange.forEach { task ->
+            // Skip if this is the task we're editing
+            if (excludeTaskId != null && task.taskId == excludeTaskId) {
+                return@forEach
+            }
+
+            // Skip if this is linked to the calendar event we're editing
+            if (excludeEventId != null && task.calendarEventId == excludeEventId) {
+                return@forEach
+            }
+
+            // Check for time overlap
+            // Tasks overlap if: start1 < end2 AND start2 < end1
+            val hasOverlap = startTime < task.endsAt && endTime > task.startsAt
+
+            if (hasOverlap) {
+                taskConflicts.add(convertTaskToCalendarEvent(task))
+            }
+        }
+
+        // Combine event, TimeBlock AND Task conflicts
+        return eventConflicts + timeBlockConflicts + taskConflicts
     }
 
     /**
@@ -195,14 +225,33 @@ class DetectScheduleConflictsUseCase @Inject constructor(
     }
 
     /**
+     * Convert a QuestFlow Task (CalendarEventLinkEntity) to a CalendarEvent for conflict reporting
+     */
+    private fun convertTaskToCalendarEvent(
+        task: com.example.questflow.data.database.entity.CalendarEventLinkEntity
+    ): CalendarEvent {
+        return CalendarEvent(
+            id = task.id, // Use the CalendarEventLink ID (positive to distinguish from TimeBlocks)
+            title = task.title,
+            description = "", // CalendarEventLinkEntity doesn't have description
+            startTime = task.startsAt,
+            endTime = task.endsAt,
+            calendarId = task.taskId ?: 0L, // Use taskId as calendarId for navigation
+            calendarName = "QuestFlow Task",
+            isExternal = false // QuestFlow tasks are internal
+        )
+    }
+
+    /**
      * Check if a specific time slot is completely free
      */
     suspend fun isSlotFree(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
-        excludeEventId: Long? = null
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null
     ): Boolean {
-        val conflicts = invoke(startTime, endTime, excludeEventId)
+        val conflicts = invoke(startTime, endTime, excludeEventId, excludeTaskId)
         return conflicts.isEmpty()
     }
 }

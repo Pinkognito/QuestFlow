@@ -562,8 +562,9 @@ class TodayViewModel @Inject constructor(
     suspend fun checkScheduleConflicts(
         startTime: LocalDateTime,
         endTime: LocalDateTime,
-        excludeEventId: Long? = null
-    ) = detectScheduleConflictsUseCase(startTime, endTime, excludeEventId)
+        excludeEventId: Long? = null,
+        excludeTaskId: Long? = null
+    ) = detectScheduleConflictsUseCase(startTime, endTime, excludeEventId, excludeTaskId)
 
     /**
      * Find free time slots for task scheduling

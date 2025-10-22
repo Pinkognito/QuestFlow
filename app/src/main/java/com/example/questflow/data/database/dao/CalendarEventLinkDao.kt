@@ -64,6 +64,21 @@ interface CalendarEventLinkDao {
     fun getEventsInRange(startDate: String, endDate: String): Flow<List<CalendarEventLinkEntity>>
 
     /**
+     * Get all calendar events in a date range for conflict detection (suspend version)
+     * DEFENSIVE: Filters out orphaned events (taskId points to deleted task)
+     * @param startDate ISO format string (e.g., "2025-10-01T00:00:00")
+     * @param endDate ISO format string (e.g., "2025-11-01T00:00:00")
+     */
+    @Query("""
+        SELECT * FROM calendar_event_links
+        WHERE startsAt >= :startDate
+        AND startsAt < :endDate
+        AND (taskId IS NULL OR taskId IN (SELECT id FROM tasks))
+        ORDER BY startsAt ASC
+    """)
+    suspend fun getEventsInRangeSync(startDate: String, endDate: String): List<CalendarEventLinkEntity>
+
+    /**
      * Delete all orphaned calendar event links (taskId points to deleted task)
      * CLEANUP: One-time operation to remove zombie events
      * @return Number of deleted links
