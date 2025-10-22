@@ -1237,9 +1237,10 @@ fun EditCalendarTaskDialog(
     // Tab state
     var selectedTab by remember { mutableStateOf(0) }
 
-    // Collapsible sections state
+    // Collapsible sections state (load from SharedPreferences)
+    val collapsePrefs = remember { context.getSharedPreferences("task_dialog_collapse_state", android.content.Context.MODE_PRIVATE) }
     var taskFamilyExpanded by remember { mutableStateOf(true) }
-    var calendarExpanded by remember { mutableStateOf(true) } // Default: expanded
+    var calendarExpanded by remember { mutableStateOf(collapsePrefs.getBoolean("calendar_expanded", true)) } // Load from prefs
 
     AlertDialog(
         onDismissRequest = onDismiss,

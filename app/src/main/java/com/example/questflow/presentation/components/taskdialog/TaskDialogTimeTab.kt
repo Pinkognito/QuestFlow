@@ -58,6 +58,19 @@ fun TaskDialogTimeTab(
     onCalendarExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Time distance lock state
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeAdjustmentPrefs = remember { com.example.questflow.domain.preferences.TimeAdjustmentPreferences(context) }
+    var isDistanceLocked by remember {
+        mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode() != com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+    }
+
+    // Collapsible section states (saved in SharedPreferences)
+    val prefs = remember { context.getSharedPreferences("task_dialog_collapse_state", android.content.Context.MODE_PRIVATE) }
+    var startSectionExpanded by remember { mutableStateOf(prefs.getBoolean("start_section_expanded", true)) }
+    var endSectionExpanded by remember { mutableStateOf(prefs.getBoolean("end_section_expanded", true)) }
+    var recurringSectionExpanded by remember { mutableStateOf(prefs.getBoolean("recurring_section_expanded", true)) }
+
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -69,7 +82,10 @@ fun TaskDialogTimeTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        onCalendarExpandedChange(!calendarExpanded)
+                        val newState = !calendarExpanded
+                        onCalendarExpandedChange(newState)
+                        // Save state to SharedPreferences
+                        prefs.edit().putBoolean("calendar_expanded", newState).apply()
                     }
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -123,30 +139,75 @@ fun TaskDialogTimeTab(
                     onEndTimeChange = { newTime ->
                         onEndDateTimeChange(LocalDateTime.of(endDateTime.toLocalDate(), newTime))
                     },
+                    isDistanceLocked = isDistanceLocked,
+                    onDistanceLockToggle = {
+                        // Toggle lock state
+                        isDistanceLocked = !isDistanceLocked
+                        // Update preferences
+                        if (isDistanceLocked) {
+                            // Calculate current duration and set FIXED_DURATION mode
+                            val durationMinutes = java.time.Duration.between(startDateTime, endDateTime).toMinutes().toInt()
+                            timeAdjustmentPrefs.setFixedDurationMinutes(durationMinutes)
+                            timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.FIXED_DURATION)
+                        } else {
+                            // Set INDEPENDENT mode
+                            timeAdjustmentPrefs.setAdjustmentMode(com.example.questflow.domain.preferences.TimeAdjustmentPreferences.AdjustmentMode.INDEPENDENT)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         }
 
-        // Date and Time Selection - START with CompactDateTimeSection
+        // Date and Time Selection - START with CompactDateTimeSection (Collapsible)
         item {
-            com.example.questflow.presentation.components.CompactDateTimeSection(
-                label = "Start",
-                dateTime = startDateTime,
-                onDateTimeChange = onStartDateTimeChange,
-                dayIncrement = startDayIncrement,
-                minuteIncrement = startMinuteIncrement,
-                onDayIncrementChange = onStartDayIncrementChange,
-                onMinuteIncrementChange = onStartMinuteIncrementChange,
-                events = monthViewEvents,
-                occupancyCalculator = occupancyCalculator,
-                categoryColor = categoryColor,
-                tasks = monthViewTasks,
-                currentTaskId = currentTaskId,
-                currentCategoryId = currentCategoryId,
-                alternativeTime = endDateTime,
-                onAlternativeTimeChange = onEndDateTimeChange
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Collapsible header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            startSectionExpanded = !startSectionExpanded
+                            prefs.edit().putBoolean("start_section_expanded", startSectionExpanded).apply()
+                        }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Start",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Icon(
+                        if (startSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (startSectionExpanded) "Zuklappen" else "Aufklappen",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Content (only shown when expanded)
+                if (startSectionExpanded) {
+                    com.example.questflow.presentation.components.CompactDateTimeSection(
+                        label = "Start",
+                        dateTime = startDateTime,
+                        onDateTimeChange = onStartDateTimeChange,
+                        dayIncrement = startDayIncrement,
+                        minuteIncrement = startMinuteIncrement,
+                        onDayIncrementChange = onStartDayIncrementChange,
+                        onMinuteIncrementChange = onStartMinuteIncrementChange,
+                        events = monthViewEvents,
+                        occupancyCalculator = occupancyCalculator,
+                        categoryColor = categoryColor,
+                        tasks = monthViewTasks,
+                        currentTaskId = currentTaskId,
+                        currentCategoryId = currentCategoryId,
+                        alternativeTime = endDateTime,
+                        onAlternativeTimeChange = onEndDateTimeChange,
+                        showLabel = false  // Hide duplicate label (header already shows "Start")
+                    )
+                }
+            }
         }
 
         // Duration Row - between start and end
@@ -159,25 +220,55 @@ fun TaskDialogTimeTab(
             )
         }
 
-        // Date and Time Selection - END with CompactDateTimeSection
+        // Date and Time Selection - END with CompactDateTimeSection (Collapsible)
         item {
-            com.example.questflow.presentation.components.CompactDateTimeSection(
-                label = "Ende",
-                dateTime = endDateTime,
-                onDateTimeChange = onEndDateTimeChange,
-                dayIncrement = endDayIncrement,
-                minuteIncrement = endMinuteIncrement,
-                onDayIncrementChange = onEndDayIncrementChange,
-                onMinuteIncrementChange = onEndMinuteIncrementChange,
-                events = monthViewEvents,
-                occupancyCalculator = occupancyCalculator,
-                categoryColor = categoryColor,
-                tasks = monthViewTasks,
-                currentTaskId = currentTaskId,
-                currentCategoryId = currentCategoryId,
-                alternativeTime = startDateTime,
-                onAlternativeTimeChange = onStartDateTimeChange
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Collapsible header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            endSectionExpanded = !endSectionExpanded
+                            prefs.edit().putBoolean("end_section_expanded", endSectionExpanded).apply()
+                        }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Ende",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Icon(
+                        if (endSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (endSectionExpanded) "Zuklappen" else "Aufklappen",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Content (only shown when expanded)
+                if (endSectionExpanded) {
+                    com.example.questflow.presentation.components.CompactDateTimeSection(
+                        label = "Ende",
+                        dateTime = endDateTime,
+                        onDateTimeChange = onEndDateTimeChange,
+                        dayIncrement = endDayIncrement,
+                        minuteIncrement = endMinuteIncrement,
+                        onDayIncrementChange = onEndDayIncrementChange,
+                        onMinuteIncrementChange = onEndMinuteIncrementChange,
+                        events = monthViewEvents,
+                        occupancyCalculator = occupancyCalculator,
+                        categoryColor = categoryColor,
+                        tasks = monthViewTasks,
+                        currentTaskId = currentTaskId,
+                        currentCategoryId = currentCategoryId,
+                        alternativeTime = startDateTime,
+                        onAlternativeTimeChange = onStartDateTimeChange,
+                        showLabel = false  // Hide duplicate label (header already shows "Ende")
+                    )
+                }
+            }
         }
 
         // Conflict warning and smart scheduling
@@ -243,47 +334,74 @@ fun TaskDialogTimeTab(
             }
         }
 
-        // Recurring task option
+        // Recurring task option (Collapsible)
         item {
             Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = isRecurring,
-                    onCheckedChange = onIsRecurringChange
-                )
-                Column(modifier = Modifier.padding(start = 8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Collapsible header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            recurringSectionExpanded = !recurringSectionExpanded
+                            prefs.edit().putBoolean("recurring_section_expanded", recurringSectionExpanded).apply()
+                        }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         "Wiederkehrende Aufgabe",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        "Aufgabe wiederholt sich automatisch",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        if (recurringSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (recurringSectionExpanded) "Zuklappen" else "Aufklappen",
+                        modifier = Modifier.size(24.dp)
                     )
                 }
-            }
-        }
 
-        // Recurring configuration button
-        if (isRecurring) {
-            item {
-                OutlinedButton(
-                    onClick = onRecurringConfigClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(com.example.questflow.presentation.components.getRecurringSummary(recurringConfig))
+                // Content (only shown when expanded)
+                if (recurringSectionExpanded) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isRecurring,
+                            onCheckedChange = onIsRecurringChange
+                        )
+                        Column(modifier = Modifier.padding(start = 8.dp)) {
+                            Text(
+                                "Wiederkehrende Aufgabe",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Aufgabe wiederholt sich automatisch",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Recurring configuration button
+                    if (isRecurring) {
+                        OutlinedButton(
+                            onClick = onRecurringConfigClick,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(com.example.questflow.presentation.components.getRecurringSummary(recurringConfig))
+                        }
+                    }
                 }
             }
         }

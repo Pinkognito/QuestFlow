@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.DateRange
 import kotlin.math.*
 import androidx.compose.material3.*
@@ -99,10 +100,14 @@ fun MonthViewDatePicker(
     startTime: LocalTime? = null,
     endTime: LocalTime? = null,
     onStartTimeChange: ((LocalTime) -> Unit)? = null,
-    onEndTimeChange: ((LocalTime) -> Unit)? = null
+    onEndTimeChange: ((LocalTime) -> Unit)? = null,
+    // Time distance settings (NEW)
+    isDistanceLocked: Boolean = false,
+    onDistanceLockToggle: (() -> Unit)? = null
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var showColorSettings by remember { mutableStateOf(false) }
+    var showTimeSettings by remember { mutableStateOf(false) }  // NEW: Time settings dialog
     var refreshKey by remember { mutableStateOf(0) } // Trigger recomposition when settings change
 
     // Time input state
@@ -139,7 +144,10 @@ fun MonthViewDatePicker(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Time input row (ALWAYS shows "Start | Ende")
+        // Time input row - REMOVED (2025-10-22)
+        // Moved to settings dialog to save space
+        // TODO: Create time settings dialog and move CompactTimeInputRow there
+        /*
         if (selectedDate != null && startTime != null && endTime != null && onStartTimeChange != null && onEndTimeChange != null) {
             CompactTimeInputRow(
                 selectedDate = selectedDate,
@@ -151,6 +159,7 @@ fun MonthViewDatePicker(
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
+        */
 
         // Calendar - FIXED size, always fully visible at bottom
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -159,7 +168,10 @@ fun MonthViewDatePicker(
                 currentMonth = currentMonth,
                 onPreviousMonth = { currentMonth = currentMonth.minusMonths(1) },
                 onNextMonth = { currentMonth = currentMonth.plusMonths(1) },
-                onSettingsClick = { showColorSettings = true }
+                onSettingsClick = { showColorSettings = true },
+                isDistanceLocked = isDistanceLocked,
+                onDistanceLockToggle = onDistanceLockToggle,
+                onTimeDistanceSettingsClick = { showTimeSettings = true }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -252,6 +264,19 @@ fun MonthViewDatePicker(
                 onEndTimeChange(LocalTime.of(hour, minute))
                 showEndTimeInput = false
             }
+        )
+    }
+
+    // Time Settings Dialog
+    if (showTimeSettings && selectedDate != null && startTime != null && endTime != null && onStartTimeChange != null && onEndTimeChange != null) {
+        TimeDistanceSettingsDialog(
+            selectedDate = selectedDate,
+            startTime = startTime,
+            endTime = endTime,
+            onStartTimeClick = { showStartTimeInput = true },
+            onEndTimeClick = { showEndTimeInput = true },
+            onEndTimeChange = onEndTimeChange,
+            onDismiss = { showTimeSettings = false }
         )
     }
 }
@@ -534,7 +559,10 @@ private fun MonthNavigationHeader(
     currentMonth: YearMonth,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    isDistanceLocked: Boolean = false,
+    onDistanceLockToggle: (() -> Unit)? = null,
+    onTimeDistanceSettingsClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -568,6 +596,30 @@ private fun MonthNavigationHeader(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
+            }
+
+            // Lock button for distance locking (only show if callback provided)
+            if (onDistanceLockToggle != null) {
+                IconButton(onClick = onDistanceLockToggle) {
+                    Icon(
+                        imageVector = if (isDistanceLocked) Icons.Default.Lock else Icons.Default.Close,
+                        contentDescription = if (isDistanceLocked) "Distanz gesperrt" else "Distanz freigegeben",
+                        tint = if (isDistanceLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Time distance settings button (only show if callback provided)
+            if (onTimeDistanceSettingsClick != null) {
+                IconButton(onClick = onTimeDistanceSettingsClick) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Zeitdistanz-Einstellungen",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
@@ -1793,5 +1845,57 @@ private fun TimeAdjustmentDialog(
                 androidx.compose.material3.Text("Abbrechen")
             }
         }
+    )
+}
+
+/**
+ * Time Distance Settings Dialog
+ * Shows the CompactTimeInputRow in a dialog for time distance configuration
+ */
+@Composable
+private fun TimeDistanceSettingsDialog(
+    selectedDate: LocalDate,
+    startTime: LocalTime,
+    endTime: LocalTime,
+    onStartTimeClick: () -> Unit,
+    onEndTimeClick: () -> Unit,
+    onEndTimeChange: (LocalTime) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Zeitdistanz-Einstellungen") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Hier kannst du die Zeitdistanz zwischen Start- und Endzeit konfigurieren.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Use the existing CompactTimeInputRow
+                CompactTimeInputRow(
+                    selectedDate = selectedDate,
+                    startTime = startTime,
+                    endTime = endTime,
+                    onStartTimeClick = onStartTimeClick,
+                    onEndTimeClick = onEndTimeClick,
+                    onEndTimeChange = onEndTimeChange
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Fertig")
+            }
+        },
+        dismissButton = {}
     )
 }

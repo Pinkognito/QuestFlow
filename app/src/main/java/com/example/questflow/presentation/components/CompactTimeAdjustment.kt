@@ -50,7 +50,9 @@ fun CompactDateTimeSection(
     currentCategoryId: Long? = null,
     // Alternative time to show in calendar (e.g., end time when this is start)
     alternativeTime: LocalDateTime? = null,
-    onAlternativeTimeChange: ((LocalDateTime) -> Unit)? = null
+    onAlternativeTimeChange: ((LocalDateTime) -> Unit)? = null,
+    // Show label (default: true, set to false to hide duplicate labels)
+    showLabel: Boolean = true
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -59,11 +61,13 @@ fun CompactDateTimeSection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold
-        )
+        if (showLabel) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         // Date row with +/- controls
         Row(
