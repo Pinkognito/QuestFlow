@@ -107,11 +107,16 @@ fun ModernDateTimePicker(
             text = {
                 MonthViewDatePicker(
                     selectedDate = dateTime.toLocalDate(),
-                    onDateSelected = { selectedDate ->
-                        onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime()))
-                    },
                     events = events,
                     occupancyCalculator = occupancyCalculator,
+                    // DIRECT MODE: Click directly sets the date (Start or End based on label)
+                    mode = if (label == "Start") CalendarMode.DIRECT_START else CalendarMode.DIRECT_END,
+                    onStartDateSelected = if (label == "Start") {
+                        { selectedDate -> onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime())) }
+                    } else null,
+                    onEndDateSelected = if (label == "Ende") {
+                        { selectedDate -> onDateTimeChange(LocalDateTime.of(selectedDate, dateTime.toLocalTime())) }
+                    } else null,
                     tasks = tasks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,

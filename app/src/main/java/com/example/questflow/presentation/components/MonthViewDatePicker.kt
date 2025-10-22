@@ -58,6 +58,19 @@ import java.time.format.TextStyle
 import java.util.*
 
 /**
+ * Calendar interaction mode
+ * Determines how clicks on calendar cells behave
+ */
+enum class CalendarMode {
+    /** Click on cell directly sets start date (no radial menu) */
+    DIRECT_START,
+    /** Click on cell directly sets end date (no radial menu) */
+    DIRECT_END,
+    /** Click shows button, drag opens radial menu with all options */
+    RADIAL_MENU
+}
+
+/**
  * Google Calendar-style month view with visual occupancy indicators
  *
  * Features:
@@ -65,14 +78,20 @@ import java.util.*
  * - Month navigation with arrow buttons
  * - Visual occupancy bars: Green (free) / Red (occupied)
  * - Direct visual overview of schedule
+ * - 3 interaction modes: DIRECT_START, DIRECT_END, RADIAL_MENU
  */
 @Composable
 fun MonthViewDatePicker(
     selectedDate: LocalDate?,
-    onDateSelected: (LocalDate) -> Unit,
     events: List<CalendarEventLinkEntity>,
     occupancyCalculator: DayOccupancyCalculator,
     modifier: Modifier = Modifier,
+    mode: CalendarMode = CalendarMode.RADIAL_MENU,
+    // Date selection callbacks (separate for start/end)
+    onStartDateSelected: ((LocalDate) -> Unit)? = null,
+    onEndDateSelected: ((LocalDate) -> Unit)? = null,
+    // Deprecated callback (kept for backward compatibility)
+    onDateSelected: ((LocalDate) -> Unit)? = null,
     tasks: List<TaskEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
@@ -154,7 +173,9 @@ fun MonthViewDatePicker(
                 MonthCalendarGrid(
                     currentMonth = currentMonth,
                     selectedDate = selectedDate,
-                    onDateSelected = onDateSelected,
+                    mode = mode,
+                    onStartDateSelected = onStartDateSelected ?: onDateSelected,
+                    onEndDateSelected = onEndDateSelected,
                     events = events,
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
@@ -165,12 +186,14 @@ fun MonthViewDatePicker(
                         activeButtonDate = date
                     },
                     onSetAsStart = { date ->
-                        onDateSelected(date)
+                        // BUG FIX: Use onStartDateSelected, not onDateSelected
+                        (onStartDateSelected ?: onDateSelected)?.invoke(date)
                         onStartTimeChange?.invoke(LocalTime.now())
                         activeButtonDate = null
                     },
                     onSetAsEnd = { date ->
-                        onDateSelected(date)
+                        // BUG FIX: Use onEndDateSelected, not onDateSelected
+                        onEndDateSelected?.invoke(date)
                         onEndTimeChange?.invoke(LocalTime.now())
                         activeButtonDate = null
                     },
@@ -584,7 +607,9 @@ private fun WeekdayHeaders() {
 private fun MonthCalendarGrid(
     currentMonth: YearMonth,
     selectedDate: LocalDate?,
-    onDateSelected: (LocalDate) -> Unit,
+    mode: CalendarMode,
+    onStartDateSelected: ((LocalDate) -> Unit)?,
+    onEndDateSelected: ((LocalDate) -> Unit)?,
     events: List<CalendarEventLinkEntity>,
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
@@ -643,7 +668,9 @@ private fun MonthCalendarGrid(
                     date = date,
                     isSelected = date == selectedDate,
                     isCurrentMonth = date.month == currentMonth.month,
-                    onDateSelected = onDateSelected,
+                    mode = mode,
+                    onStartDateSelected = onStartDateSelected,
+                    onEndDateSelected = onEndDateSelected,
                     events = events,
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
@@ -757,7 +784,9 @@ private fun DayCell(
     date: LocalDate,
     isSelected: Boolean,
     isCurrentMonth: Boolean,
-    onDateSelected: (LocalDate) -> Unit,
+    mode: CalendarMode,
+    onStartDateSelected: ((LocalDate) -> Unit)?,
+    onEndDateSelected: ((LocalDate) -> Unit)?,
     events: List<CalendarEventLinkEntity>,
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
@@ -793,8 +822,21 @@ private fun DayCell(
             .clickable(
                 enabled = !showButton,
                 onClick = {
-                    if (!showButton) {
-                        onButtonRequest(cellPosition, cellSize)
+                    when (mode) {
+                        CalendarMode.DIRECT_START -> {
+                            // Direct click sets start date
+                            onStartDateSelected?.invoke(date)
+                        }
+                        CalendarMode.DIRECT_END -> {
+                            // Direct click sets end date
+                            onEndDateSelected?.invoke(date)
+                        }
+                        CalendarMode.RADIAL_MENU -> {
+                            // Click requests button/radial menu
+                            if (!showButton) {
+                                onButtonRequest(cellPosition, cellSize)
+                            }
+                        }
                     }
                 }
             )
@@ -868,11 +910,16 @@ private fun InlineDateRadialMenu(
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var selectedAction by remember { mutableStateOf<String?>(null) }
 
+    // FIXED ANGLES (2025-10-22): User requirements
+    // - Links (180°): Als Start
+    // - Rechts (0°): Als Ende
+    // - Oben (270°): Startzeit
+    // - Unten (90°): Endzeit
     val actions = listOf(
-        RadialMenuAction(id = "start", label = "Start", angle = 0f),
-        RadialMenuAction(id = "start_time", label = "Von", angle = 90f),
-        RadialMenuAction(id = "end", label = "Ende", angle = 180f),
-        RadialMenuAction(id = "end_time", label = "Bis", angle = 270f)
+        RadialMenuAction(id = "end", label = "Ende", angle = 0f),          // Rechts
+        RadialMenuAction(id = "end_time", label = "Bis", angle = 90f),     // Unten
+        RadialMenuAction(id = "start", label = "Start", angle = 180f),     // Links
+        RadialMenuAction(id = "start_time", label = "Von", angle = 270f)   // Oben
     )
 
     // Animation für Menu-Scale

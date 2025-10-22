@@ -93,11 +93,15 @@ fun TaskDialogTimeTab(
             item {
                 com.example.questflow.presentation.components.MonthViewDatePicker(
                     selectedDate = startDateTime.toLocalDate(),
-                    onDateSelected = { selectedDate ->
-                        onStartDateTimeChange(LocalDateTime.of(selectedDate, startDateTime.toLocalTime()))
-                    },
                     events = monthViewEvents,
                     occupancyCalculator = occupancyCalculator,
+                    mode = com.example.questflow.presentation.components.CalendarMode.RADIAL_MENU,
+                    onStartDateSelected = { selectedDate ->
+                        onStartDateTimeChange(LocalDateTime.of(selectedDate, startDateTime.toLocalTime()))
+                    },
+                    onEndDateSelected = { selectedDate ->
+                        onEndDateTimeChange(LocalDateTime.of(selectedDate, endDateTime.toLocalTime()))
+                    },
                     tasks = monthViewTasks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
