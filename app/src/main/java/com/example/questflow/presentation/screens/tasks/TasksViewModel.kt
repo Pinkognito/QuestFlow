@@ -42,6 +42,7 @@ class TasksViewModel @Inject constructor(
     private val filterPreferences: TaskFilterPreferences,
     private val uiPreferences: UIPreferences,
     private val taskRepository: TaskRepository,
+    private val timeBlockRepository: com.example.questflow.data.repository.TimeBlockRepository,
     private val checkExpiredEventsUseCase: CheckExpiredEventsUseCase,
     private val updateTaskWithCalendarUseCase: UpdateTaskWithCalendarUseCase,
     private val taskContactTagRepository: com.example.questflow.data.repository.TaskContactTagRepository,
@@ -57,6 +58,7 @@ class TasksViewModel @Inject constructor(
     // - claimXp()
     // - createCalendarTask()
     // - checkExpiredEventsUseCase()
+    // TimeBlocks Flow    val activeTimeBlocks = timeBlockRepository.getActiveTimeBlocksWithTagsFlow()        .stateIn(            scope = viewModelScope,            started = SharingStarted.WhileSubscribed(5000),            initialValue = emptyList()        )
 
     private var selectedCategoryId: Long? = null
 

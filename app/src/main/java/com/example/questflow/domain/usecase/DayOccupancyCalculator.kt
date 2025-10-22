@@ -2,6 +2,8 @@ package com.example.questflow.domain.usecase
 
 import com.example.questflow.data.database.TaskEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
+import com.example.questflow.data.database.entity.TimeBlockEntity
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -13,15 +15,17 @@ import javax.inject.Inject
  * Converts ALL time sources into visual segments showing occupied (red) and free (green) time:
  * - CalendarEventLinkEntity: Google Calendar events with startsAt/endsAt
  * - TaskEntity: Tasks with dueDate (shown as occupied time)
- * - WorkingHours: Optional working hours restriction (default 8-22 Uhr)
+ * - TimeBlockEntity: Time blocks (working hours, vacation, meetings)
  *
- * Example: 8-9 Uhr Google Event + 14-15 Uhr Task
+ * Example: 8-9 Uhr Google Event + 14-15 Uhr Task + 16-17 Uhr TimeBlock
  * Result: [
  *   TimeSegment(0f, 8f, false),    // 0-8: Grün (free)
  *   TimeSegment(8f, 9f, true),     // 8-9: Rot (Google Event)
  *   TimeSegment(9f, 14f, false),   // 9-14: Grün (free)
  *   TimeSegment(14f, 15f, true),   // 14-15: Rot (Task)
- *   TimeSegment(15f, 24f, false)   // 15-24: Grün (free)
+ *   TimeSegment(15f, 16f, false),  // 15-16: Grün (free)
+ *   TimeSegment(16f, 17f, true),   // 16-17: Rot (TimeBlock)
+ *   TimeSegment(17f, 24f, false)   // 17-24: Grün (free)
  * ]
  */
 class DayOccupancyCalculator @Inject constructor() {
@@ -46,6 +50,7 @@ class DayOccupancyCalculator @Inject constructor() {
         val hasSameCategory: Boolean = false,      // Task aus gleicher Kategorie
         val hasOtherOwnTasks: Boolean = false,     // Andere eigene Tasks
         val hasExternalEvents: Boolean = false,    // Externe Google Calendar Events
+        val hasTimeBlocks: Boolean = false,        // TimeBlocks (working hours, vacation, etc.)
         // Legacy flags (deprecated but kept for compatibility)
         @Deprecated("Use hasOtherOwnTasks instead") val isOwnEvent: Boolean = false,
         @Deprecated("Use hasCurrentTask instead") val isCurrentTask: Boolean = false,
@@ -60,6 +65,7 @@ class DayOccupancyCalculator @Inject constructor() {
      * @param events All calendar events (will be filtered by date)
      * @param date The day to analyze
      * @param tasks All tasks (will be filtered by dueDate)
+     * @param timeBlocks All time blocks (will be filtered by date/recurrence rules)
      * @param currentTaskId ID of the currently selected task (for highlighting)
      * @param currentCategoryId Category ID of the currently selected task (for same-category highlighting)
      * @return List of time segments showing occupied/free periods
@@ -68,6 +74,7 @@ class DayOccupancyCalculator @Inject constructor() {
         events: List<CalendarEventLinkEntity>,
         date: LocalDate,
         tasks: List<TaskEntity> = emptyList(),
+        timeBlocks: List<TimeBlockEntity> = emptyList(),
         currentTaskId: Long? = null,
         currentCategoryId: Long? = null
     ): List<TimeSegment> {
@@ -120,6 +127,33 @@ class DayOccupancyCalculator @Inject constructor() {
             ))
         }
 
+        // 3. Add active time blocks that match this day
+        timeBlocks.filter { it.isActive && matchesDate(it, date) }.forEach { timeBlock ->
+            if (timeBlock.allDay) {
+                // All-day time block: 0-24
+                occupiedSlots.add(OccupiedSlot(
+                    0f,
+                    24f,
+                    isTimeBlock = true
+                ))
+            } else if (timeBlock.startTime != null && timeBlock.endTime != null) {
+                // Specific time window
+                val startTime = parseTimeString(timeBlock.startTime)
+                val endTime = parseTimeString(timeBlock.endTime)
+
+                if (startTime != null && endTime != null) {
+                    val startHour = startTime.hour + startTime.minute / 60f
+                    val endHour = endTime.hour + endTime.minute / 60f
+
+                    occupiedSlots.add(OccupiedSlot(
+                        startHour,
+                        endHour,
+                        isTimeBlock = true
+                    ))
+                }
+            }
+        }
+
         // Filter invalid slots
         val validSlots = occupiedSlots.filter { it.start < it.end && it.end > 0f && it.start < 24f }
 
@@ -162,7 +196,8 @@ class DayOccupancyCalculator @Inject constructor() {
         val end: Float,
         val isOwnEvent: Boolean = false,  // true = Task (own), false = Google Calendar (external)
         val taskId: Long? = null,  // ID of the task (null for external events)
-        val categoryId: Long? = null  // Category ID of the task/event
+        val categoryId: Long? = null,  // Category ID of the task/event
+        val isTimeBlock: Boolean = false  // true = TimeBlock (working hours, vacation, etc.)
     )
 
     /**
@@ -260,7 +295,10 @@ class DayOccupancyCalculator @Inject constructor() {
                         // Priority 3: Other own task (blue)
                         slot.isOwnEvent ->
                             "OTHER_OWN_TASK"
-                        // Priority 4: External event (red)
+                        // Priority 4: TimeBlock (gray/orange)
+                        slot.isTimeBlock ->
+                            "TIME_BLOCK"
+                        // Priority 5: External event (red)
                         else ->
                             "EXTERNAL_EVENT"
                     }
@@ -287,22 +325,25 @@ class DayOccupancyCalculator @Inject constructor() {
                     (currentCategoryId == null || it.categoryId != currentCategoryId)
                 }
 
-                val hasExternalEventsType = overlappingSlots.any { !it.isOwnEvent }
+                val hasExternalEventsType = overlappingSlots.any { !it.isOwnEvent && !it.isTimeBlock }
+
+                val hasTimeBlocksType = overlappingSlots.any { it.isTimeBlock }
 
                 // Legacy flags for compatibility
                 val isCurrentTask = hasCurrentTaskType
                 val isSameCategory = !hasCurrentTaskType && hasSameCategoryType
                 val hasOwnEvents = overlappingSlots.any { it.isOwnEvent }
-                val hasExternalEvents = overlappingSlots.any { !it.isOwnEvent }
+                val hasExternalEvents = overlappingSlots.any { !it.isOwnEvent && !it.isTimeBlock }
 
                 val color = when {
                     hasOverlap -> "⚫ SCHWARZ (Overlap: ${distinctTypes.size} types)"
                     hasCurrentTaskType -> "⚪ WEISS (Current)"
                     hasSameCategoryType -> "🟡 GELB (Category)"
                     hasOtherOwnTasksType -> "🔵 BLAU (Own)"
+                    hasTimeBlocksType -> "🟠 ORANGE (TimeBlock)"
                     else -> "🔴 ROT (External)"
                 }
-                android.util.Log.d("DayOccupancy", "  [$start-$end] → $color | Types: $distinctTypes | Flags: cur=$hasCurrentTaskType sam=$hasSameCategoryType oth=$hasOtherOwnTasksType ext=$hasExternalEventsType")
+                android.util.Log.d("DayOccupancy", "  [$start-$end] → $color | Types: $distinctTypes | Flags: cur=$hasCurrentTaskType sam=$hasSameCategoryType oth=$hasOtherOwnTasksType ext=$hasExternalEventsType tb=$hasTimeBlocksType")
 
                 segments.add(
                     TimeSegment(
@@ -315,6 +356,7 @@ class DayOccupancyCalculator @Inject constructor() {
                         hasSameCategory = hasSameCategoryType,
                         hasOtherOwnTasks = hasOtherOwnTasksType,
                         hasExternalEvents = hasExternalEventsType,
+                        hasTimeBlocks = hasTimeBlocksType,
                         // LEGACY flags (for compatibility)
                         isOwnEvent = hasOwnEvents && !hasExternalEvents,
                         isCurrentTask = isCurrentTask,
@@ -365,5 +407,88 @@ class DayOccupancyCalculator @Inject constructor() {
         }
 
         return segments
+    }
+
+    /**
+     * Check if a TimeBlock matches a specific date based on its recurrence rules
+     */
+    private fun matchesDate(timeBlock: TimeBlockEntity, date: LocalDate): Boolean {
+        // Check validity period
+        if (timeBlock.validFrom != null) {
+            val validFrom = LocalDate.parse(timeBlock.validFrom)
+            if (date.isBefore(validFrom)) return false
+        }
+        if (timeBlock.validUntil != null) {
+            val validUntil = LocalDate.parse(timeBlock.validUntil)
+            if (date.isAfter(validUntil)) return false
+        }
+
+        // Check specific dates (highest priority)
+        if (!timeBlock.specificDates.isNullOrBlank()) {
+            val specificDates = timeBlock.specificDates.split(",").map { it.trim() }
+            if (specificDates.contains(date.toString())) {
+                return true
+            }
+        }
+
+        // Check day of week (1=Monday, 7=Sunday)
+        if (!timeBlock.daysOfWeek.isNullOrBlank()) {
+            val daysOfWeek = timeBlock.daysOfWeek.split(",").map { it.trim().toIntOrNull() }
+            val dayOfWeek = date.dayOfWeek.value  // Monday=1, Sunday=7
+            if (daysOfWeek.contains(dayOfWeek)) {
+                return true
+            }
+        }
+
+        // Check day of month (1-31)
+        if (!timeBlock.daysOfMonth.isNullOrBlank()) {
+            val daysOfMonth = timeBlock.daysOfMonth.split(",").map { it.trim().toIntOrNull() }
+            val dayOfMonth = date.dayOfMonth
+            if (daysOfMonth.contains(dayOfMonth)) {
+                return true
+            }
+        }
+
+        // Check months (1=January, 12=December)
+        if (!timeBlock.monthsOfYear.isNullOrBlank()) {
+            val monthsOfYear = timeBlock.monthsOfYear.split(",").map { it.trim().toIntOrNull() }
+            val monthValue = date.monthValue
+            if (monthsOfYear.contains(monthValue)) {
+                return true
+            }
+        }
+
+        // If no specific recurrence rules are set, match all dates within validity period
+        if (timeBlock.daysOfWeek.isNullOrBlank() &&
+            timeBlock.daysOfMonth.isNullOrBlank() &&
+            timeBlock.monthsOfYear.isNullOrBlank() &&
+            timeBlock.specificDates.isNullOrBlank()) {
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Parse time string in format "HH:mm:ss" or "HH:mm" to LocalTime
+     */
+    private fun parseTimeString(timeString: String): LocalTime? {
+        return try {
+            when {
+                timeString.matches(Regex("\\d{2}:\\d{2}:\\d{2}")) -> {
+                    // HH:mm:ss format
+                    val parts = timeString.split(":")
+                    LocalTime.of(parts[0].toInt(), parts[1].toInt(), parts[2].toInt())
+                }
+                timeString.matches(Regex("\\d{2}:\\d{2}")) -> {
+                    // HH:mm format
+                    val parts = timeString.split(":")
+                    LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 }

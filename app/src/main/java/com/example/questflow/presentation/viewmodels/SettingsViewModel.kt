@@ -38,14 +38,6 @@ class SettingsViewModel @Inject constructor(
     private val _calendarSyncProgress = MutableStateFlow("")
     val calendarSyncProgress: StateFlow<String> = _calendarSyncProgress.asStateFlow()
 
-    // Working hours settings
-    val workingHoursSettings = database.workingHoursSettingsDao().getWorkingHoursSettings()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
-        )
-
     /**
      * Create complete database backup (SQLite file copy)
      * Copies the entire database file to Downloads folder
@@ -227,26 +219,4 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Update working hours settings
-     */
-    fun updateWorkingHours(
-        startHour: Int,
-        startMinute: Int,
-        endHour: Int,
-        endMinute: Int,
-        enabled: Boolean
-    ) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val settings = com.example.questflow.data.database.entity.WorkingHoursSettingsEntity(
-                id = 1,
-                startHour = startHour,
-                startMinute = startMinute,
-                endHour = endHour,
-                endMinute = endMinute,
-                enabled = enabled
-            )
-            database.workingHoursSettingsDao().insert(settings)
-        }
-    }
 }

@@ -52,6 +52,7 @@ fun TaskDialogTimeTab(
     occupancyCalculator: DayOccupancyCalculator?,
     categoryColor: androidx.compose.ui.graphics.Color?,
     monthViewTasks: List<TaskEntity>,
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
     currentTaskId: Long?,
     currentCategoryId: Long?,
     calendarExpanded: Boolean,
@@ -154,6 +155,7 @@ fun TaskDialogTimeTab(
                         android.util.Log.d("TaskDialogTimeTab", "   → onEndDateTimeChange DONE")
                     },
                     tasks = monthViewTasks,
+                    timeBlocks = timeBlocks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     startTime = startDateTime.toLocalTime(),

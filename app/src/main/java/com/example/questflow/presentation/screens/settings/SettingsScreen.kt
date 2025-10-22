@@ -41,9 +41,6 @@ fun SettingsScreen(
     var showSyncConfirmation by remember { mutableStateOf(false) }
     var lastBackupPath by remember { mutableStateOf<String?>(null) }
 
-    val workingHours by viewModel.workingHoursSettings.collectAsState()
-    var showWorkingHoursDialog by remember { mutableStateOf(false) }
-
     // Time Adjustment Settings
     var showTimeAdjustmentDialog by remember { mutableStateOf(false) }
     var timeAdjustmentMode by remember { mutableStateOf(timeAdjustmentPrefs.getAdjustmentMode()) }
@@ -205,66 +202,6 @@ fun SettingsScreen(
                         Icon(Icons.Default.Refresh, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Kalender reparieren")
-                    }
-                }
-            }
-
-            // Working Hours Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.DateRange,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "Arbeitszeiten",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                text = workingHours?.let {
-                                    if (it.enabled) {
-                                        "${String.format("%02d:%02d", it.startHour, it.startMinute)} - ${String.format("%02d:%02d", it.endHour, it.endMinute)} Uhr"
-                                    } else {
-                                        "Deaktiviert (24h)"
-                                    }
-                                } ?: "Laden...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Legt den Zeitraum fest, in dem Terminvorschläge gemacht werden",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = { showWorkingHoursDialog = true },
-                        enabled = !isBackupInProgress && !isCalendarSyncInProgress,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.DateRange, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Arbeitszeiten anpassen")
                     }
                 }
             }
@@ -439,99 +376,6 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showSyncConfirmation = false }) {
-                    Text("Abbrechen")
-                }
-            }
-        )
-    }
-
-    // Working Hours Configuration Dialog
-    if (showWorkingHoursDialog) {
-        val currentSettings = workingHours ?: return@SettingsScreen
-        var enabled by remember { mutableStateOf(currentSettings.enabled) }
-        var startHour by remember { mutableStateOf(currentSettings.startHour) }
-        var startMinute by remember { mutableStateOf(currentSettings.startMinute) }
-        var endHour by remember { mutableStateOf(currentSettings.endHour) }
-        var endMinute by remember { mutableStateOf(currentSettings.endMinute) }
-
-        AlertDialog(
-            onDismissRequest = { showWorkingHoursDialog = false },
-            icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-            title = { Text("Arbeitszeiten konfigurieren") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Legt fest, in welchem Zeitraum Terminvorschläge gemacht werden sollen.")
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Checkbox(
-                            checked = enabled,
-                            onCheckedChange = { enabled = it }
-                        )
-                        Text("Arbeitszeiten aktivieren")
-                    }
-
-                    if (enabled) {
-                        Text("Start:", style = MaterialTheme.typography.labelMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = startHour.toString(),
-                                onValueChange = { startHour = it.toIntOrNull()?.coerceIn(0, 23) ?: startHour },
-                                label = { Text("Stunde") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = startMinute.toString(),
-                                onValueChange = { startMinute = it.toIntOrNull()?.coerceIn(0, 59) ?: startMinute },
-                                label = { Text("Minute") },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Text("Ende:", style = MaterialTheme.typography.labelMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = endHour.toString(),
-                                onValueChange = { endHour = it.toIntOrNull()?.coerceIn(0, 23) ?: endHour },
-                                label = { Text("Stunde") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = endMinute.toString(),
-                                onValueChange = { endMinute = it.toIntOrNull()?.coerceIn(0, 59) ?: endMinute },
-                                label = { Text("Minute") },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    } else {
-                        Text(
-                            "Deaktiviert: Termine werden rund um die Uhr (24h) vorgeschlagen",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updateWorkingHours(
-                            startHour = startHour,
-                            startMinute = startMinute,
-                            endHour = endHour,
-                            endMinute = endMinute,
-                            enabled = enabled
-                        )
-                        showWorkingHoursDialog = false
-                    }
-                ) {
-                    Text("Speichern")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWorkingHoursDialog = false }) {
                     Text("Abbrechen")
                 }
             }

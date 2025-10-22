@@ -94,6 +94,7 @@ fun MonthViewDatePicker(
     // Deprecated callback (kept for backward compatibility)
     onDateSelected: ((LocalDate) -> Unit)? = null,
     tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
     // Time input support - ALWAYS shows "Start | Ende"
@@ -191,6 +192,7 @@ fun MonthViewDatePicker(
                     events = events,
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
+                    timeBlocks = timeBlocks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     activeButtonDate = activeButtonDate,
@@ -370,6 +372,22 @@ private fun CalendarColorSettingsDialog(
                     }
                 )
 
+                // TimeBlock Color
+                ColorSettingRowWithToggle(
+                    label = "Zeitblockierungen",
+                    description = "Blockierte Zeitfenster",
+                    colorHex = colorConfig.timeBlockColor,
+                    enabled = colorConfig.timeBlockEnabled,
+                    onEnabledChange = {
+                        colorConfig = colorConfig.copy(timeBlockEnabled = it)
+                        repository.saveConfig(colorConfig)
+                    },
+                    onColorClick = {
+                        editingColor = CalendarColorType.TIME_BLOCK
+                        showColorPicker = true
+                    }
+                )
+
                 // Overlap Color
                 ColorSettingRowWithToggle(
                     label = "Überschneidung",
@@ -409,6 +427,7 @@ private fun CalendarColorSettingsDialog(
             CalendarColorType.SAME_CATEGORY -> colorConfig.sameCategoryColor
             CalendarColorType.OTHER_TASK -> colorConfig.otherTaskColor
             CalendarColorType.EXTERNAL_EVENT -> colorConfig.externalEventColor
+            CalendarColorType.TIME_BLOCK -> colorConfig.timeBlockColor
             CalendarColorType.OVERLAP -> colorConfig.overlapColor
             null -> "#FFFFFF"
         }
@@ -421,6 +440,7 @@ private fun CalendarColorSettingsDialog(
                     CalendarColorType.SAME_CATEGORY -> colorConfig.copy(sameCategoryColor = newColor)
                     CalendarColorType.OTHER_TASK -> colorConfig.copy(otherTaskColor = newColor)
                     CalendarColorType.EXTERNAL_EVENT -> colorConfig.copy(externalEventColor = newColor)
+                    CalendarColorType.TIME_BLOCK -> colorConfig.copy(timeBlockColor = newColor)
                     CalendarColorType.OVERLAP -> colorConfig.copy(overlapColor = newColor)
                     null -> colorConfig
                 }
@@ -551,6 +571,7 @@ private enum class CalendarColorType {
     SAME_CATEGORY,
     OTHER_TASK,
     EXTERNAL_EVENT,
+    TIME_BLOCK,
     OVERLAP
 }
 
@@ -669,6 +690,7 @@ private fun MonthCalendarGrid(
     events: List<CalendarEventLinkEntity>,
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
     activeButtonDate: LocalDate? = null,
@@ -730,6 +752,7 @@ private fun MonthCalendarGrid(
                     events = events,
                     occupancyCalculator = occupancyCalculator,
                     tasks = tasks,
+                    timeBlocks = timeBlocks,
                     currentTaskId = currentTaskId,
                     currentCategoryId = currentCategoryId,
                     showButton = activeButtonDate == date,
@@ -858,6 +881,7 @@ private fun DayCell(
     events: List<CalendarEventLinkEntity>,
     occupancyCalculator: DayOccupancyCalculator,
     tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
     currentTaskId: Long? = null,
     currentCategoryId: Long? = null,
     showButton: Boolean = false,
@@ -869,9 +893,9 @@ private fun DayCell(
 ) {
     val isToday = date == LocalDate.now()
 
-    // Calculate occupancy segments for this day (includes events AND tasks)
-    val segments = remember(date, events, tasks, currentTaskId, currentCategoryId) {
-        occupancyCalculator.calculateDayOccupancy(events, date, tasks, currentTaskId, currentCategoryId)
+    // Calculate occupancy segments for this day (includes events, tasks, and TimeBlocks)
+    val segments = remember(date, events, tasks, timeBlocks, currentTaskId, currentCategoryId) {
+        occupancyCalculator.calculateDayOccupancy(events, date, tasks, timeBlocks, currentTaskId, currentCategoryId)
     }
 
     var cellPosition by remember { mutableStateOf(Offset.Zero) }
@@ -1168,8 +1192,9 @@ private fun OccupancyBar(
                     if (segment.hasSameCategory && colorConfig.sameCategoryEnabled) enabledTypesInSegment++
                     if (segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled) enabledTypesInSegment++
                     if (segment.hasExternalEvents && colorConfig.externalEventEnabled) enabledTypesInSegment++
+                    if (segment.hasTimeBlocks && colorConfig.timeBlockEnabled) enabledTypesInSegment++
 
-                    android.util.Log.d("MonthViewDebug", "📊 Segment [${segment.startHour}-${segment.endHour}]: cur=${segment.hasCurrentTask} sam=${segment.hasSameCategory} oth=${segment.hasOtherOwnTasks} ext=${segment.hasExternalEvents} | enabled=$enabledTypesInSegment")
+                    android.util.Log.d("MonthViewDebug", "📊 Segment [${segment.startHour}-${segment.endHour}]: cur=${segment.hasCurrentTask} sam=${segment.hasSameCategory} oth=${segment.hasOtherOwnTasks} ext=${segment.hasExternalEvents} tim=${segment.hasTimeBlocks} | enabled=$enabledTypesInSegment")
 
                     when {
                         // 2+ types present AND enabled AND overlap display enabled -> BLACK
@@ -1185,6 +1210,7 @@ private fun OccupancyBar(
                                 segment.hasSameCategory && colorConfig.sameCategoryEnabled -> SegmentType.SAME_CATEGORY
                                 segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled -> SegmentType.OTHER_TASK
                                 segment.hasExternalEvents && colorConfig.externalEventEnabled -> SegmentType.EXTERNAL_EVENT
+                                segment.hasTimeBlocks && colorConfig.timeBlockEnabled -> SegmentType.TIME_BLOCK
                                 else -> SegmentType.FREE
                             }
                         }
@@ -1202,6 +1228,7 @@ private fun OccupancyBar(
                 SegmentType.SAME_CATEGORY -> parseColorHex(colorConfig.sameCategoryColor)
                 SegmentType.OTHER_TASK -> parseColorHex(colorConfig.otherTaskColor)
                 SegmentType.EXTERNAL_EVENT -> parseColorHex(colorConfig.externalEventColor)
+                SegmentType.TIME_BLOCK -> parseColorHex(colorConfig.timeBlockColor)
             }
 
             Box(
@@ -1220,7 +1247,8 @@ private enum class SegmentType {
     OWN_TASK,
     SAME_CATEGORY,
     OTHER_TASK,
-    EXTERNAL_EVENT
+    EXTERNAL_EVENT,
+    TIME_BLOCK
 }
 
 private fun parseColorHex(hex: String): Color {
@@ -1265,8 +1293,8 @@ private fun DayDetailsList(
         task.dueDate?.toLocalDate() == date && !task.isCompleted
     }
 
-    // Calculate occupancy for debug info
-    val segments = occupancyCalculator.calculateDayOccupancy(events, date, tasks, currentTaskId, currentCategoryId)
+    // Calculate occupancy for debug info (TimeBlocks not included in this detail view)
+    val segments = occupancyCalculator.calculateDayOccupancy(events, date, tasks, emptyList(), currentTaskId, currentCategoryId)
     val occupiedSegments = segments.filter { it.isOccupied }
 
     Card(

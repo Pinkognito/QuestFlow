@@ -59,5 +59,6 @@ enum class TagType {
     TASK,           // Tags für Tasks: "Dringend", "Wichtig", "Privat"
     LOCATION,       // Tags für Orte: "Büro", "Remote", "Baustelle"
     TEMPLATE,       // Tags für Templates: "Business", "Privat"
+    TIMEBLOCK,      // Tags für Zeitblockierungen: "Regulär", "Flexibel", "Projekt"
     GENERAL         // Universelle Tags (in allen Kontexten verwendbar)
 }

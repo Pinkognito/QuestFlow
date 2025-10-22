@@ -136,6 +136,13 @@ fun LibraryScreen(
             count = files.size
         ),
         LibraryCategory(
+            title = "Zeitblockierungen",
+            description = "Arbeitszeiten & Blockaden",
+            icon = Icons.Default.DateRange,
+            route = "time_blocks",
+            count = null
+        ),
+        LibraryCategory(
             title = "Einstellungen",
             description = "System & Backup",
             icon = Icons.Default.Settings,

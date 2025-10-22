@@ -49,11 +49,13 @@ import com.example.questflow.data.database.entity.*
         // Task Filter Presets
         TaskFilterPresetEntity::class,
         // Working Hours Settings
-        WorkingHoursSettingsEntity::class,
         // Task History System
-        TaskHistoryEntity::class
+        TaskHistoryEntity::class,
+        // TimeBlock System
+        TimeBlockEntity::class,
+        TimeBlockTagEntity::class
     ],
-    version = 47,
+    version = 49,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -104,7 +106,9 @@ abstract class QuestFlowDatabase : RoomDatabase() {
     // Task History DAO
     abstract fun taskHistoryDao(): TaskHistoryDao
     // Working Hours Settings DAO
-    abstract fun workingHoursSettingsDao(): WorkingHoursSettingsDao
+
+    // TimeBlock System DAO
+    abstract fun timeBlockDao(): TimeBlockDao
 
     companion object {
         const val DATABASE_NAME = "questflow_database"

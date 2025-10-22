@@ -7,6 +7,7 @@ import com.example.questflow.data.repository.TaskRepository
 import com.example.questflow.data.repository.StatsRepository
 import com.example.questflow.data.repository.CalendarLinkRepository
 import com.example.questflow.data.repository.CategoryRepository
+import com.example.questflow.data.repository.TimeBlockRepository
 import com.example.questflow.data.database.entity.CategoryEntity
 import com.example.questflow.data.database.entity.CalendarEventLinkEntity
 import com.example.questflow.data.database.entity.MetadataContactEntity
@@ -43,6 +44,7 @@ class TodayViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val calendarManager: CalendarManager,
     private val calendarLinkRepository: CalendarLinkRepository,
+    private val timeBlockRepository: TimeBlockRepository,
     private val createCalendarLinkUseCase: CreateCalendarLinkUseCase,
     private val completeTaskUseCase: CompleteTaskUseCase,
     private val calculateXpRewardUseCase: CalculateXpRewardUseCase,
@@ -77,6 +79,14 @@ class TodayViewModel @Inject constructor(
     val selectedCategory: StateFlow<CategoryEntity?> = _selectedCategory.asStateFlow()
 
     val categories = categoryRepository.getActiveCategories()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val activeTimeBlocks = timeBlockRepository.getActiveTimeBlocksWithTagsFlow()
+        .map { list -> list.map { it.timeBlock } }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

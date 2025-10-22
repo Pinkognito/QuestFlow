@@ -865,6 +865,9 @@ fun EditCalendarTaskDialog(
         endDate = currentMonth.plusMonths(2).atDay(1)
     ).collectAsState(initial = emptyList())
 
+    // TimeBlocks for month view occupancy
+    val activeTimeBlocks by viewModel.activeTimeBlocks.collectAsState()
+
     // Batch edit mode detection
     val isBatchEdit = batchEditLinks != null && batchEditLinks.size > 1
     val allLinks = batchEditLinks ?: listOf(calendarLink)
@@ -1482,6 +1485,7 @@ fun EditCalendarTaskDialog(
                                 occupancyCalculator = occupancyCalculator,
                                 categoryColor = taskCategory?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.color)) },
                                 monthViewTasks = monthViewTasks,
+                                timeBlocks = activeTimeBlocks,
                                 currentTaskId = currentTask?.id,
                                 currentCategoryId = taskCategory?.id,
                                 calendarExpanded = calendarExpanded,

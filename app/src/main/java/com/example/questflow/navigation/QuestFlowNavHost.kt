@@ -18,6 +18,7 @@ import com.example.questflow.presentation.screens.metadata.MetadataLibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryScreen
 import com.example.questflow.presentation.screens.library.LibraryDetailScreen
 import com.example.questflow.presentation.screens.library.ContactDetailScreen
+import com.example.questflow.presentation.screens.timeblock.TimeBlockListScreen
 import com.example.questflow.presentation.screens.library.TextTemplateLibraryScreen
 import com.example.questflow.presentation.screens.timeline.TimelineScreen
 import com.example.questflow.presentation.screens.settings.SettingsScreen
@@ -172,6 +173,12 @@ fun QuestFlowNavHost(
                 contactId = contactId,
                 appViewModel = appViewModel,
                 navController = navController
+            )
+        }
+
+        composable("time_blocks") {
+            TimeBlockListScreen(
+                onNavigateBack = { navController.navigateUp() }
             )
         }
 

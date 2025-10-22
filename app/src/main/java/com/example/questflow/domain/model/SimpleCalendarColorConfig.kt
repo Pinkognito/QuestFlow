@@ -16,6 +16,8 @@ data class SimpleCalendarColorConfig(
     val otherTaskEnabled: Boolean = true,
     val externalEventColor: String = "#EF5350", // Red - Google Calendar events
     val externalEventEnabled: Boolean = true,
+    val timeBlockColor: String = "#FF9800",     // Orange - Time Blocks
+    val timeBlockEnabled: Boolean = true,
     val overlapColor: String = "#000000",       // Black - Overlaps
     val overlapEnabled: Boolean = true
 ) {
@@ -26,6 +28,7 @@ data class SimpleCalendarColorConfig(
     fun getSameCategoryColor(): Color = parseColor(sameCategoryColor)
     fun getOtherTaskColor(): Color = parseColor(otherTaskColor)
     fun getExternalEventColor(): Color = parseColor(externalEventColor)
+    fun getTimeBlockColor(): Color = parseColor(timeBlockColor)
     fun getOverlapColor(): Color = parseColor(overlapColor)
 
     private fun parseColor(hex: String): Color {
@@ -52,6 +55,7 @@ class SimpleCalendarColorRepository(
         private const val KEY_SAME_CATEGORY = "simple_cal_same_category"
         private const val KEY_OTHER_TASK = "simple_cal_other_task"
         private const val KEY_EXTERNAL_EVENT = "simple_cal_external_event"
+        private const val KEY_TIME_BLOCK = "simple_cal_time_block"
         private const val KEY_OVERLAP = "simple_cal_overlap"
     }
 
@@ -65,6 +69,8 @@ class SimpleCalendarColorRepository(
             otherTaskEnabled = prefs.getBoolean("${KEY_OTHER_TASK}_enabled", true),
             externalEventColor = prefs.getString(KEY_EXTERNAL_EVENT, "#EF5350") ?: "#EF5350",
             externalEventEnabled = prefs.getBoolean("${KEY_EXTERNAL_EVENT}_enabled", true),
+            timeBlockColor = prefs.getString(KEY_TIME_BLOCK, "#FF9800") ?: "#FF9800",
+            timeBlockEnabled = prefs.getBoolean("${KEY_TIME_BLOCK}_enabled", true),
             overlapColor = prefs.getString(KEY_OVERLAP, "#000000") ?: "#000000",
             overlapEnabled = prefs.getBoolean("${KEY_OVERLAP}_enabled", true)
         )
@@ -80,6 +86,8 @@ class SimpleCalendarColorRepository(
             .putBoolean("${KEY_OTHER_TASK}_enabled", config.otherTaskEnabled)
             .putString(KEY_EXTERNAL_EVENT, config.externalEventColor)
             .putBoolean("${KEY_EXTERNAL_EVENT}_enabled", config.externalEventEnabled)
+            .putString(KEY_TIME_BLOCK, config.timeBlockColor)
+            .putBoolean("${KEY_TIME_BLOCK}_enabled", config.timeBlockEnabled)
             .putString(KEY_OVERLAP, config.overlapColor)
             .putBoolean("${KEY_OVERLAP}_enabled", config.overlapEnabled)
             .apply()
