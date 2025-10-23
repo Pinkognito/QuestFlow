@@ -1222,6 +1222,31 @@ fun EditCalendarTaskDialog(
     LaunchedEffect(startDateTime, endDateTime, currentTask?.id, calendarLink.id) {
         val hasPermission = viewModel.hasCalendarPermission.value
         if (hasPermission) {
+            android.util.Log.d("TaskDialog-Conflict", "╔══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ TASKSCREEN: Initiating conflict check")
+            android.util.Log.d("TaskDialog-Conflict", "╠══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ Current Task Info:")
+            android.util.Log.d("TaskDialog-Conflict", "║   currentTask?.id = ${currentTask?.id}")
+            android.util.Log.d("TaskDialog-Conflict", "║   currentTask?.title = '${currentTask?.title}'")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.id = ${calendarLink.id}")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.taskId = ${calendarLink.taskId}")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.calendarEventId = ${calendarLink.calendarEventId}")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.title = '${calendarLink.title}'")
+            android.util.Log.d("TaskDialog-Conflict", "╠══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ Time Range Being Checked:")
+            android.util.Log.d("TaskDialog-Conflict", "║   startDateTime = $startDateTime")
+            android.util.Log.d("TaskDialog-Conflict", "║   endDateTime   = $endDateTime")
+            android.util.Log.d("TaskDialog-Conflict", "╠══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ Original CalendarLink Times (from DB):")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.startsAt = ${calendarLink.startsAt}")
+            android.util.Log.d("TaskDialog-Conflict", "║   calendarLink.endsAt   = ${calendarLink.endsAt}")
+            android.util.Log.d("TaskDialog-Conflict", "╠══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ Exclusion Parameters to be sent:")
+            android.util.Log.d("TaskDialog-Conflict", "║   excludeEventId = ${calendarLink.calendarEventId}")
+            android.util.Log.d("TaskDialog-Conflict", "║   excludeTaskId  = ${currentTask?.id}")
+            android.util.Log.d("TaskDialog-Conflict", "║   excludeLinkId  = ${calendarLink.id}")
+            android.util.Log.d("TaskDialog-Conflict", "╚══════════════════════════════════════════════════════════════")
+
             val conflicts = viewModel.checkScheduleConflicts(
                 startTime = startDateTime,
                 endTime = endDateTime,
@@ -1229,6 +1254,18 @@ fun EditCalendarTaskDialog(
                 excludeTaskId = currentTask?.id,
                 excludeLinkId = calendarLink.id
             )
+
+            android.util.Log.d("TaskDialog-Conflict", "")
+            android.util.Log.d("TaskDialog-Conflict", "╔══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ TASKSCREEN: Conflict check result")
+            android.util.Log.d("TaskDialog-Conflict", "╠══════════════════════════════════════════════════════════════")
+            android.util.Log.d("TaskDialog-Conflict", "║ Found ${conflicts.size} conflicts")
+            conflicts.forEachIndexed { index, conflict ->
+                android.util.Log.d("TaskDialog-Conflict", "║   ${index + 1}. '${conflict.title}'")
+                android.util.Log.d("TaskDialog-Conflict", "║      ${conflict.startTime} → ${conflict.endTime}")
+            }
+            android.util.Log.d("TaskDialog-Conflict", "╚══════════════════════════════════════════════════════════════")
+
             rawScheduleConflicts = conflicts
             scheduleConflicts = conflicts
         }
