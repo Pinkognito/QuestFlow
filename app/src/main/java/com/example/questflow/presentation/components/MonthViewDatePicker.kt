@@ -1686,44 +1686,50 @@ private fun VerticalDayCell(
             )
             .padding(4.dp)
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Day number (left side) - FIXED WIDTH for uniform bar width
-            Column(
-                modifier = Modifier.width(24.dp), // Fixed width for consistent layout
-                horizontalAlignment = Alignment.CenterHorizontally
+        // NEW LAYOUT: Bar takes FULL WIDTH, day number overlaid on top
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Vertical occupancy bar (FULL WIDTH for maximum visibility)
+            if (segments.isNotEmpty()) {
+                VerticalOccupancyBar(
+                    segments = segments,
+                    modifier = Modifier.fillMaxSize() // Full cell width!
+                )
+            }
+
+            // Day number overlaid on bar (white with black shadow for visibility)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
+                // White text with strong black shadow for contrast on any background color
                 Text(
-                    text = String.format("%02d", date.dayOfMonth), // Format with leading zero: 01, 02, ..., 31
-                    fontSize = 14.sp,
-                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                    color = when {
-                        !isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        isToday -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurface
-                    },
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace // Monospace for uniform width
+                    text = String.format("%02d", date.dayOfMonth),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    style = androidx.compose.ui.text.TextStyle(
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black,
+                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                            blurRadius = 3f
+                        )
+                    )
                 )
 
+                // Button indicator (if active)
                 if (showButton) {
                     Box(
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = 20.dp)
                             .size(8.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary)
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Vertical occupancy bar (right side, fills height)
-            if (segments.isNotEmpty()) {
-                VerticalOccupancyBar(
-                    segments = segments,
-                    modifier = Modifier
-                        .width(40.dp) // Wider bar for better visibility (was 16dp)
-                        .fillMaxHeight()
-                )
             }
         }
     }
