@@ -134,6 +134,13 @@ fun MonthViewDatePicker(
     }
 
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+
+    // Week View State - separate from month navigation
+    // Initialize with week containing selectedDate or today
+    val initialWeekStart = (selectedDate ?: LocalDate.now())
+        .minusDays((selectedDate ?: LocalDate.now()).dayOfWeek.value.toLong() - 1) // Monday
+    var currentWeekStart by remember { mutableStateOf(initialWeekStart) }
+
     var showColorSettings by remember { mutableStateOf(false) }
     var showTimeSettings by remember { mutableStateOf(false) }  // NEW: Time settings dialog
     var refreshKey by remember { mutableStateOf(0) } // Trigger recomposition when settings change
@@ -210,6 +217,9 @@ fun MonthViewDatePicker(
                 currentMonth = currentMonth,
                 onPreviousMonth = { currentMonth = currentMonth.minusMonths(1) },
                 onNextMonth = { currentMonth = currentMonth.plusMonths(1) },
+                currentWeekStart = currentWeekStart,
+                onPreviousWeek = { currentWeekStart = currentWeekStart.minusWeeks(1) },
+                onNextWeek = { currentWeekStart = currentWeekStart.plusWeeks(1) },
                 onSettingsClick = { showColorSettings = true },
                 isDistanceLocked = isDistanceLocked,
                 onDistanceLockToggle = onDistanceLockToggle,
@@ -319,7 +329,7 @@ fun MonthViewDatePicker(
                     CalendarViewMode.WEEK_VIEW -> {
                         // ANSICHT 3: Week view (single row of 7 days)
                         WeekViewCalendar(
-                            currentMonth = currentMonth,
+                            weekStart = currentWeekStart,
                             selectedDate = selectedDate,
                             mode = mode,
                             onStartDateSelected = onStartDateSelected ?: onDateSelected,
@@ -716,6 +726,9 @@ private fun MonthNavigationHeader(
     currentMonth: YearMonth,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    currentWeekStart: LocalDate = LocalDate.now(),
+    onPreviousWeek: () -> Unit = {},
+    onNextWeek: () -> Unit = {},
     onSettingsClick: () -> Unit,
     isDistanceLocked: Boolean = false,
     onDistanceLockToggle: (() -> Unit)? = null,
@@ -736,8 +749,13 @@ private fun MonthNavigationHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onPreviousMonth) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Vorheriger Monat")
+        // Navigation buttons (← →) - different behavior for Week vs Month view
+        IconButton(
+            onClick = if (currentViewMode == CalendarViewMode.WEEK_VIEW) onPreviousWeek else onPreviousMonth
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = if (currentViewMode == CalendarViewMode.WEEK_VIEW) "Vorherige Woche" else "Vorheriger Monat"
+            )
         }
 
         Row(
@@ -745,10 +763,19 @@ private fun MonthNavigationHeader(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Display depends on view mode
             Text(
-                text = currentMonth.format(
-                    DateTimeFormatter.ofPattern("MMM yy", Locale.GERMAN) // KÜRZER: "Nov 25"
-                ),
+                text = when (currentViewMode) {
+                    CalendarViewMode.WEEK_VIEW -> {
+                        // Show "KW XX" (Kalenderwoche)
+                        val weekOfYear = currentWeekStart.get(java.time.temporal.WeekFields.of(Locale.GERMAN).weekOfWeekBasedYear())
+                        "KW $weekOfYear"
+                    }
+                    else -> {
+                        // Show "MMM yy" for month views
+                        currentMonth.format(DateTimeFormatter.ofPattern("MMM yy", Locale.GERMAN))
+                    }
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -800,11 +827,11 @@ private fun MonthNavigationHeader(
                                     val angle = atan2(dragOffset.y, dragOffset.x) * 180 / PI.toFloat()
                                     val normalizedAngle = ((angle + 360) % 360)
 
-                                    // 3 options: UP=270, DOWN-LEFT=210, DOWN-RIGHT=330
+                                    // 3 options pointing DOWN: DOWN=90, DOWN-LEFT=150, DOWN-RIGHT=30
                                     val modes = listOf(
-                                        CalendarViewMode.HORIZONTAL_MONTH to 270f,
-                                        CalendarViewMode.VERTICAL_MONTH to 210f,
-                                        CalendarViewMode.WEEK_VIEW to 330f
+                                        CalendarViewMode.HORIZONTAL_MONTH to 90f,   // DOWN
+                                        CalendarViewMode.VERTICAL_MONTH to 150f,    // DOWN-LEFT
+                                        CalendarViewMode.WEEK_VIEW to 30f           // DOWN-RIGHT
                                     )
 
                                     val closest = modes.minByOrNull { (_, modeAngle) ->
@@ -876,8 +903,12 @@ private fun MonthNavigationHeader(
             }
         }
 
-        IconButton(onClick = onNextMonth) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Nächster Monat")
+        IconButton(
+            onClick = if (currentViewMode == CalendarViewMode.WEEK_VIEW) onNextWeek else onNextMonth
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = if (currentViewMode == CalendarViewMode.WEEK_VIEW) "Nächste Woche" else "Nächster Monat"
+            )
         }
     }
 }
@@ -894,11 +925,12 @@ private fun CalendarViewModeRadialMenu(
 ) {
     val density = LocalDensity.current
 
-    // 3 options at 270° (UP), 210° (DOWN-LEFT), 330° (DOWN-RIGHT)
+    // 3 options pointing DOWN (more user-friendly, calendar is below)
+    // DOWN=90°, DOWN-LEFT=150°, DOWN-RIGHT=30°
     val viewModeActions = listOf(
-        ViewModeAction(mode = CalendarViewMode.HORIZONTAL_MONTH, label = "H", angle = 270f),
-        ViewModeAction(mode = CalendarViewMode.VERTICAL_MONTH, label = "V", angle = 210f),
-        ViewModeAction(mode = CalendarViewMode.WEEK_VIEW, label = "W", angle = 330f)
+        ViewModeAction(mode = CalendarViewMode.HORIZONTAL_MONTH, label = "H", angle = 90f),   // DOWN
+        ViewModeAction(mode = CalendarViewMode.VERTICAL_MONTH, label = "V", angle = 150f),    // DOWN-LEFT
+        ViewModeAction(mode = CalendarViewMode.WEEK_VIEW, label = "W", angle = 30f)           // DOWN-RIGHT
     )
 
     val menuScale by androidx.compose.animation.core.animateFloatAsState(
@@ -1463,7 +1495,7 @@ private fun VerticalMonthCalendarGrid(
  */
 @Composable
 private fun WeekViewCalendar(
-    currentMonth: YearMonth,
+    weekStart: LocalDate,
     selectedDate: LocalDate?,
     mode: CalendarMode,
     onStartDateSelected: ((LocalDate) -> Unit)?,
@@ -1481,9 +1513,7 @@ private fun WeekViewCalendar(
     onChangeStartTime: () -> Unit = {},
     onChangeEndTime: () -> Unit = {}
 ) {
-    // Get the week containing selectedDate, or first week of currentMonth
-    val referenceDate = selectedDate ?: currentMonth.atDay(1)
-    val weekStart = referenceDate.minusDays((referenceDate.dayOfWeek.value - 1).toLong()) // Monday
+    // Use provided weekStart (from parent state management)
     val weekDates = (0..6).map { weekStart.plusDays(it.toLong()) }
 
     var buttonPosition by remember { mutableStateOf(Offset.Zero) }
@@ -1538,7 +1568,7 @@ private fun WeekViewCalendar(
                     VerticalDayCell(
                         date = date,
                         isSelected = date == selectedDate,
-                        isCurrentMonth = date.month == currentMonth.month,
+                        isCurrentMonth = true, // All days in week view are equally important
                         mode = mode,
                         onStartDateSelected = onStartDateSelected,
                         onEndDateSelected = onEndDateSelected,
@@ -1657,20 +1687,21 @@ private fun VerticalDayCell(
             .padding(4.dp)
     ) {
         Row(modifier = Modifier.fillMaxSize()) {
-            // Day number (left side)
+            // Day number (left side) - FIXED WIDTH for uniform bar width
             Column(
-                modifier = Modifier.wrapContentWidth(),
+                modifier = Modifier.width(24.dp), // Fixed width for consistent layout
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = date.dayOfMonth.toString(),
+                    text = String.format("%02d", date.dayOfMonth), // Format with leading zero: 01, 02, ..., 31
                     fontSize = 14.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                     color = when {
                         !isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         isToday -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.onSurface
-                    }
+                    },
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace // Monospace for uniform width
                 )
 
                 if (showButton) {
@@ -1690,7 +1721,7 @@ private fun VerticalDayCell(
                 VerticalOccupancyBar(
                     segments = segments,
                     modifier = Modifier
-                        .width(16.dp)
+                        .width(40.dp) // Wider bar for better visibility (was 16dp)
                         .fillMaxHeight()
                 )
             }
