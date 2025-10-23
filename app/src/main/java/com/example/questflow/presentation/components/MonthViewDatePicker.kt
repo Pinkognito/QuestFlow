@@ -72,6 +72,19 @@ enum class CalendarMode {
 }
 
 /**
+ * Calendar view mode
+ * Determines how the calendar is displayed
+ */
+enum class CalendarViewMode {
+    /** Standard horizontal month view with horizontal occupancy bars */
+    HORIZONTAL_MONTH,
+    /** Vertically stretched month view with vertical 24h occupancy bars */
+    VERTICAL_MONTH,
+    /** Single week view with 7 days and vertical occupancy bars */
+    WEEK_VIEW
+}
+
+/**
  * Google Calendar-style month view with visual occupancy indicators
  *
  * Features:
@@ -106,6 +119,20 @@ fun MonthViewDatePicker(
     isDistanceLocked: Boolean = false,
     onDistanceLockToggle: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val viewModePrefs = remember {
+        context.getSharedPreferences("calendar_view_mode", Context.MODE_PRIVATE)
+    }
+
+    // Load saved view mode (default: HORIZONTAL_MONTH)
+    var currentViewMode by remember {
+        mutableStateOf(
+            CalendarViewMode.values()[
+                viewModePrefs.getInt("view_mode", CalendarViewMode.HORIZONTAL_MONTH.ordinal)
+            ]
+        )
+    }
+
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var showColorSettings by remember { mutableStateOf(false) }
     var showTimeSettings by remember { mutableStateOf(false) }  // NEW: Time settings dialog
@@ -118,12 +145,26 @@ fun MonthViewDatePicker(
     // Radial Button Menu state - Track which date has active button
     var activeButtonDate by remember { mutableStateOf<LocalDate?>(null) }
 
+    // View Mode Menu State
+    var showViewModeMenu by remember { mutableStateOf(false) }
+    var viewModeButtonPosition by remember { mutableStateOf(Offset.Zero) }
+    var hoveredViewMode by remember { mutableStateOf<CalendarViewMode?>(null) }
+    var containerPosition by remember { mutableStateOf(Offset.Zero) } // NEW: Track container position
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
     ) {
-        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .onGloballyPositioned { coordinates ->
+                    // Track Column position (not Box) because Column contains scrollable content
+                    containerPosition = coordinates.positionInWindow()
+                }
+        ) {
         // Event/Task list for selected date (Info box - flexible size, scrollable)
         if (selectedDate != null) {
             Column(
@@ -172,60 +213,155 @@ fun MonthViewDatePicker(
                 onSettingsClick = { showColorSettings = true },
                 isDistanceLocked = isDistanceLocked,
                 onDistanceLockToggle = onDistanceLockToggle,
-                onTimeDistanceSettingsClick = { showTimeSettings = true }
+                onTimeDistanceSettingsClick = { showTimeSettings = true },
+                currentViewMode = currentViewMode,
+                onViewModeChange = { newMode ->
+                    currentViewMode = newMode
+                    // Save to SharedPreferences
+                    viewModePrefs.edit().putInt("view_mode", newMode.ordinal).apply()
+                },
+                showViewModeMenu = showViewModeMenu,
+                onShowViewModeMenu = { showViewModeMenu = it },
+                buttonPosition = viewModeButtonPosition,
+                onButtonPositionChange = { buttonWindowPos ->
+                    // Calculate relative position within container (like DayCell radial menu)
+                    viewModeButtonPosition = Offset(
+                        x = buttonWindowPos.x - containerPosition.x,
+                        y = buttonWindowPos.y - containerPosition.y
+                    )
+                },
+                hoveredViewMode = hoveredViewMode,
+                onHoveredViewModeChange = { hoveredViewMode = it }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Table structure (header + grid as one unit)
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Weekday headers
-                WeekdayHeaders()
-
-                // Calendar grid (connected to header)
-                MonthCalendarGrid(
-                    currentMonth = currentMonth,
-                    selectedDate = selectedDate,
-                    mode = mode,
-                    onStartDateSelected = onStartDateSelected ?: onDateSelected,
-                    onEndDateSelected = onEndDateSelected,
-                    events = events,
-                    occupancyCalculator = occupancyCalculator,
-                    tasks = tasks,
-                    timeBlocks = timeBlocks,
-                    currentTaskId = currentTaskId,
-                    currentCategoryId = currentCategoryId,
-                    activeButtonDate = activeButtonDate,
-                    onButtonRequest = { date ->
-                        activeButtonDate = date
-                    },
-                    onSetAsStart = { date ->
-                        android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsStart: date=$date, callback=${onStartDateSelected != null || onDateSelected != null}")
-                        // BUG FIX: Use onStartDateSelected, not onDateSelected
-                        (onStartDateSelected ?: onDateSelected)?.invoke(date)
-                        // DON'T set time to now - keep existing time!
-                        // onStartTimeChange?.invoke(LocalTime.now())
-                        activeButtonDate = null
-                    },
-                    onSetAsEnd = { date ->
-                        android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsEnd: date=$date, callback=${onEndDateSelected != null}")
-                        // BUG FIX: Use onEndDateSelected, not onDateSelected
-                        onEndDateSelected?.invoke(date)
-                        // DON'T set time to now - keep existing time!
-                        // onEndTimeChange?.invoke(LocalTime.now())
-                        activeButtonDate = null
-                    },
-                    onChangeStartTime = {
-                        showStartTimeInput = true
-                        activeButtonDate = null
-                    },
-                    onChangeEndTime = {
-                        showEndTimeInput = true
-                        activeButtonDate = null
+                // Render different views based on currentViewMode
+                when (currentViewMode) {
+                    CalendarViewMode.HORIZONTAL_MONTH -> {
+                        // ANSICHT 1: Original horizontal month view
+                        WeekdayHeaders()
+                        MonthCalendarGrid(
+                            currentMonth = currentMonth,
+                            selectedDate = selectedDate,
+                            mode = mode,
+                            onStartDateSelected = onStartDateSelected ?: onDateSelected,
+                            onEndDateSelected = onEndDateSelected,
+                            events = events,
+                            occupancyCalculator = occupancyCalculator,
+                            tasks = tasks,
+                            timeBlocks = timeBlocks,
+                            currentTaskId = currentTaskId,
+                            currentCategoryId = currentCategoryId,
+                            activeButtonDate = activeButtonDate,
+                            onButtonRequest = { date ->
+                                activeButtonDate = date
+                            },
+                            onSetAsStart = { date ->
+                                android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsStart: date=$date, callback=${onStartDateSelected != null || onDateSelected != null}")
+                                (onStartDateSelected ?: onDateSelected)?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onSetAsEnd = { date ->
+                                android.util.Log.d("MonthViewDatePicker", "🔥 onSetAsEnd: date=$date, callback=${onEndDateSelected != null}")
+                                onEndDateSelected?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onChangeStartTime = {
+                                showStartTimeInput = true
+                                activeButtonDate = null
+                            },
+                            onChangeEndTime = {
+                                showEndTimeInput = true
+                                activeButtonDate = null
+                            }
+                        )
                     }
-                )
+
+                    CalendarViewMode.VERTICAL_MONTH -> {
+                        // ANSICHT 2: Vertical month view with tall cells
+                        WeekdayHeaders()
+                        VerticalMonthCalendarGrid(
+                            currentMonth = currentMonth,
+                            selectedDate = selectedDate,
+                            mode = mode,
+                            onStartDateSelected = onStartDateSelected ?: onDateSelected,
+                            onEndDateSelected = onEndDateSelected,
+                            events = events,
+                            occupancyCalculator = occupancyCalculator,
+                            tasks = tasks,
+                            timeBlocks = timeBlocks,
+                            currentTaskId = currentTaskId,
+                            currentCategoryId = currentCategoryId,
+                            activeButtonDate = activeButtonDate,
+                            onButtonRequest = { date -> activeButtonDate = date },
+                            onSetAsStart = { date ->
+                                (onStartDateSelected ?: onDateSelected)?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onSetAsEnd = { date ->
+                                onEndDateSelected?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onChangeStartTime = {
+                                showStartTimeInput = true
+                                activeButtonDate = null
+                            },
+                            onChangeEndTime = {
+                                showEndTimeInput = true
+                                activeButtonDate = null
+                            }
+                        )
+                    }
+
+                    CalendarViewMode.WEEK_VIEW -> {
+                        // ANSICHT 3: Week view (single row of 7 days)
+                        WeekViewCalendar(
+                            currentMonth = currentMonth,
+                            selectedDate = selectedDate,
+                            mode = mode,
+                            onStartDateSelected = onStartDateSelected ?: onDateSelected,
+                            onEndDateSelected = onEndDateSelected,
+                            events = events,
+                            occupancyCalculator = occupancyCalculator,
+                            tasks = tasks,
+                            timeBlocks = timeBlocks,
+                            currentTaskId = currentTaskId,
+                            currentCategoryId = currentCategoryId,
+                            activeButtonDate = activeButtonDate,
+                            onButtonRequest = { date -> activeButtonDate = date },
+                            onSetAsStart = { date ->
+                                (onStartDateSelected ?: onDateSelected)?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onSetAsEnd = { date ->
+                                onEndDateSelected?.invoke(date)
+                                activeButtonDate = null
+                            },
+                            onChangeStartTime = {
+                                showStartTimeInput = true
+                                activeButtonDate = null
+                            },
+                            onChangeEndTime = {
+                                showEndTimeInput = true
+                                activeButtonDate = null
+                            }
+                        )
+                    }
+                }
             }
         }
+        }
+
+        // Radial Menu Overlay - ONLY VISUAL, no pointer input!
+        if (showViewModeMenu) {
+            CalendarViewModeRadialMenu(
+                currentViewMode = currentViewMode,
+                hoveredViewMode = hoveredViewMode,
+                buttonPosition = viewModeButtonPosition
+            )
         }
     }
 
@@ -583,7 +719,15 @@ private fun MonthNavigationHeader(
     onSettingsClick: () -> Unit,
     isDistanceLocked: Boolean = false,
     onDistanceLockToggle: (() -> Unit)? = null,
-    onTimeDistanceSettingsClick: (() -> Unit)? = null
+    onTimeDistanceSettingsClick: (() -> Unit)? = null,
+    currentViewMode: CalendarViewMode = CalendarViewMode.HORIZONTAL_MONTH,
+    onViewModeChange: (CalendarViewMode) -> Unit = {},
+    showViewModeMenu: Boolean = false,
+    onShowViewModeMenu: (Boolean) -> Unit = {},
+    buttonPosition: Offset = Offset.Zero,
+    onButtonPositionChange: (Offset) -> Unit = {},
+    hoveredViewMode: CalendarViewMode? = null,
+    onHoveredViewModeChange: (CalendarViewMode?) -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -603,12 +747,100 @@ private fun MonthNavigationHeader(
         ) {
             Text(
                 text = currentMonth.format(
-                    DateTimeFormatter.ofPattern("MMM yyyy", Locale.GERMAN)
+                    DateTimeFormatter.ofPattern("MMM yy", Locale.GERMAN) // KÜRZER: "Nov 25"
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
             )
+
+            // View Mode Button - Press & Drag (like TaskDialogRadialTabSwitcher)
+            // CRITICAL: ALL drag logic here, overlay is ONLY visual
+            var dragOffset by remember { mutableStateOf(Offset.Zero) }
+
+            // LIVE VIEW MODE SWITCHING - Change view immediately when hovering over option
+            LaunchedEffect(hoveredViewMode) {
+                hoveredViewMode?.let { mode ->
+                    if (mode != currentViewMode) {
+                        android.util.Log.d("ViewModeRadial", "🔄 Live view switch: $currentViewMode → $mode")
+                        onViewModeChange(mode)
+                    }
+                }
+            }
+
+            val density = LocalDensity.current
+            val buttonSizePx = with(density) { 40.dp.toPx() }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .onGloballyPositioned { coordinates ->
+                        // Get top-left corner position and add half button size to center it
+                        val topLeft = coordinates.positionInWindow()
+                        val centered = Offset(
+                            x = topLeft.x + (buttonSizePx / 2f),
+                            y = topLeft.y + (buttonSizePx / 2f)
+                        )
+                        onButtonPositionChange(centered)
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = {
+                                android.util.Log.d("ViewModeRadial", "🎮 Drag started")
+                                onShowViewModeMenu(true)
+                                dragOffset = Offset.Zero
+                                onHoveredViewModeChange(null)
+                            },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                dragOffset += drag
+                                val distance = sqrt(dragOffset.x * dragOffset.x + dragOffset.y * dragOffset.y)
+
+                                if (distance > 20f) {
+                                    val angle = atan2(dragOffset.y, dragOffset.x) * 180 / PI.toFloat()
+                                    val normalizedAngle = ((angle + 360) % 360)
+
+                                    // 3 options: UP=270, DOWN-LEFT=210, DOWN-RIGHT=330
+                                    val modes = listOf(
+                                        CalendarViewMode.HORIZONTAL_MONTH to 270f,
+                                        CalendarViewMode.VERTICAL_MONTH to 210f,
+                                        CalendarViewMode.WEEK_VIEW to 330f
+                                    )
+
+                                    val closest = modes.minByOrNull { (_, modeAngle) ->
+                                        val diff = abs(normalizedAngle - modeAngle)
+                                        min(diff, 360 - diff)
+                                    }
+
+                                    android.util.Log.d("ViewModeRadial", "📍 Drag: angle=$normalizedAngle°, closest=${closest?.first}")
+                                    onHoveredViewModeChange(closest?.first)
+                                } else {
+                                    onHoveredViewModeChange(null)
+                                }
+                            },
+                            onDragEnd = {
+                                android.util.Log.d("ViewModeRadial", "✅ DragEnd: View already changed via LaunchedEffect")
+                                // View mode was already changed live via LaunchedEffect, just close menu
+                                onShowViewModeMenu(false)
+                                dragOffset = Offset.Zero
+                                onHoveredViewModeChange(null)
+                            },
+                            onDragCancel = {
+                                onShowViewModeMenu(false)
+                                dragOffset = Offset.Zero
+                                onHoveredViewModeChange(null)
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "Ansicht wechseln (Halten & Ziehen)",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
 
             IconButton(onClick = onSettingsClick) {
                 Icon(
@@ -648,6 +880,136 @@ private fun MonthNavigationHeader(
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Nächster Monat")
         }
     }
+}
+
+/**
+ * Radial Menu for Calendar View Mode Selection
+ * VISUAL ONLY - No pointer input! (drag handled by button)
+ */
+@Composable
+private fun CalendarViewModeRadialMenu(
+    currentViewMode: CalendarViewMode,
+    hoveredViewMode: CalendarViewMode?,
+    buttonPosition: Offset
+) {
+    val density = LocalDensity.current
+
+    // 3 options at 270° (UP), 210° (DOWN-LEFT), 330° (DOWN-RIGHT)
+    val viewModeActions = listOf(
+        ViewModeAction(mode = CalendarViewMode.HORIZONTAL_MONTH, label = "H", angle = 270f),
+        ViewModeAction(mode = CalendarViewMode.VERTICAL_MONTH, label = "V", angle = 210f),
+        ViewModeAction(mode = CalendarViewMode.WEEK_VIEW, label = "W", angle = 330f)
+    )
+
+    val menuScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+        ),
+        label = "menu_scale"
+    )
+
+    // Calculate menu offset (center menu on button)
+    val menuSizePx = with(density) { 180.dp.toPx() }
+    val halfMenuSize = menuSizePx / 2f
+
+    // Fullscreen overlay for dimming (NO POINTER INPUT!)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.3f))
+            .zIndex(2000f)
+    ) {
+        // Menu positioned at button (NO POINTER INPUT!)
+        // Position is already relative to container (calculated in MonthViewDatePicker)
+        Box(
+            modifier = Modifier
+                .size(180.dp)
+                .offset {
+                    androidx.compose.ui.unit.IntOffset(
+                        (buttonPosition.x - halfMenuSize).toInt(),
+                        (buttonPosition.y - halfMenuSize).toInt()
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            // Center button (visual only)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = "Ziehen",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Radial menu options (visual only)
+            viewModeActions.forEach { action ->
+                val angleRad = Math.toRadians(action.angle.toDouble())
+                val radius = 60.dp * menuScale
+                val offsetX = (radius.value * cos(angleRad)).dp
+                val offsetY = (radius.value * sin(angleRad)).dp
+                val isSelected = hoveredViewMode == action.mode
+                val isCurrent = currentViewMode == action.mode
+
+                Box(
+                    modifier = Modifier
+                        .offset(x = offsetX, y = offsetY)
+                        .size(if (isSelected) 50.dp else 44.dp)
+                        .scale(menuScale)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = when {
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            isCurrent -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.secondaryContainer
+                        },
+                        tonalElevation = if (isSelected) 8.dp else 4.dp,
+                        shadowElevation = if (isSelected) 12.dp else 6.dp,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = action.label,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = when {
+                                    isSelected -> MaterialTheme.colorScheme.onPrimary
+                                    isCurrent -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    else -> MaterialTheme.colorScheme.onSecondaryContainer
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class ViewModeAction(
+    val mode: CalendarViewMode,
+    val label: String,
+    val angle: Float
+)
+
+private fun getViewModeByAngle(angle: Float, actions: List<ViewModeAction>): CalendarViewMode? {
+    val normalizedAngle = ((angle + 360) % 360)
+    return actions.minByOrNull { action ->
+        val diff = abs(normalizedAngle - action.angle)
+        min(diff, 360 - diff)
+    }?.mode
 }
 
 @Composable
@@ -985,6 +1347,358 @@ private fun DayCell(
 }
 
 /**
+ * ANSICHT 2: Vertical Month Calendar Grid with tall cells
+ */
+@Composable
+private fun VerticalMonthCalendarGrid(
+    currentMonth: YearMonth,
+    selectedDate: LocalDate?,
+    mode: CalendarMode,
+    onStartDateSelected: ((LocalDate) -> Unit)?,
+    onEndDateSelected: ((LocalDate) -> Unit)?,
+    events: List<CalendarEventLinkEntity>,
+    occupancyCalculator: DayOccupancyCalculator,
+    tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
+    currentTaskId: Long? = null,
+    currentCategoryId: Long? = null,
+    activeButtonDate: LocalDate? = null,
+    onButtonRequest: (LocalDate) -> Unit = {},
+    onSetAsStart: (LocalDate) -> Unit = {},
+    onSetAsEnd: (LocalDate) -> Unit = {},
+    onChangeStartTime: () -> Unit = {},
+    onChangeEndTime: () -> Unit = {}
+) {
+    val calendarDates = buildCalendarDates(currentMonth)
+    var buttonPosition by remember { mutableStateOf(Offset.Zero) }
+    var gridPosition by remember { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(600.dp) // TALL for vertical bars
+            .onGloballyPositioned { coordinates ->
+                gridPosition = coordinates.positionInWindow()
+            }
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp)
+            )
+            .padding(1.dp)
+    ) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(7),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(0.dp),
+            horizontalArrangement = Arrangement.Start,
+            verticalArrangement = Arrangement.Top,
+            userScrollEnabled = true // LazyGrid handles scroll internally
+        ) {
+            items(
+                count = calendarDates.size,
+                key = { index -> calendarDates[index].toEpochDay() }
+            ) { index ->
+                val date = calendarDates[index]
+                VerticalDayCell(
+                    date = date,
+                    isSelected = date == selectedDate,
+                    isCurrentMonth = date.month == currentMonth.month,
+                    mode = mode,
+                    onStartDateSelected = onStartDateSelected,
+                    onEndDateSelected = onEndDateSelected,
+                    events = events,
+                    occupancyCalculator = occupancyCalculator,
+                    tasks = tasks,
+                    timeBlocks = timeBlocks,
+                    currentTaskId = currentTaskId,
+                    currentCategoryId = currentCategoryId,
+                    showButton = activeButtonDate == date,
+                    onButtonRequest = { cellWindowPosition, cellSize ->
+                        buttonPosition = Offset(
+                            x = cellWindowPosition.x - gridPosition.x + (cellSize.width / 2f),
+                            y = cellWindowPosition.y - gridPosition.y + (cellSize.height / 2f)
+                        )
+                        onButtonRequest(date)
+                    },
+                    onSetAsStart = { onSetAsStart(date) },
+                    onSetAsEnd = { onSetAsEnd(date) },
+                    onChangeStartTime = onChangeStartTime,
+                    onChangeEndTime = onChangeEndTime,
+                    modifier = Modifier.height(100.dp) // EXPLICIT HEIGHT für vertikale Balken
+                )
+            }
+        }
+
+        // Radial menu overlay
+        if (activeButtonDate != null) {
+            val density = LocalDensity.current
+            val menuSizePx = with(density) { 200.dp.toPx() }
+            val halfMenuSize = menuSizePx / 2f
+
+            Box(modifier = Modifier.fillMaxSize().zIndex(1000f)) {
+                InlineDateRadialMenu(
+                    onSetAsStart = { onSetAsStart(activeButtonDate) },
+                    onSetAsEnd = { onSetAsEnd(activeButtonDate) },
+                    onChangeStartTime = onChangeStartTime,
+                    onChangeEndTime = onChangeEndTime,
+                    modifier = Modifier.offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            (buttonPosition.x - halfMenuSize).toInt(),
+                            (buttonPosition.y - halfMenuSize).toInt()
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ANSICHT 3: Week View Calendar (single row of 7 days)
+ */
+@Composable
+private fun WeekViewCalendar(
+    currentMonth: YearMonth,
+    selectedDate: LocalDate?,
+    mode: CalendarMode,
+    onStartDateSelected: ((LocalDate) -> Unit)?,
+    onEndDateSelected: ((LocalDate) -> Unit)?,
+    events: List<CalendarEventLinkEntity>,
+    occupancyCalculator: DayOccupancyCalculator,
+    tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
+    currentTaskId: Long? = null,
+    currentCategoryId: Long? = null,
+    activeButtonDate: LocalDate? = null,
+    onButtonRequest: (LocalDate) -> Unit = {},
+    onSetAsStart: (LocalDate) -> Unit = {},
+    onSetAsEnd: (LocalDate) -> Unit = {},
+    onChangeStartTime: () -> Unit = {},
+    onChangeEndTime: () -> Unit = {}
+) {
+    // Get the week containing selectedDate, or first week of currentMonth
+    val referenceDate = selectedDate ?: currentMonth.atDay(1)
+    val weekStart = referenceDate.minusDays((referenceDate.dayOfWeek.value - 1).toLong()) // Monday
+    val weekDates = (0..6).map { weekStart.plusDays(it.toLong()) }
+
+    var buttonPosition by remember { mutableStateOf(Offset.Zero) }
+    var gridPosition by remember { mutableStateOf(Offset.Zero) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Weekday headers
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                )
+                .padding(vertical = 8.dp)
+        ) {
+            val weekdays = listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+            weekdays.forEach { day ->
+                Text(
+                    text = day,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp) // KOMPAKT wie horizontal month view
+                .onGloballyPositioned { coordinates ->
+                    gridPosition = coordinates.positionInWindow()
+                }
+                .background(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline,
+                    shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp)
+                )
+                .padding(1.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                weekDates.forEach { date ->
+                    VerticalDayCell(
+                        date = date,
+                        isSelected = date == selectedDate,
+                        isCurrentMonth = date.month == currentMonth.month,
+                        mode = mode,
+                        onStartDateSelected = onStartDateSelected,
+                        onEndDateSelected = onEndDateSelected,
+                        events = events,
+                        occupancyCalculator = occupancyCalculator,
+                        tasks = tasks,
+                        timeBlocks = timeBlocks,
+                        currentTaskId = currentTaskId,
+                        currentCategoryId = currentCategoryId,
+                        showButton = activeButtonDate == date,
+                        onButtonRequest = { cellWindowPosition, cellSize ->
+                            buttonPosition = Offset(
+                                x = cellWindowPosition.x - gridPosition.x + (cellSize.width / 2f),
+                                y = cellWindowPosition.y - gridPosition.y + (cellSize.height / 2f)
+                            )
+                            onButtonRequest(date)
+                        },
+                        onSetAsStart = { onSetAsStart(date) },
+                        onSetAsEnd = { onSetAsEnd(date) },
+                        onChangeStartTime = onChangeStartTime,
+                        onChangeEndTime = onChangeEndTime,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            // Radial menu overlay
+            if (activeButtonDate != null) {
+                val density = LocalDensity.current
+                val menuSizePx = with(density) { 200.dp.toPx() }
+                val halfMenuSize = menuSizePx / 2f
+
+                Box(modifier = Modifier.fillMaxSize().zIndex(1000f)) {
+                    InlineDateRadialMenu(
+                        onSetAsStart = { onSetAsStart(activeButtonDate) },
+                        onSetAsEnd = { onSetAsEnd(activeButtonDate) },
+                        onChangeStartTime = onChangeStartTime,
+                        onChangeEndTime = onChangeEndTime,
+                        modifier = Modifier.offset {
+                            androidx.compose.ui.unit.IntOffset(
+                                (buttonPosition.x - halfMenuSize).toInt(),
+                                (buttonPosition.y - halfMenuSize).toInt()
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Vertical Day Cell - TALL cell with vertical 24h occupancy bar
+ */
+@Composable
+private fun VerticalDayCell(
+    date: LocalDate,
+    isSelected: Boolean,
+    isCurrentMonth: Boolean,
+    mode: CalendarMode,
+    onStartDateSelected: ((LocalDate) -> Unit)?,
+    onEndDateSelected: ((LocalDate) -> Unit)?,
+    events: List<CalendarEventLinkEntity>,
+    occupancyCalculator: DayOccupancyCalculator,
+    tasks: List<TaskEntity> = emptyList(),
+    timeBlocks: List<com.example.questflow.data.database.entity.TimeBlockEntity> = emptyList(),
+    currentTaskId: Long? = null,
+    currentCategoryId: Long? = null,
+    showButton: Boolean = false,
+    onButtonRequest: (Offset, androidx.compose.ui.geometry.Size) -> Unit = { _, _ -> },
+    onSetAsStart: () -> Unit = {},
+    onSetAsEnd: () -> Unit = {},
+    onChangeStartTime: () -> Unit = {},
+    onChangeEndTime: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val isToday = date == LocalDate.now()
+    val segments = remember(date, events, tasks, timeBlocks, currentTaskId, currentCategoryId) {
+        occupancyCalculator.calculateDayOccupancy(events, date, tasks, timeBlocks, currentTaskId, currentCategoryId)
+    }
+
+    var cellPosition by remember { mutableStateOf(Offset.Zero) }
+    var cellSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .onGloballyPositioned { coordinates ->
+                cellPosition = coordinates.positionInWindow()
+                cellSize = androidx.compose.ui.geometry.Size(
+                    width = coordinates.size.width.toFloat(),
+                    height = coordinates.size.height.toFloat()
+                )
+            }
+            .clickable(
+                enabled = !showButton,
+                onClick = {
+                    when (mode) {
+                        CalendarMode.DIRECT_START -> onStartDateSelected?.invoke(date)
+                        CalendarMode.DIRECT_END -> onEndDateSelected?.invoke(date)
+                        CalendarMode.RADIAL_MENU -> {
+                            if (!showButton) {
+                                onButtonRequest(cellPosition, cellSize)
+                            }
+                        }
+                    }
+                }
+            )
+            .background(
+                color = when {
+                    isSelected -> MaterialTheme.colorScheme.primaryContainer
+                    isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                    else -> MaterialTheme.colorScheme.surface
+                }
+            )
+            .padding(4.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Day number (left side)
+            Column(
+                modifier = Modifier.wrapContentWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = date.dayOfMonth.toString(),
+                    fontSize = 14.sp,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                    color = when {
+                        !isCurrentMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        isToday -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+
+                if (showButton) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Vertical occupancy bar (right side, fills height)
+            if (segments.isNotEmpty()) {
+                VerticalOccupancyBar(
+                    segments = segments,
+                    modifier = Modifier
+                        .width(16.dp)
+                        .fillMaxHeight()
+                )
+            }
+        }
+    }
+}
+
+/**
  * Inline radial menu for date selection - renders directly in cell
  * Press & hold button → Drag to option → Release to select
  * NO OVERLAY - Calendar remains fully functional!
@@ -1235,6 +1949,77 @@ private fun OccupancyBar(
                 modifier = Modifier
                     .weight(weight)
                     .fillMaxHeight()
+                    .background(color)
+            )
+        }
+    }
+}
+
+/**
+ * Vertical occupancy bar - 24h vertical visualization
+ * Used in VERTICAL_MONTH and WEEK_VIEW modes
+ */
+@Composable
+private fun VerticalOccupancyBar(
+    segments: List<DayOccupancyCalculator.TimeSegment>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("calendar_colors", Context.MODE_PRIVATE)
+    }
+    val repository = remember { SimpleCalendarColorRepository(prefs) }
+    val colorConfig = repository.loadConfig()
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.Top
+    ) {
+        segments.forEach { segment ->
+            // Same logic as horizontal bar
+            val actualType = when {
+                !segment.isOccupied -> SegmentType.FREE
+                else -> {
+                    var enabledTypesInSegment = 0
+
+                    if (segment.hasCurrentTask && colorConfig.ownTaskEnabled) enabledTypesInSegment++
+                    if (segment.hasSameCategory && colorConfig.sameCategoryEnabled) enabledTypesInSegment++
+                    if (segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled) enabledTypesInSegment++
+                    if (segment.hasExternalEvents && colorConfig.externalEventEnabled) enabledTypesInSegment++
+                    if (segment.hasTimeBlocks && colorConfig.timeBlockEnabled) enabledTypesInSegment++
+
+                    when {
+                        enabledTypesInSegment >= 2 && colorConfig.overlapEnabled -> SegmentType.OVERLAP
+                        else -> {
+                            when {
+                                segment.hasCurrentTask && colorConfig.ownTaskEnabled -> SegmentType.OWN_TASK
+                                segment.hasSameCategory && colorConfig.sameCategoryEnabled -> SegmentType.SAME_CATEGORY
+                                segment.hasOtherOwnTasks && colorConfig.otherTaskEnabled -> SegmentType.OTHER_TASK
+                                segment.hasExternalEvents && colorConfig.externalEventEnabled -> SegmentType.EXTERNAL_EVENT
+                                segment.hasTimeBlocks && colorConfig.timeBlockEnabled -> SegmentType.TIME_BLOCK
+                                else -> SegmentType.FREE
+                            }
+                        }
+                    }
+                }
+            }
+
+            val weight = segment.weightInDay.coerceAtLeast(0.01f)
+
+            val color = when (actualType) {
+                SegmentType.FREE -> Color(0xFF66BB6A)
+                SegmentType.OVERLAP -> parseColorHex(colorConfig.overlapColor)
+                SegmentType.OWN_TASK -> parseColorHex(colorConfig.ownTaskColor)
+                SegmentType.SAME_CATEGORY -> parseColorHex(colorConfig.sameCategoryColor)
+                SegmentType.OTHER_TASK -> parseColorHex(colorConfig.otherTaskColor)
+                SegmentType.EXTERNAL_EVENT -> parseColorHex(colorConfig.externalEventColor)
+                SegmentType.TIME_BLOCK -> parseColorHex(colorConfig.timeBlockColor)
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(weight)
+                    .fillMaxWidth()
                     .background(color)
             )
         }
