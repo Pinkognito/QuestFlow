@@ -78,6 +78,10 @@ class TodayViewModel @Inject constructor(
     private val _selectedCategory = MutableStateFlow<CategoryEntity?>(null)
     val selectedCategory: StateFlow<CategoryEntity?> = _selectedCategory.asStateFlow()
 
+    // PERFORMANCE OPTIMIZATION: Month-based calendar data loading (shared with TasksViewModel)
+    private val _currentMonth = MutableStateFlow(java.time.YearMonth.now())
+    val currentMonth: StateFlow<java.time.YearMonth> = _currentMonth.asStateFlow()
+
     val categories = categoryRepository.getActiveCategories()
         .stateIn(
             scope = viewModelScope,
@@ -604,6 +608,15 @@ class TodayViewModel @Inject constructor(
         excludeTaskId = excludeTaskId,
         excludeLinkId = excludeLinkId
     )
+
+    /**
+     * PERFORMANCE OPTIMIZATION: Set current month for calendar display
+     * Updates the month state which triggers re-composition in AddTaskDialog
+     */
+    fun setCurrentMonth(month: java.time.YearMonth) {
+        android.util.Log.d("TodayViewModel", "📅 setCurrentMonth: $month")
+        _currentMonth.value = month
+    }
 
     /**
      * Get calendar events in a date range for month view occupancy visualization

@@ -315,6 +315,19 @@ fun TasksScreen(
                             )
                         }
 
+                        // 🚀 DEBUG: Stress Test Button (generates 30k tasks)
+                        SmallFloatingActionButton(
+                            onClick = { viewModel.generateStressTestTasks() },
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = "Stresstest",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         // Add Task FAB
                         FloatingActionButton(
                             onClick = { showAddTaskDialog = true }

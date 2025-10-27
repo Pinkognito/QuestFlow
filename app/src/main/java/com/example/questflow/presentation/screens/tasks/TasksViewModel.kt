@@ -80,6 +80,21 @@ class TasksViewModel @Inject constructor(
     private val _filterPresets = MutableStateFlow<List<com.example.questflow.data.database.entity.TaskFilterPresetEntity>>(emptyList())
     val filterPresets: StateFlow<List<com.example.questflow.data.database.entity.TaskFilterPresetEntity>> = _filterPresets.asStateFlow()
 
+    // PERFORMANCE OPTIMIZATION: Month-based pagination with caching
+    private val _currentMonth = MutableStateFlow(java.time.YearMonth.now())
+    val currentMonth: StateFlow<java.time.YearMonth> = _currentMonth.asStateFlow()
+
+    // Cache for loaded months: YearMonth -> List<CalendarEventLinkEntity>
+    private val monthCache = mutableMapOf<java.time.YearMonth, List<CalendarEventLinkEntity>>()
+
+    // PERFORMANCE OPTIMIZATION: Cache categories to avoid repeated DB queries
+    private val cachedCategories = categoryRepository.getAllCategories()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
     init {
         loadFilterSettings()
         loadTasks()
@@ -309,44 +324,10 @@ class TasksViewModel @Inject constructor(
     }
 
     fun loadCalendarLinks() {
-        viewModelScope.launch {
-            // NOTE: Expired events are checked by SyncManager (every 60s)
-            // No need to check here to avoid duplicate processing
-
-
-            calendarLinkRepository.getAllLinks().collect { allLinks ->
-                // Check if advanced filter is active
-                val currentFilter = _currentAdvancedFilter.value
-                android.util.Log.d("AdvancedFilter", "=== loadCalendarLinks: ${allLinks.size} links loaded ===")
-                android.util.Log.d("AdvancedFilter", "Current filter isActive: ${currentFilter.isActive()}")
-
-                if (currentFilter.isActive()) {
-                    android.util.Log.d("AdvancedFilter", "Re-applying advanced filter to fresh data")
-                    // Re-apply advanced filter to fresh data
-                    val categories = categoryRepository.getAllCategories().first()
-                    val result = applyAdvancedFilterUseCase.execute(
-                        links = allLinks,
-                        filter = currentFilter,
-                        categories = categories,
-                        textSearchQuery = "",
-                        selectedCategoryId = selectedCategoryId // Pass dropdown category
-                    )
-                    android.util.Log.d("AdvancedFilter", "Filtered result: ${result.filteredCount}/${result.totalCount}")
-                    _uiState.value = _uiState.value.copy(
-                        links = allLinks,  // Keep all links for reference
-                        filteredLinksResult = result  // But show filtered results
-                    )
-                } else {
-                    android.util.Log.d("AdvancedFilter", "Using simple filter (no advanced filter active)")
-                    // Use simple filter if no advanced filter active
-                    val filteredLinks = filterLinks(allLinks)
-                    _uiState.value = _uiState.value.copy(
-                        links = filteredLinks,
-                        filteredLinksResult = null  // Clear advanced filter results
-                    )
-                }
-            }
-        }
+        // PERFORMANCE OPTIMIZATION: Now uses month-based loading with cache
+        // Load current month data (will use cache if available)
+        android.util.Log.d("TasksViewModel", "📞 loadCalendarLinks() called - delegating to loadMonthData")
+        loadMonthData(_currentMonth.value)
     }
 
     private fun filterLinks(links: List<CalendarEventLinkEntity>): List<CalendarEventLinkEntity> {
@@ -447,6 +428,95 @@ class TasksViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.e("ZombieCleanup", "❌ Failed to clean up orphaned links", e)
             }
+        }
+    }
+
+    /**
+     * PERFORMANCE OPTIMIZATION: Switch to a specific month
+     * Loads data from cache if available, otherwise from DB
+     */
+    fun setCurrentMonth(month: java.time.YearMonth) {
+        android.util.Log.d("TasksViewModel", "📅 setCurrentMonth: $month (current: ${_currentMonth.value})")
+
+        if (_currentMonth.value == month) {
+            android.util.Log.d("TasksViewModel", "⏭️ Month unchanged, skipping")
+            return
+        }
+
+        _currentMonth.value = month
+        loadMonthData(month)
+    }
+
+    /**
+     * PERFORMANCE OPTIMIZATION: Load calendar data for specific month
+     * Uses cache if available, otherwise loads from DB and caches result
+     */
+    private fun loadMonthData(month: java.time.YearMonth) {
+        viewModelScope.launch {
+            android.util.Log.d("TasksViewModel", "📥 loadMonthData: $month")
+
+            // Check cache first
+            if (monthCache.contains(month)) {
+                android.util.Log.d("TasksViewModel", "✅ Cache HIT for $month (${monthCache[month]!!.size} links)")
+                // Load from cache - still need to apply filters
+                val cachedLinks = monthCache[month]!!
+                applyFiltersToLinks(cachedLinks)
+                return@launch
+            }
+
+            android.util.Log.d("TasksViewModel", "❌ Cache MISS for $month, loading from DB...")
+
+            // Load from DB
+            val startDate = month.atDay(1)
+            val endDate = month.atEndOfMonth()
+
+            // PERFORMANCE FIX: Use .first() instead of .collect {} to avoid active Flow listener
+            // This prevents repeated DB loads during task insertions
+            val monthLinks = calendarLinkRepository.getEventsInRange(startDate, endDate).first()
+            android.util.Log.d("TasksViewModel", "📦 Loaded ${monthLinks.size} links for $month from DB")
+
+            // Cache the results
+            monthCache[month] = monthLinks
+            android.util.Log.d("TasksViewModel", "💾 Cached data for $month")
+
+            // Apply filters
+            applyFiltersToLinks(monthLinks)
+        }
+    }
+
+    /**
+     * PERFORMANCE OPTIMIZATION: Apply current filters to given links
+     * Separated from loading logic to reuse for cached and fresh data
+     * USES CACHED CATEGORIES to avoid DB queries
+     */
+    private suspend fun applyFiltersToLinks(allLinks: List<CalendarEventLinkEntity>) {
+        val currentFilter = _currentAdvancedFilter.value
+        android.util.Log.d("TasksViewModel", "🔍 Applying filters to ${allLinks.size} links, filter active: ${currentFilter.isActive()}")
+
+        if (currentFilter.isActive()) {
+            // Apply advanced filter - USE CACHED CATEGORIES (no DB query!)
+            val categories = cachedCategories.value
+            android.util.Log.d("TasksViewModel", "📋 Using cached categories: ${categories.size} categories")
+            val result = applyAdvancedFilterUseCase.execute(
+                links = allLinks,
+                filter = currentFilter,
+                categories = categories,
+                textSearchQuery = "",
+                selectedCategoryId = selectedCategoryId
+            )
+            android.util.Log.d("TasksViewModel", "✅ Advanced filter result: ${result.filteredCount}/${result.totalCount}")
+            _uiState.value = _uiState.value.copy(
+                links = allLinks,
+                filteredLinksResult = result
+            )
+        } else {
+            // Use simple filter
+            val filteredLinks = filterLinks(allLinks)
+            android.util.Log.d("TasksViewModel", "✅ Simple filter result: ${filteredLinks.size}/${allLinks.size}")
+            _uiState.value = _uiState.value.copy(
+                links = filteredLinks,
+                filteredLinksResult = null
+            )
         }
     }
 
@@ -948,6 +1018,147 @@ class TasksViewModel @Inject constructor(
     fun resetLayoutToDefaults() {
         viewModelScope.launch {
             displaySettingsRepository.resetLayoutToDefaults()
+        }
+    }
+
+    /**
+     * 🚀 DEBUG: Generate realistic test tasks for performance testing
+     * - October 2025: 10 tasks per day (310 tasks total) evenly distributed
+     * - November 2025: 10 tasks per day (300 tasks total) evenly distributed
+     * Total: ~620 tasks with varied metadata - enough for performance testing
+     */
+    fun generateStressTestTasks() {
+        viewModelScope.launch {
+            android.util.Log.d("TasksViewModel", "🚀 Starting REALISTIC stress test task generation...")
+
+            // Get ALL categories for distribution
+            val categories = categoryRepository.getAllCategories().first()
+            android.util.Log.d("TasksViewModel", "📋 Using ${categories.size} categories for distribution")
+
+            if (categories.isEmpty()) {
+                android.util.Log.e("TasksViewModel", "❌ No categories found! Cannot generate tasks.")
+                return@launch
+            }
+
+            val priorities = listOf("LOW", "MEDIUM", "HIGH", "URGENT")
+            val xpPercentages = listOf(20, 40, 60, 80, 100)
+            val durations = listOf(15, 30, 45, 60, 90, 120) // minutes
+            val taskPrefixes = listOf("Meeting", "Call", "Review", "Work", "Study", "Project", "Debug", "Test")
+
+            var tasksCreated = 0
+            val startTime = System.currentTimeMillis()
+
+            // OCTOBER 2025: 10 tasks per day, distributed across all 31 days
+            android.util.Log.d("TasksViewModel", "📅 Generating October 2025 tasks (10 per day, all 31 days)...")
+            for (day in 1..31) {
+                for (taskNum in 1..10) {
+                    val hour = (taskNum - 1) * 2 + 8 // 08:00, 10:00, 12:00, ..., 02:00
+                    val minute = if (taskNum % 2 == 0) 30 else 0
+
+                    val currentTime = LocalDateTime.of(2025, 10, day, hour % 24, minute)
+
+                    // Rotate through categories
+                    val category = categories[tasksCreated % categories.size]
+                    val priority = priorities[tasksCreated % priorities.size]
+                    val xpPercentage = xpPercentages[tasksCreated % xpPercentages.size]
+                    val duration = durations[tasksCreated % durations.size]
+                    val prefix = taskPrefixes[tasksCreated % taskPrefixes.size]
+
+                    val task = TaskEntity(
+                        id = 0,
+                        title = "$prefix ${currentTime.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm"))}",
+                        description = "Category: ${category.name} | Priority: $priority | XP: $xpPercentage%",
+                        priority = priority,
+                        dueDate = currentTime,
+                        categoryId = category.id,
+                        isCompleted = false,
+                        xpPercentage = xpPercentage,
+                        createdAt = LocalDateTime.now()
+                    )
+
+                    val taskId = taskRepository.insertTaskEntity(task)
+
+                    // Create calendar link
+                    val link = CalendarEventLinkEntity(
+                        id = 0,
+                        calendarEventId = 0,
+                        title = task.title,
+                        taskId = taskId,
+                        startsAt = currentTime,
+                        endsAt = currentTime.plusMinutes(duration.toLong()),
+                        xp = 100,
+                        xpPercentage = xpPercentage,
+                        categoryId = category.id,
+                        status = "PENDING"
+                    )
+                    calendarLinkRepository.insertLink(link)
+
+                    tasksCreated++
+                }
+            }
+
+            android.util.Log.d("TasksViewModel", "✅ October done: $tasksCreated tasks (all 31 days)")
+
+            // NOVEMBER 2025: 10 tasks per day, distributed across all 30 days
+            android.util.Log.d("TasksViewModel", "📅 Generating November 2025 tasks (10 per day, all 30 days)...")
+            for (day in 1..30) {
+                for (taskNum in 1..10) {
+                    val hour = (taskNum - 1) * 2 + 8 // 08:00, 10:00, 12:00, ..., 02:00
+                    val minute = if (taskNum % 2 == 0) 30 else 0
+
+                    val currentTime = LocalDateTime.of(2025, 11, day, hour % 24, minute)
+
+                    // Rotate through categories
+                    val category = categories[tasksCreated % categories.size]
+                    val priority = priorities[tasksCreated % priorities.size]
+                    val xpPercentage = xpPercentages[tasksCreated % xpPercentages.size]
+                    val duration = durations[tasksCreated % durations.size]
+                    val prefix = taskPrefixes[tasksCreated % taskPrefixes.size]
+
+                    val task = TaskEntity(
+                        id = 0,
+                        title = "$prefix ${currentTime.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm"))}",
+                        description = "Category: ${category.name} | Priority: $priority | XP: $xpPercentage%",
+                        priority = priority,
+                        dueDate = currentTime,
+                        categoryId = category.id,
+                        isCompleted = false,
+                        xpPercentage = xpPercentage,
+                        createdAt = LocalDateTime.now()
+                    )
+
+                    val taskId = taskRepository.insertTaskEntity(task)
+
+                    // Create calendar link
+                    val link = CalendarEventLinkEntity(
+                        id = 0,
+                        calendarEventId = 0,
+                        title = task.title,
+                        taskId = taskId,
+                        startsAt = currentTime,
+                        endsAt = currentTime.plusMinutes(duration.toLong()),
+                        xp = 100,
+                        xpPercentage = xpPercentage,
+                        categoryId = category.id,
+                        status = "PENDING"
+                    )
+                    calendarLinkRepository.insertLink(link)
+
+                    tasksCreated++
+                }
+            }
+
+            val duration = System.currentTimeMillis() - startTime
+            android.util.Log.d("TasksViewModel", "🎉 Stress test complete! Created $tasksCreated tasks in ${duration}ms (${duration/1000}s)")
+            android.util.Log.d("TasksViewModel", "📊 Distribution: ${categories.size} categories × 31+30 days × 10 tasks/day")
+            android.util.Log.d("TasksViewModel", "📊 Metadata: 4 priorities × 5 XP levels × 6 durations × 8 task types")
+
+            // Clear cache to force reload
+            monthCache.clear()
+            android.util.Log.d("TasksViewModel", "🗑️ Cache cleared, ready for performance testing")
+
+            // Reload current month
+            loadMonthData(_currentMonth.value)
         }
     }
 }

@@ -63,7 +63,9 @@ fun ModernDateTimePicker(
     // NEW: Optional alternative time to show as second time field (e.g., end time when this is start)
     alternativeTime: LocalDateTime? = null,
     onAlternativeTimeChange: ((LocalDateTime) -> Unit)? = null,
-    alternativeLabel: String? = null
+    alternativeLabel: String? = null,
+    // PERFORMANCE OPTIMIZATION: Month change callback
+    onMonthChange: ((java.time.YearMonth) -> Unit)? = null
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -132,7 +134,9 @@ fun ModernDateTimePicker(
                         { newTime -> onAlternativeTimeChange?.invoke(LocalDateTime.of(alternativeTime!!.toLocalDate(), newTime)) }
                     } else {
                         { newTime -> onDateTimeChange(LocalDateTime.of(dateTime.toLocalDate(), newTime)) }
-                    }
+                    },
+                    // PERFORMANCE OPTIMIZATION: Pass through month change callback
+                    onMonthChange = onMonthChange
                 )
             },
             confirmButton = {},

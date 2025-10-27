@@ -37,11 +37,12 @@ fun AddTaskDialog(
 ) {
     val uiSettings by viewModel.uiSettings.collectAsState()
 
-    // Calendar events for month view occupancy (get 2 months range)
-    val currentMonth = remember { java.time.YearMonth.now() }
+    // PERFORMANCE OPTIMIZATION: Use ViewModel's current month state for dynamic loading
+    // Events are now loaded on-demand per month from cache
+    val currentMonth by viewModel.currentMonth.collectAsState()
     val monthViewEvents by viewModel.getCalendarEventsInRange(
-        startDate = currentMonth.minusMonths(1).atDay(1),
-        endDate = currentMonth.plusMonths(2).atDay(1)
+        startDate = currentMonth.atDay(1),
+        endDate = currentMonth.atEndOfMonth()
     ).collectAsState(initial = emptyList())
     
     var taskTitleField by remember { mutableStateOf(TextFieldValue("")) }
@@ -610,7 +611,9 @@ fun AddTaskDialog(
                             currentCategoryId = taskCategory?.id,
                             alternativeTime = endDateTime,
                             onAlternativeTimeChange = { endDateTime = it },
-                            alternativeLabel = "Ende"
+                            alternativeLabel = "Ende",
+                            // PERFORMANCE OPTIMIZATION: Notify ViewModel when month changes
+                            onMonthChange = { month -> viewModel.setCurrentMonth(month) }
                         )
                     }
 
@@ -632,7 +635,9 @@ fun AddTaskDialog(
                             currentCategoryId = taskCategory?.id,
                             alternativeTime = startDateTime,
                             onAlternativeTimeChange = { startDateTime = it },
-                            alternativeLabel = "Start"
+                            alternativeLabel = "Start",
+                            // PERFORMANCE OPTIMIZATION: Notify ViewModel when month changes
+                            onMonthChange = { month -> viewModel.setCurrentMonth(month) }
                         )
                     }
 

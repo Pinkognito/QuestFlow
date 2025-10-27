@@ -117,7 +117,9 @@ fun MonthViewDatePicker(
     onEndTimeChange: ((LocalTime) -> Unit)? = null,
     // Time distance settings (NEW)
     isDistanceLocked: Boolean = false,
-    onDistanceLockToggle: (() -> Unit)? = null
+    onDistanceLockToggle: (() -> Unit)? = null,
+    // PERFORMANCE OPTIMIZATION: Month change callback
+    onMonthChange: ((YearMonth) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val viewModePrefs = remember {
@@ -134,6 +136,12 @@ fun MonthViewDatePicker(
     }
 
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+
+    // PERFORMANCE OPTIMIZATION: Notify ViewModel when month changes
+    LaunchedEffect(currentMonth) {
+        onMonthChange?.invoke(currentMonth)
+        android.util.Log.d("MonthViewDatePicker", "📅 Month changed to: $currentMonth (callback invoked)")
+    }
 
     // Week View State - separate from month navigation
     // Initialize with week containing selectedDate or today
